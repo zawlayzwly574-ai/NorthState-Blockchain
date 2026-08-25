@@ -12,6 +12,7 @@ import {
   useGetTrades,
   usePlaceTrade,
   useGetMarketSummary,
+  getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
 } from '@workspace/api-client-react';
@@ -225,10 +226,10 @@ export function TradingPage() {
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { refetchInterval: 30_000 } });
-  const { data: account } = useGetTradingAccount({ query: { refetchInterval: 5_000 } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
+  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
-    query: { refetchInterval: 3_000 },
+    query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
   const placeTradeHook = usePlaceTrade();
 

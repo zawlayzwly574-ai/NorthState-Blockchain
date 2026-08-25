@@ -85,11 +85,11 @@ function iconForActivity(type: string) {
   if (type === 'convert') return <ArrowLeftRight size={17} />;
   return type === 'buy' ? <TrendingUp size={17} /> : <TrendingDown size={17} />;
 }
-function initials(name = 'Northstar User') { return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase(); }
+function initials(name = 'North State User') { return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase(); }
 
-function NorthstarMark({ size = 36 }: { size?: number }) {
+function NorthStateMark({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Northstar">
+    <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="North State Blockchain">
       <rect width="36" height="36" rx="9" fill="#0c0d10"/>
       <path d="M8 27 L8 9 L26 27 L26 9" stroke="#cfa230" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round"/>
       <line x1="30" y1="4.5" x2="30" y2="8.5" stroke="#cfa230" strokeWidth="1.1" strokeLinecap="round"/>
@@ -99,8 +99,8 @@ function NorthstarMark({ size = 36 }: { size?: number }) {
 }
 function Logo({ compact: isCompact = false }: { compact?: boolean }) {
   return <Link href="/" className="flex items-center gap-3" data-testid="link-brand">
-    <NorthstarMark size={36} />
-    {!isCompact && <span className="text-[15px] font-extrabold tracking-[-.04em] text-foreground">NORTHSTAR<span className="text-primary">.</span></span>}
+    <NorthStateMark size={36} />
+    {!isCompact && <span className="text-[15px] font-extrabold tracking-[-.04em] text-foreground"><span>NORTH STATE</span><span className="ml-1 text-primary">BLOCKCHAIN</span></span>}
   </Link>;
 }
 
@@ -1755,7 +1755,6 @@ function Settings() {
         country: String(form.get('country')),
         city: String(form.get('city')),
         occupation: String(form.get('occupation')),
-        ssn: String(form.get('ssn')),
         documentType: String(form.get('documentType')) as 'passport' | 'drivers_license' | 'national_id',
         documentImageBase64: docPreview || undefined,
       }
@@ -1923,7 +1922,6 @@ function Settings() {
                     <Field label="Country of residence" name="country" placeholder="United States" required data-testid="input-kyc-country" />
                     <Field label="City / Town / State" name="city" placeholder="New York, NY" required data-testid="input-kyc-city" />
                     <Field label="Occupation / Employment" name="occupation" placeholder="Software Engineer" required data-testid="input-kyc-occupation" />
-                    <Field label="SSN (Social Security Number)" name="ssn" placeholder="XXX-XX-XXXX" required data-testid="input-kyc-ssn" />
                     <SelectField label="Document type" name="documentType" defaultValue="passport" data-testid="select-kyc-document">
                       <option value="passport">Passport</option>
                       <option value="drivers_license">Driver's license</option>
@@ -1969,7 +1967,7 @@ function Settings() {
           {/* ── Referrals tab ── */}
           {tab === 'referrals' && (
             <div className="surface rounded-2xl p-6 sm:p-8">
-              <p className="eyebrow">Northstar circle</p>
+              <p className="eyebrow">North State circle</p>
               <h2 className="mt-1 text-xl font-extrabold">Invite someone you trust</h2>
               <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">Share your personal link with a friend. No leaderboard, no pressure — just a thoughtful way to bring someone in.</p>
               {referral.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
@@ -2023,7 +2021,7 @@ function SupportChatWidget() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useGetSupportMessages({
-    query: { enabled: !!isSignedIn, refetchInterval: open ? 5000 : false },
+    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: !!isSignedIn, refetchInterval: open ? 5000 : false },
   });
   const sendMut = useSendSupportMessage();
   const messages = data?.messages ?? [];

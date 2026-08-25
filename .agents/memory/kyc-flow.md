@@ -7,7 +7,7 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 
 - **New real users start as `unverified`** — `ensureSeededUser` only seeds holdings/activities for `demo_user`; real users get profile only with `verificationStatus: "unverified"`.
 - **Enum values** — `ProfileVerificationStatus` is `unverified | pending | verified | rejected`. `rejected` was added to the OpenAPI spec and must stay there; omitting it breaks TypeScript comparisons.
-- **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `ssn` (required), `documentType`, `documentImageBase64` (optional). All stored in `kycSubmissionsTable`.
+- **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `documentType`, `documentImageBase64` (optional). SSN is not collected in the user flow; the legacy admin-visible column is stored as an empty value.
 - **Document image** — stored as base64 data URL in `document_image_base64` text column. No separate object storage needed.
 - **Shell KYC gate** — `Shell` checks `profile.verificationStatus` and replaces `{children}` with `<KycStatusScreen>` for any non-`/settings` route when status is not `verified`. This keeps `/settings` accessible so users can submit their KYC.
 - **Admin KYC panel** — expandable card per submission; SSN shown blurred with reveal toggle; image shown inline if base64 starts with `data:image`; approve/reject buttons in both row header and expanded footer.

@@ -16,8 +16,6 @@ export interface KycInput {
   city: string;
   /** @minLength 1 */
   occupation: string;
-  /** @minLength 4 */
-  ssn: string;
   documentType: KycInputDocumentType;
   documentImageBase64?: string;
 }

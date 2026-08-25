@@ -471,7 +471,7 @@ router.post("/kyc", async (req, res) => {
     country: body.country,
     city: body.city,
     occupation: body.occupation,
-    ssn: body.ssn,
+    ssn: "",
     documentType: body.documentType,
     documentImageBase64: body.documentImageBase64 ?? null,
     status: "pending",
@@ -875,7 +875,7 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
 });
 
 router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
-  const userId = req.params.userId;
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
   const [thread] = await db.select().from(supportThreadsTable)
     .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
   if (!thread) { res.json({ userId, displayName: "", email: "", threadId: 0, messages: [] }); return; }
@@ -902,7 +902,7 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
 });
 
 router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
-  const userId = req.params.userId;
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
   const { content } = req.body as { content?: string };
   if (!content?.trim()) { res.status(400).json({ error: "Reply content is required." }); return; }
   let [thread] = await db.select().from(supportThreadsTable)

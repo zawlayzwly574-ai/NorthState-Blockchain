@@ -1056,13 +1056,12 @@ components:
             - $ref: "#/components/schemas/AdminKyc"
     KycInput:
       type: object
-      required: [fullName, country, city, occupation, ssn, documentType]
+      required: [fullName, country, city, occupation, documentType]
       properties:
         fullName: { type: string, minLength: 2 }
         country: { type: string, minLength: 2 }
         city: { type: string, minLength: 1 }
         occupation: { type: string, minLength: 1 }
-        ssn: { type: string, minLength: 4 }
         documentType: { type: string, enum: [passport, drivers_license, national_id] }
         documentImageBase64: { type: string }
     KycStatus:

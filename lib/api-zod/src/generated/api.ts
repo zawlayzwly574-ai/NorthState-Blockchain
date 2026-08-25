@@ -307,8 +307,6 @@ export const submitKycBodyCountryMin = 2;
 
 
 
-export const submitKycBodySsnMin = 4;
-
 
 
 export const SubmitKycBody = zod.object({
@@ -316,7 +314,6 @@ export const SubmitKycBody = zod.object({
   "country": zod.string().min(submitKycBodyCountryMin),
   "city": zod.string().min(1),
   "occupation": zod.string().min(1),
-  "ssn": zod.string().min(submitKycBodySsnMin),
   "documentType": zod.enum(['passport', 'drivers_license', 'national_id']),
   "documentImageBase64": zod.string().optional()
 })
