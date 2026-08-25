@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
 import { eq, desc, count, and, inArray } from "drizzle-orm";
@@ -79,8 +79,22 @@ const seedChanges: Record<string, number> = {
   "first-digital-usd": 0.04,
 };
 
-function getUserId(req: Parameters<Parameters<IRouter["get"]>[1]>[0]) {
-  return getAuth(req).userId ?? "demo_user";
+function getUserId(req: Request) {
+  return getAuth(req).userId!;
+}
+
+function requireMember(req: Request, res: Response, next: NextFunction) {
+  if (req.path.startsWith("/admin")) {
+    next();
+    return;
+  }
+
+  if (!getAuth(req).userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  next();
 }
 
 function asNumber(value: string | number | null | undefined) {
@@ -344,6 +358,10 @@ router.get("/markets/:symbol", async (req, res) => {
 
   res.json(GetMarketDetailResponse.parse({ asset, chart }));
 });
+
+// Everything after the public market endpoints belongs to the signed-in member
+// area. Admin routes opt out here and enforce their own admin secret below.
+router.use(requireMember);
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));

@@ -12,7 +12,8 @@ North State Blockchain is a digital-asset wallet and market dashboard with a sep
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
-- Required auth setup: configure Clerk for the user app and API before authenticated flows can work.
+- Clerk auth is workspace-managed: its server and client keys are provisioned as secrets and must never be hardcoded.
+- Optional `CORS_ALLOWED_ORIGINS`: comma-separated origins for intentional cross-origin browser clients; the API otherwise accepts browser requests only from its own origin.
 
 ## Stack
 

@@ -46,6 +46,9 @@ const clerkPubKey = publishableKeyFromHost(
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+if (!clerkPubKey) {
+  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the workspace environment.');
+}
 const currencies = [
   'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY',
   'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'NZD', 'MXN', 'INR',
@@ -236,7 +239,7 @@ const clerkAppearance = {
     colorInput: '#08172a',
     colorInputForeground: '#eaf3ff',
     colorNeutral: '#29425e',
-    fontFamily: 'Manrope, sans-serif',
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
     borderRadius: '0.9rem',
   },
   elements: {
@@ -2155,7 +2158,21 @@ function ClerkApp() {
     appearance={clerkAppearance}
     signInUrl={`${basePath}/sign-in`}
     signUpUrl={`${basePath}/sign-up`}
-    afterSignOutUrl={`${basePath}/sign-in`}
+    afterSignOutUrl={basePath || '/'}
+    localization={{
+      signIn: {
+        start: {
+          title: 'Welcome back',
+          subtitle: 'Sign in to access your Northstar account',
+        },
+      },
+      signUp: {
+        start: {
+          title: 'Open your Northstar account',
+          subtitle: 'Create a secure account to begin',
+        },
+      },
+    }}
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
