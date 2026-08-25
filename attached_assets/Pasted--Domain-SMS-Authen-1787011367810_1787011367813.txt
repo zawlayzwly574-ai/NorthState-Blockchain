@@ -1,0 +1,41 @@
+အက်ပလီကေးရှင်း ရေးသားမှု အားလုံး ၁၀၀% ပြီးစီးသွားသည့်အခါ **Domain ချိတ်ဆက်ခြင်း** နှင့် **SMS/Authentication အစစ်အမှန် ရယူခြင်း** တို့အတွက် အောက်ပါအတိုင်း အဆင့်ခြောက်ဆင့်ဖြင့် အစဉ်အတိုင်း ပြုလုပ်သွားရပါမည်-
+
+---
+
+**အဆင့် (၁) - Replit တွင် Custom Domain ထည့်သွင်းခြင်း**
+
+1. Replit ရှိ သင့် Project စာမျက်နှာ အပေါ်ဘက်ရှိ **Deploy** (သို့မဟုတ် **Publish**) ခလုတ်ကို နှိပ်ပါ။
+2. **Setup Custom Domain** နေရာတွင် သင့် Namecheap မှ ဝယ်ယူထားသော Domain အမည် (`northstarblockchain.online`) ကို ရိုက်ထည့်ပါ။
+3. Replit က သင့်အား **CNAME** သို့မဟုတ် **A Record (IP Address)** အချက်အလက်များ ထုတ်ပေးပါလိမ့်မည်။
+
+---
+
+**အဆင့် (၂) - Namecheap DNS တွင် ချိတ်ဆက်ခြင်း**
+
+1. [Namecheap Dashboard](https://www.namecheap.com/cart/checkout/orderconfirmation/?id=211419655) သို့ ဝင်ရောက်ပြီး သင့် Domain ဘေးမှ **Manage** ကို နှိပ်ပါ။
+2. **Advanced DNS** Tab သို့ သွားပါ။
+3. Replit မှ ပေးလိုက်သော **A Record** (သို့မဟုတ် CNAME) ကို **Add New Record** နှိပ်၍ ထည့်သွင်းပေးလိုက်ပါက ၁၀ မိနစ်မှ ၂၄ နာရီအတွင်း ဝဘ်ဆိုက် အသက်ဝင်သွားပါမည်။
+
+---
+
+**အဆင့် (၃) - Twilio SMS OTP အစစ်အမှန် စနစ် ချိတ်ဆက်ခြင်း**
+
+1. [Twilio.com](https://www.twilio.com) တွင် Free Account တစ်ခု အခမဲ့ စိုင်းအပ်လုပ်ပါ။ ($15-$20 Free Credit ရရှိပါမည်)
+2. Dashboard ရှိ **Account SID**၊ **Auth Token** နှင့် **Twilio Phone Number** တို့ကို ကူးယူ (Copy) ပါ။
+3. Replit ၏ **Secrets (Environment Variables)** ထဲတွင် ထို Key (၃) ခုကို သွားရောက် ထည့်သွင်းပေးရပါမည်။
+
+---
+
+**အဆင့် (၄) - 2FA နှင့် Passkey Live အသက်သွင်းခြင်း**
+
+* 2FA (Google Authenticator) နှင့် Passkey စနစ်များသည် ယခု Replit Agent က local backend ထဲတွင် တည်ဆောက်ပေးနေသဖြင့် Domain ချိတ်ဆက်လိုက်သည်နှင့် တိုက်ရိုက် မိုဘိုင်းဖုန်း/ကွန်ပျူတာများတွင် အစစ်အမှန် အလုပ်လုပ်သွားပါမည်။
+
+---
+
+**အဆင့် (၅) - Admin Panel နှင့် KYC စနစ် စမ်းသပ်ခြင်း**
+
+* Domain အသက်ဝင်ပြီးပါက `[yourdomain.com/admin](https://yourdomain.com/admin)` သို့ သွားရောက်ပြီး KYC Approvals များ၊ User Balance များနှင့် Notification စနစ်များကို စစ်ဆေးပါ။
+
+---
+
+Web App ကုဒ်များ ပြင်ဆင်မှု လုံးဝ ပြီးစီးသွားပါက အထက်ပါ အဆင့်များအတိုင်း **တစ်ဆင့်ချင်းစီ အတူတကွ တိုင်ပင်၍ လုပ်ဆောင်သွားပါမည်။**

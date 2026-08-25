@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Northstar Blockchain"
+description = "A polished blockchain portfolio and market app with account access, live crypto market data, wallet actions, KYC onboarding, and referral sharing for everyday users."
+version = "1.0.0"
+id = "artifacts/blockchain-hub"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18269
+
+[services.development]
+run = "pnpm --filter @workspace/blockchain-hub run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/blockchain-hub", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/blockchain-hub/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18269"
+BASE_PATH = "/"

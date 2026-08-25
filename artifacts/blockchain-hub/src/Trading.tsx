@@ -1,0 +1,591 @@
+// ─── Trading & Futures Module ─────────────────────────────────────────────────
+// Fully isolated — does not touch any existing wallet or KYC logic.
+
+import { useState, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap } from 'lucide-react';
+import {
+  AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
+} from 'recharts';
+import {
+  useGetTradingAccount,
+  useGetTrades,
+  usePlaceTrade,
+  useGetMarketSummary,
+  getGetTradingAccountQueryKey,
+  getGetTradesQueryKey,
+} from '@workspace/api-client-react';
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const TIMEFRAMES = [
+  { label: '60s', secs: 60 },
+  { label: '90s', secs: 90 },
+  { label: '2m',  secs: 120 },
+  { label: '3m',  secs: 180 },
+  { label: '5m',  secs: 300 },
+  { label: '15m', secs: 900 },
+  { label: '30m', secs: 1800 },
+  { label: '1h',  secs: 3600 },
+  { label: '24h', secs: 86400 },
+  { label: '72h', secs: 259200 },
+  { label: '10D', secs: 864000 },
+  { label: '15D', secs: 1296000 },
+  { label: '30D', secs: 2592000 },
+];
+
+const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP'];
+const PAYOUT_RATE = 0.85;
+
+// ─── Price chart helpers ───────────────────────────────────────────────────────
+
+function generatePriceHistory(base: number, count: number) {
+  const pts: { t: number; price: number }[] = [];
+  let p = base * (1 - 0.008 * Math.random());
+  for (let i = count - 1; i >= 0; i--) {
+    p = p * (1 + (Math.random() - 0.497) * 0.0025);
+    pts.push({ t: Date.now() - i * 1500, price: p });
+  }
+  return pts;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function PriceChart({
+  basePrice,
+  entryPrice,
+  assetKey,
+}: {
+  basePrice: number;
+  entryPrice?: number;
+  assetKey: string;
+}) {
+  const [data, setData] = useState<{ t: number; price: number }[]>([]);
+
+  // Re-seed when asset or base price changes significantly
+  const basePriceRef = useRef(basePrice);
+  useEffect(() => {
+    if (Math.abs(basePriceRef.current - basePrice) / basePrice > 0.01 || data.length === 0) {
+      basePriceRef.current = basePrice;
+      setData(generatePriceHistory(basePrice, 80));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetKey, basePrice > 0]);
+
+  useEffect(() => {
+    if (basePrice <= 0) return;
+    const iv = setInterval(() => {
+      setData(prev => {
+        if (prev.length === 0) return prev;
+        const last = prev[prev.length - 1].price;
+        const next = last * (1 + (Math.random() - 0.497) * 0.0025);
+        return [...prev.slice(-79), { t: Date.now(), price: next }];
+      });
+    }, 1200);
+    return () => clearInterval(iv);
+  }, [basePrice]);
+
+  const prices = data.map(d => d.price);
+  const lo = Math.min(...prices) * 0.9992;
+  const hi = Math.max(...prices) * 1.0008;
+  const current = data[data.length - 1]?.price ?? basePrice;
+  const first = data[0]?.price ?? basePrice;
+  const isUp = current >= first;
+  const stroke = isUp ? '#22c55e' : '#ef4444';
+
+  return (
+    <div className="relative">
+      {/* Live price badge */}
+      <div className="pointer-events-none absolute left-3 top-2 z-10 flex items-baseline gap-1.5">
+        <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }}>
+          ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+          {isUp ? '▲' : '▼'} LIVE
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <AreaChart data={data} margin={{ top: 36, right: 0, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id="tg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={stroke} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <YAxis domain={[lo, hi]} hide />
+          <Tooltip
+            content={() => null}
+            cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '3 2' }}
+          />
+          <Area
+            type="monotone"
+            dataKey="price"
+            stroke={stroke}
+            strokeWidth={1.8}
+            fill="url(#tg)"
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+          />
+          {entryPrice && (
+            <ReferenceLine
+              y={entryPrice}
+              stroke="hsl(var(--primary))"
+              strokeDasharray="5 3"
+              strokeWidth={1.5}
+              label={{
+                value: 'ENTRY',
+                position: 'insideTopRight',
+                fill: 'hsl(var(--primary))',
+                fontSize: 9,
+                fontWeight: 700,
+              }}
+            />
+          )}
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CountdownTimer({ expiresAt }: { expiresAt: string }) {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const tick = () => setSecs(Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 500);
+    return () => clearInterval(iv);
+  }, [expiresAt]);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  const urgent = secs <= 10;
+  return (
+    <span className={`font-mono text-xs font-bold tabular-nums ${urgent ? 'text-red-400 animate-pulse' : 'text-muted-foreground'}`}>
+      {secs >= 3600
+        ? `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`
+        : secs >= 60
+        ? `${m}m ${String(s).padStart(2, '0')}s`
+        : `${secs}s`}
+    </span>
+  );
+}
+
+function TimeframeSheet({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: number;
+  onChange: (secs: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-border bg-[hsl(222_10%_8%)] px-5 pb-10 pt-5">
+        <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-border" />
+        <p className="mb-4 text-center text-sm font-bold tracking-tight">Select Timeframe</p>
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+          {TIMEFRAMES.map(tf => (
+            <button
+              key={tf.secs}
+              onClick={() => { onChange(tf.secs); onClose(); }}
+              className={`rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
+                value === tf.secs
+                  ? 'bg-primary text-primary-foreground shadow-[0_4px_16px_hsl(var(--primary)/.35)]'
+                  : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ─── Main Trading Page ────────────────────────────────────────────────────────
+
+export function TradingPage() {
+  const [asset, setAsset] = useState('BTC');
+  const [amount, setAmount] = useState('100');
+  const [timeframeSecs, setTimeframeSecs] = useState(60);
+  const [showPicker, setShowPicker] = useState(false);
+  const [placing, setPlacing] = useState(false);
+  const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
+  const qc = useQueryClient();
+
+  const { data: market = [] } = useGetMarketSummary({ query: { refetchInterval: 30_000 } });
+  const { data: account } = useGetTradingAccount({ query: { refetchInterval: 5_000 } });
+  const { data: trades = [], refetch: refetchTrades } = useGetTrades({
+    query: { refetchInterval: 3_000 },
+  });
+  const placeTradeHook = usePlaceTrade();
+
+  const marketAsset = market.find(m => m.symbol === asset);
+  const currentPrice = marketAsset?.price ?? 0;
+
+  const activeTrades = trades.filter(t => t.status === 'active');
+  const history = trades.filter(t => t.status === 'completed').slice(0, 12);
+  const assetActiveTrade = activeTrades.find(t => t.asset === asset);
+  const entryPrice = assetActiveTrade ? Number(assetActiveTrade.entryPrice) : undefined;
+
+  const tradeAmt = Math.max(1, Number(amount) || 0);
+  const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
+  const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
+  const balance = Number(account?.balance ?? 10000);
+  const insufficient = tradeAmt > balance;
+  const winRate = account?.totalTrades
+    ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
+    : null;
+
+  const triggerFlash = (msg: string, type: 'win' | 'loss') => {
+    setFlash({ msg, type });
+    setTimeout(() => setFlash(null), 2500);
+  };
+
+  const handleTrade = async (direction: 'long' | 'short') => {
+    if (placing || !currentPrice || insufficient) return;
+    setPlacing(true);
+    try {
+      await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
+      await refetchTrades();
+      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+    } catch {
+      // error is surfaced via disabled state
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  // Flash result when a trade completes
+  const prevActive = useRef<number[]>([]);
+  useEffect(() => {
+    const nowActive = activeTrades.map(t => t.id);
+    const justCompleted = prevActive.current.filter(id => !nowActive.includes(id));
+    if (justCompleted.length > 0) {
+      const settled = trades.filter(t => justCompleted.includes(t.id));
+      const wins = settled.filter(t => t.result === 'win');
+      if (wins.length > 0) {
+        triggerFlash(`+$${Math.round(Number(wins[0].amount) * PAYOUT_RATE)} — WIN!`, 'win');
+      } else if (settled.length > 0) {
+        triggerFlash(`-$${Number(settled[0].amount).toFixed(0)} — LOSS`, 'loss');
+      }
+    }
+    prevActive.current = nowActive;
+  }, [activeTrades.length, trades]);
+
+  return (
+    <div className="mx-auto max-w-xl">
+      {/* Win/Loss flash overlay */}
+      {flash && (
+        <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
+          flash.type === 'win'
+            ? 'bg-green-500 text-white'
+            : 'bg-destructive text-white'
+        }`}>
+          {flash.msg}
+        </div>
+      )}
+
+      {/* ── Header row ── */}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
+          <p className="mt-0.5 font-mono text-xl font-extrabold">
+            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </div>
+        <div className="flex gap-4">
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
+            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>
+            <p className={`mt-0.5 font-mono font-bold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
+              {winRate !== null ? `${winRate}%` : '—'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Deposit required banner (zero balance) ── */}
+      {balance === 0 && (
+        <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <p className="text-sm font-bold text-amber-300">No trading balance</p>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Asset selector ── */}
+      <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {TRADING_ASSETS.map(a => {
+          const mkt = market.find(m => m.symbol === a);
+          const chg = mkt?.change24h ?? 0;
+          return (
+            <button
+              key={a}
+              onClick={() => setAsset(a)}
+              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+                asset === a
+                  ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
+                  : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span className="block">{a}</span>
+              {mkt && (
+                <span className={`block font-mono text-[9px] font-normal ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
+                  {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Chart ── */}
+      <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
+        {currentPrice > 0 ? (
+          <PriceChart
+            key={asset}
+            basePrice={currentPrice}
+            entryPrice={entryPrice}
+            assetKey={asset}
+          />
+        ) : (
+          <div className="flex h-[200px] items-center justify-center gap-2 text-xs text-muted-foreground">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-border border-t-primary" />
+            Loading market data…
+          </div>
+        )}
+      </div>
+
+      {/* ── Order Panel ── */}
+      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+        {/* Amount */}
+        <div className="mb-3">
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-xs font-bold text-muted-foreground">Trade Amount (USD)</label>
+            <span className="text-[11px] text-muted-foreground">
+              Balance: <span className="font-mono font-bold">${balance.toFixed(0)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              min="1"
+              step="1"
+              className="h-10 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              placeholder="100"
+              data-testid="input-trade-amount"
+            />
+            {[25, 50, 100, 250].map(v => (
+              <button
+                key={v}
+                onClick={() => setAmount(String(v))}
+                className={`h-10 shrink-0 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                  Number(amount) === v
+                    ? 'border-primary/60 bg-primary/10 text-primary'
+                    : 'border-border/60 text-muted-foreground'
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          {insufficient && (
+            <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-destructive">
+              <AlertCircle size={12} />Insufficient balance
+            </p>
+          )}
+        </div>
+
+        {/* Timeframe */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
+          <button
+            onClick={() => setShowPicker(true)}
+            className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
+            data-testid="button-timeframe-picker"
+          >
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-muted-foreground" />
+              <span>{timeframeLabel}</span>
+            </div>
+            <ChevronUp size={15} className="text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Payout summary */}
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Payout</p>
+            <p className="font-mono font-bold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
+          </div>
+          <div className="h-full w-px bg-border/50" />
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Win</p>
+            <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
+          </div>
+          <div className="h-full w-px bg-border/50" />
+          <div className="text-center">
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Loss</p>
+            <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
+          </div>
+        </div>
+
+        {/* Long / Short buttons */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => handleTrade('long')}
+            disabled={placing || !currentPrice || insufficient}
+            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            data-testid="button-buy-long"
+          >
+            <TrendingUp size={24} strokeWidth={2.5} />
+            <span className="text-base font-extrabold tracking-tight">BUY LONG</span>
+            <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
+          </button>
+          <button
+            onClick={() => handleTrade('short')}
+            disabled={placing || !currentPrice || insufficient}
+            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            data-testid="button-sell-short"
+          >
+            <TrendingDown size={24} strokeWidth={2.5} />
+            <span className="text-base font-extrabold tracking-tight">SELL SHORT</span>
+            <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Active Trades ── */}
+      {activeTrades.length > 0 && (
+        <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
+            <Zap size={14} className="text-primary" />
+            Active Positions ({activeTrades.length})
+          </h3>
+          <div className="space-y-2">
+            {activeTrades.map(trade => {
+              const pct = Math.max(0, 1 - (new Date(trade.expiresAt).getTime() - Date.now()) / (trade.timeframeSecs * 1000));
+              return (
+                <div key={trade.id} className="overflow-hidden rounded-xl border border-border/40 bg-secondary/20">
+                  {/* Progress bar */}
+                  <div className="h-0.5 w-full bg-border/30">
+                    <div
+                      className="h-full bg-primary transition-all duration-1000"
+                      style={{ width: `${Math.min(100, pct * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-md px-2 py-0.5 text-[10px] font-extrabold ${
+                        trade.direction === 'long'
+                          ? 'bg-green-500/15 text-green-400'
+                          : 'bg-red-500/15 text-red-400'
+                      }`}>
+                        {trade.direction === 'long' ? '↑ LONG' : '↓ SHORT'}
+                      </span>
+                      <span className="text-sm font-bold">{trade.asset}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-right">
+                      <div>
+                        <p className="font-mono text-xs font-bold">${Number(trade.amount).toFixed(0)}</p>
+                        <p className="text-[10px] text-muted-foreground">stake</p>
+                      </div>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock size={11} />
+                        <CountdownTimer expiresAt={trade.expiresAt} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Trade History ── */}
+      {history.length > 0 && (
+        <div className="rounded-2xl border border-border/60 bg-card p-4">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
+            <Trophy size={14} className="text-muted-foreground" />
+            Recent History
+          </h3>
+          <div className="space-y-1.5">
+            {history.map(trade => (
+              <div
+                key={trade.id}
+                className="flex items-center justify-between rounded-xl bg-secondary/20 px-3 py-2"
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[10px] font-extrabold ${
+                      trade.direction === 'long'
+                        ? 'bg-green-500/10 text-green-400/80'
+                        : 'bg-red-500/10 text-red-400/80'
+                    }`}
+                  >
+                    {trade.direction === 'long' ? '↑' : '↓'} {trade.asset}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ${Number(trade.amount).toFixed(0)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`font-mono text-sm font-bold ${
+                      trade.result === 'win' ? 'text-green-400' : 'text-red-400'
+                    }`}
+                  >
+                    {trade.result === 'win'
+                      ? `+$${Math.round(Number(trade.amount) * PAYOUT_RATE)}`
+                      : `-$${Number(trade.amount).toFixed(0)}`}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+                      trade.result === 'win'
+                        ? 'bg-green-500/15 text-green-400'
+                        : 'bg-red-500/15 text-red-400'
+                    }`}
+                  >
+                    {trade.result}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Timeframe picker sheet */}
+      {showPicker && (
+        <TimeframeSheet
+          value={timeframeSecs}
+          onChange={setTimeframeSecs}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </div>
+  );
+}

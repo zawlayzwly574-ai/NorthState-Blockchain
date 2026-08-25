@@ -1,0 +1,23 @@
+---
+name: KYC flow
+description: Full KYC submission, gating, and admin review pipeline — schema, API, frontend, and admin panel.
+---
+
+## Key decisions
+
+- **New real users start as `unverified`** — `ensureSeededUser` only seeds holdings/activities for `demo_user`; real users get profile only with `verificationStatus: "unverified"`.
+- **Enum values** — `ProfileVerificationStatus` is `unverified | pending | verified | rejected`. `rejected` was added to the OpenAPI spec and must stay there; omitting it breaks TypeScript comparisons.
+- **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `ssn` (required), `documentType`, `documentImageBase64` (optional). All stored in `kycSubmissionsTable`.
+- **Document image** — stored as base64 data URL in `document_image_base64` text column. No separate object storage needed.
+- **Shell KYC gate** — `Shell` checks `profile.verificationStatus` and replaces `{children}` with `<KycStatusScreen>` for any non-`/settings` route when status is not `verified`. This keeps `/settings` accessible so users can submit their KYC.
+- **Admin KYC panel** — expandable card per submission; SSN shown blurred with reveal toggle; image shown inline if base64 starts with `data:image`; approve/reject buttons in both row header and expanded footer.
+
+## Where it lives
+
+- DB schema: `lib/db/src/schema/blockchain.ts` — `kycSubmissionsTable`
+- OpenAPI: `lib/api-spec/openapi.yaml` — `KycInput`, `AdminKyc`, `Profile.verificationStatus`
+- API routes: `artifacts/api-server/src/routes/blockchain.ts` — `submitKyc`, `enrichKyc`, `ensureSeededUser`
+- Frontend: `artifacts/blockchain-hub/src/App.tsx` — `KycStatusScreen`, `Shell` gate, `Settings` verification tab
+- Admin panel: `artifacts/admin-panel/src/pages/kyc.tsx` and `artifacts/admin-panel/src/lib/api.ts` — `KycSubmission` interface
+
+**Why:** After adding new fields, always run `pnpm --filter @workspace/db run push` then `pnpm --filter @workspace/api-spec run codegen` — the Zod schemas and React Query hooks are generated from openapi.yaml.

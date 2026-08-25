@@ -1,0 +1,5 @@
+- [Admin approval flow](admin-approval-flow.md) — deposits/withdrawals only credit balance after admin approves via /admin-panel/; ADMIN_SECRET guards all /api/admin/* routes.
+- [KYC flow](kyc-flow.md) — full KYC pipeline: schema, API, frontend gate, admin panel detail view.
+- [Local 2FA and passkeys](local-2fa-passkeys.md) — TOTP and WebAuthn stored in local DB; otplib v12 API; in-memory challenge Maps with TTL.
+- [Swap and FX features](swap-fx-features.md) — instant crypto swap route, fx-rates route (Frankfurter), multi-currency display, market auto-refresh, API key for CoinGecko.
+- [SMS OTP verification](sms-otp.md) — Twilio-backed phone verification; OTP store pattern, DB columns, codegen flow, trial-account caveat.

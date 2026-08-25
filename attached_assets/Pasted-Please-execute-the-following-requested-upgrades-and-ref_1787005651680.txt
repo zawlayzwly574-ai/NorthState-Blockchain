@@ -1,0 +1,34 @@
+Please execute the following requested upgrades and refinements across the application. Ensure ALL existing database schemas, functionality, and data remain intact without breaking any current features.
+
+1. Flexible KYC Photo Upload:
+- Allow photo uploads of any size (up to 20MB) from mobile cameras. Implement automatic client-side image compression/resizing before converting to base64 to ensure smooth submission without errors.
+
+2. Professional UI & Burmese Typography Refinement:
+- Clean up all UI font styling, spacing, and layouts across pages to ensure a sleek, professional aesthetic. Ensure Burmese text renders cleanly with proper font line-heights.
+
+3. Profile & Security Settings Expansion:
+- Inside Settings, provide a complete Account & Profile Management interface including: Account Name edit, Change Email, Change Phone Number, Change Password, 2FA Authentication toggle, and Passkey setup options.
+
+4. Mobile Responsive Overview Optimization:
+- Optimize the Mobile Dashboard/Overview layout. Compress paddings, balance summary cards, and restructure UI components so users don't need excessive vertical scrolling on mobile screen sizes.
+
+5. Real-Time Notification Center:
+- Implement a functional Notification Bell in the top header. Show an unread count badge (e.g. "1") when new notifications exist. Clicking opens a popup list of alerts for Deposits, Withdrawals, Transfers, and Market Buys. Mark as read upon viewing.
+
+6. Admin KYC View Real User Data:
+- Fix the Admin Panel KYC section: Display the actual user's submitted Email and details instead of default fallback/demo text (member@northstar.app). Show complete submission profile details clearly.
+
+7. Interactive Admin Users Panel (User Inspection):
+- Upgrade the Admin "Users" tab to be fully clickable and inspectable. Clicking on any user row should open a detailed user drawer/modal showing:
+  - Account Balance, Transaction History (Deposits, Withdrawals, Transfers)
+  - Asset Holdings and Portfolio Total
+  - Permanent view of their Approved KYC details & Document preview (retained after approval for administrative audit).
+
+8. Crypto Logos & Deposit Flow Refinement:
+- Add real crypto logos (BTC, ETH, USDT, USDC, DAI, FDUSD, BNB) across Deposit, Send, Withdraw flows, and popups.
+- Remove the optional image proof upload field from the Deposit form (keep only Transaction Hash as standard).
+- Fix the Deposit popup/modal styling so all content renders completely without getting clipped or cut off.
+
+9. Live Market Assets & Dynamic Charts:
+- Add official crypto logos for each coin in the Market Assets list.
+- Ensure Market Charts update dynamically and reflect live price fluctuations without freeze, lag, or rendering errors when clicked or navigated.

@@ -1,0 +1,349 @@
+import { useState } from 'react';
+import { useAdminUsers, useAdminUserDetail } from '@/lib/api';
+import {
+  Search, ShieldAlert, ShieldCheck, Shield, Loader2,
+  X, ArrowUpRight, ArrowDownLeft, Coins, FileCheck, TrendingUp, User,
+} from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+function money(v = 0) {
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function typeIcon(type: string) {
+  if (type === 'deposit') return <ArrowDownLeft className="w-4 h-4 text-emerald-400" />;
+  if (type === 'withdrawal' || type === 'send') return <ArrowUpRight className="w-4 h-4 text-rose-400" />;
+  return <Coins className="w-4 h-4 text-muted-foreground" />;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls: Record<string, string> = {
+    completed: 'bg-emerald-500/15 text-emerald-400',
+    pending: 'bg-amber-500/15 text-amber-400',
+    failed: 'bg-red-500/15 text-red-400',
+  };
+  return (
+    <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${cls[status] ?? 'bg-muted/20 text-muted-foreground'}`}>
+      {status}
+    </span>
+  );
+}
+
+function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const { data, isLoading, isError } = useAdminUserDetail(userId);
+  const [detailTab, setDetailTab] = useState<'holdings' | 'transactions' | 'kyc'>('holdings');
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90dvh] overflow-y-auto bg-card border-border text-foreground p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
+          {isLoading ? (
+            <DialogTitle className="text-muted-foreground font-mono">Loading…</DialogTitle>
+          ) : isError || !data ? (
+            <DialogTitle className="text-destructive">Failed to load user</DialogTitle>
+          ) : (
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-primary/15 grid place-items-center text-primary font-bold text-lg">
+                {data.displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-lg font-bold">{data.displayName}</DialogTitle>
+                <p className="text-xs font-mono text-muted-foreground truncate">{data.email}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {data.verificationStatus === 'verified' ? (
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                ) : data.verificationStatus === 'pending' ? (
+                  <ShieldAlert className="w-4 h-4 text-amber-500" />
+                ) : (
+                  <Shield className="w-4 h-4 text-muted-foreground" />
+                )}
+                <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                  {data.verificationStatus}
+                </span>
+              </div>
+            </div>
+          )}
+        </DialogHeader>
+
+        {!isLoading && !isError && data && (
+          <>
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 gap-3 px-6 py-4 border-b border-border">
+              <div className="rounded-xl bg-primary/8 border border-primary/15 p-3">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Portfolio Value</p>
+                <p className="mt-1 font-mono text-lg font-medium text-primary">{money(data.totalHoldings)}</p>
+              </div>
+              <div className="rounded-xl bg-muted/20 border border-border p-3">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Member Since</p>
+                <p className="mt-1 font-mono text-sm font-medium">{new Date(data.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+              </div>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-0 border-b border-border">
+              {(['holdings', 'transactions', 'kyc'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setDetailTab(tab)}
+                  className={`flex-1 px-4 py-3 text-xs font-mono font-bold uppercase tracking-wider transition-colors ${
+                    detailTab === tab
+                      ? 'text-primary border-b-2 border-primary'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6">
+              {/* Holdings tab */}
+              {detailTab === 'holdings' && (
+                <div className="space-y-2">
+                  {data.holdings.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">No holdings yet.</p>
+                  ) : (
+                    data.holdings.map((h) => (
+                      <div key={h.symbol} className="flex items-center gap-3 rounded-xl bg-muted/10 border border-border px-4 py-3">
+                        <span
+                          className="w-9 h-9 shrink-0 grid place-items-center rounded-full text-xs font-extrabold text-[#071326]"
+                          style={{ backgroundColor: h.color }}
+                        >
+                          {h.symbol.slice(0, 1)}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-sm">{h.symbol}</p>
+                          <p className="text-xs text-muted-foreground">{h.name}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-sm font-medium">{money(h.value)}</p>
+                          <p className={`text-[10px] font-bold ${h.change24h >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {h.change24h >= 0 ? '+' : ''}{h.change24h.toFixed(2)}%
+                          </p>
+                        </div>
+                        <div className="hidden sm:block text-right text-xs text-muted-foreground font-mono w-16">
+                          {h.allocation.toFixed(1)}%
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Transactions tab */}
+              {detailTab === 'transactions' && (
+                <div className="space-y-2">
+                  {data.transactions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">No transactions yet.</p>
+                  ) : (
+                    data.transactions.map((tx) => (
+                      <div key={tx.id} className="flex items-center gap-3 rounded-xl bg-muted/10 border border-border px-4 py-3">
+                        <div className="w-8 h-8 shrink-0 grid place-items-center rounded-xl bg-muted/20">
+                          {typeIcon(tx.type)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm capitalize">{tx.type} · {tx.asset}</p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {new Date(tx.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono text-sm">{tx.amount} {tx.asset}</p>
+                          <StatusBadge status={tx.status} />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* KYC tab */}
+              {detailTab === 'kyc' && (
+                <div>
+                  {!data.kyc ? (
+                    <div className="text-center py-6">
+                      <FileCheck className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-40" />
+                      <p className="text-sm text-muted-foreground">No KYC submission found.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">KYC Status</p>
+                        <StatusBadge status={data.kyc.status} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          ['Full Name', data.kyc.fullName],
+                          ['Email', data.kyc.email],
+                          ['Country', data.kyc.country],
+                          ['City / State', data.kyc.city],
+                          ['Occupation', data.kyc.occupation],
+                          ['Document Type', data.kyc.documentType?.replace(/_/g, ' ')],
+                          ['Submitted', new Date(data.kyc.submittedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-xl bg-muted/10 border border-border p-3">
+                            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{label}</p>
+                            <p className="mt-1 text-sm font-medium truncate">{value || '—'}</p>
+                          </div>
+                        ))}
+                      </div>
+                      {/* SSN (sensitive) */}
+                      <div className="rounded-xl bg-amber-500/8 border border-amber-500/20 p-3">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-amber-400">SSN (Sensitive)</p>
+                        <p className="mt-1 text-sm font-mono font-medium blur-sm select-none hover:blur-none transition-all cursor-pointer" title="Click to reveal">
+                          {data.kyc.ssn || '—'}
+                        </p>
+                      </div>
+                      {/* Document image */}
+                      {data.kyc.documentImageBase64 && data.kyc.documentImageBase64.startsWith('data:image') && (
+                        <div>
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-2">ID Document</p>
+                          <a href={data.kyc.documentImageBase64} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={data.kyc.documentImageBase64}
+                              alt="KYC document"
+                              className="max-h-56 w-full object-contain rounded-xl border border-border bg-muted/20 cursor-zoom-in"
+                            />
+                            <p className="mt-1 text-xs text-muted-foreground">Click to open full size ↗</p>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {isLoading && (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export default function Users() {
+  const { data: users, isLoading } = useAdminUsers();
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+
+  const filtered = users?.filter(u =>
+    u.displayName.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-mono tracking-tight">User Directory</h1>
+          <p className="text-muted-foreground text-sm mt-1">Click any user to inspect their account.</p>
+        </div>
+        <div className="relative w-full md:w-64">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search users..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+          />
+        </div>
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-muted-foreground bg-muted/20 uppercase font-mono">
+              <tr>
+                <th className="px-5 py-4 font-medium">User</th>
+                <th className="px-5 py-4 font-medium">Status</th>
+                <th className="px-5 py-4 font-medium">Portfolio</th>
+                <th className="px-5 py-4 font-medium">Joined</th>
+                <th className="px-5 py-4 font-medium w-10"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
+                    Loading directory...
+                  </td>
+                </tr>
+              ) : !filtered || filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                    No users found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(user => (
+                  <tr
+                    key={user.id}
+                    className="hover:bg-muted/8 transition-colors cursor-pointer group"
+                    onClick={() => setSelectedUserId(user.clerkUserId)}
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
+                          {user.displayName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-medium text-foreground">{user.displayName}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center space-x-2">
+                        {user.verificationStatus === 'verified' ? (
+                          <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        ) : user.verificationStatus === 'pending' ? (
+                          <ShieldAlert className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <Shield className="w-4 h-4 text-muted-foreground" />
+                        )}
+                        <span className="text-xs font-mono uppercase tracking-wider">
+                          {user.verificationStatus}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="font-mono text-foreground">
+                        ${user.totalHoldings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-xs font-mono text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-4">
+                      <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {selectedUserId && (
+        <UserDetailDrawer
+          userId={selectedUserId}
+          onClose={() => setSelectedUserId(null)}
+        />
+      )}
+    </div>
+  );
+}

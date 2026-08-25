@@ -1,0 +1,1178 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: markets
+    description: Live crypto market data
+  - name: portfolio
+    description: User portfolio and activity
+  - name: wallet
+    description: Wallet actions and verification
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /markets:
+    get:
+      operationId: getMarketSummary
+      tags: [markets]
+      summary: Get live market summary
+      description: Returns a curated list of supported assets with current market data.
+      responses:
+        "200":
+          description: Market summary
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketAsset"
+  /markets/fx-rates:
+    get:
+      operationId: getFxRates
+      tags: [markets]
+      summary: Get USD-based fiat exchange rates
+      responses:
+        "200":
+          description: Exchange rates keyed by currency code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FxRates"
+  /markets/{symbol}:
+    get:
+      operationId: getMarketDetail
+      tags: [markets]
+      summary: Get a market detail
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Market detail with chart points
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDetail"
+        "404":
+          description: Asset not found
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [portfolio]
+      summary: Get the signed-in profile
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+    patch:
+      operationId: updateProfile
+      tags: [portfolio]
+      summary: Update profile display name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileUpdateResult"
+  /security/totp/setup:
+    post:
+      operationId: setupTotp
+      tags: [security]
+      summary: Generate a new TOTP secret pending verification
+      responses:
+        "200":
+          description: TOTP setup data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TotpSetupResult" }
+  /security/totp/verify:
+    post:
+      operationId: verifyTotp
+      tags: [security]
+      summary: Verify TOTP code and activate 2FA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TotpVerifyInput" }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecurityActionResult" }
+  /security/totp:
+    delete:
+      operationId: disableTotp
+      tags: [security]
+      summary: Disable 2FA for the current user
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecurityActionResult" }
+  /security/passkeys:
+    get:
+      operationId: listPasskeys
+      tags: [security]
+      summary: List registered passkeys for current user
+      responses:
+        "200":
+          description: Passkey list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PasskeyItem" }
+  /security/passkeys/begin:
+    post:
+      operationId: beginPasskeyRegistration
+      tags: [security]
+      summary: Generate WebAuthn registration challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasskeyBeginInput" }
+      responses:
+        "200":
+          description: Registration challenge and options
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PasskeyBeginResult" }
+  /security/passkeys/finish:
+    post:
+      operationId: finishPasskeyRegistration
+      tags: [security]
+      summary: Complete WebAuthn registration and store passkey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasskeyFinishInput" }
+      responses:
+        "200":
+          description: Registered passkey
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PasskeyItem" }
+  /sms/send-otp:
+    post:
+      operationId: sendSmsOtp
+      tags: [security]
+      summary: Send a 6-digit OTP via SMS to the given phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendSmsOtpInput" }
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SendSmsOtpResult" }
+  /sms/verify-otp:
+    post:
+      operationId: verifySmsOtp
+      tags: [security]
+      summary: Verify the OTP code against the one sent to the phone number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifySmsOtpInput" }
+      responses:
+        "200":
+          description: OTP verified
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifySmsOtpResult" }
+  /security/passkeys/{id}:
+    delete:
+      operationId: deletePasskey
+      tags: [security]
+      summary: Remove a registered passkey
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SecurityActionResult" }
+  /notifications:
+    get:
+      operationId: getNotifications
+      tags: [portfolio]
+      summary: Get recent activity notifications
+      responses:
+        "200":
+          description: Notification list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+  /portfolio:
+    get:
+      operationId: getPortfolio
+      tags: [portfolio]
+      summary: Get portfolio balances
+      responses:
+        "200":
+          description: Portfolio summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+  /activity:
+    get:
+      operationId: getActivity
+      tags: [portfolio]
+      summary: Get recent wallet activity
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+  /referral:
+    get:
+      operationId: getReferral
+      tags: [portfolio]
+      summary: Get referral code and sharing stats
+      responses:
+        "200":
+          description: Referral information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Referral"
+    post:
+      operationId: createReferralShare
+      tags: [portfolio]
+      summary: Record a referral share
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReferralShareInput"
+      responses:
+        "201":
+          description: Share recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Referral"
+  /kyc:
+    post:
+      operationId: submitKyc
+      tags: [wallet]
+      summary: Submit identity verification details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KycInput"
+      responses:
+        "201":
+          description: KYC submission accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycStatus"
+  /transactions/swap:
+    post:
+      operationId: createSwap
+      tags: [wallet]
+      summary: Instantly convert one crypto asset to another
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwapInput"
+      responses:
+        "200":
+          description: Swap executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SwapResult"
+        "400":
+          description: Insufficient balance or invalid assets
+  /transactions/deposit:
+    post:
+      operationId: createDeposit
+      tags: [wallet]
+      summary: Submit a deposit proof
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositInput"
+      responses:
+        "201":
+          description: Deposit submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+  /transactions/send:
+    post:
+      operationId: createSend
+      tags: [wallet]
+      summary: Create a send transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferInput"
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+  /transactions/withdraw:
+    post:
+      operationId: createWithdrawal
+      tags: [wallet]
+      summary: Create a withdrawal request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferInput"
+      responses:
+        "201":
+          description: Withdrawal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get admin dashboard stats
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+  /admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [admin]
+      summary: List all users
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminUser"
+  /admin/transactions:
+    get:
+      operationId: getAdminTransactions
+      tags: [admin]
+      summary: List all transactions
+      responses:
+        "200":
+          description: Transaction list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminTransaction"
+  /admin/transactions/{id}/approve:
+    patch:
+      operationId: approveTransaction
+      tags: [admin]
+      summary: Approve a pending transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTransaction"
+  /admin/transactions/{id}/reject:
+    patch:
+      operationId: rejectTransaction
+      tags: [admin]
+      summary: Reject a pending transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated transaction
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTransaction"
+  /admin/users/{id}:
+    get:
+      operationId: getAdminUserDetail
+      tags: [admin]
+      summary: Get detailed info for a single user (holdings, transactions, KYC)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserDetail"
+  /admin/kyc:
+    get:
+      operationId: getAdminKyc
+      tags: [admin]
+      summary: List all KYC submissions
+      responses:
+        "200":
+          description: KYC list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminKyc"
+  /admin/kyc/{id}/approve:
+    patch:
+      operationId: approveKyc
+      tags: [admin]
+      summary: Approve a KYC submission
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated KYC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKyc"
+  /admin/kyc/{id}/reject:
+    patch:
+      operationId: rejectKyc
+      tags: [admin]
+      summary: Reject a KYC submission
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated KYC
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKyc"
+  /support/messages:
+    get:
+      operationId: getSupportMessages
+      tags: [support]
+      summary: Get all messages in the current user's support thread
+      responses:
+        "200":
+          description: Support thread messages
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupportMessages" }
+    post:
+      operationId: sendSupportMessage
+      tags: [support]
+      summary: Send a message to support (creates thread if none exists)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SendSupportMessageInput" }
+      responses:
+        "200":
+          description: Message sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SendSupportMessageResult" }
+  /admin/support:
+    get:
+      operationId: getAdminSupport
+      tags: [admin]
+      summary: List all user support threads with latest message and unread count
+      responses:
+        "200":
+          description: Support thread list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSupportList" }
+  /admin/support/{userId}:
+    get:
+      operationId: getAdminSupportThread
+      tags: [admin]
+      summary: Get all messages in a specific user's support thread
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: User support thread
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSupportDetail" }
+  /admin/support/{userId}/reply:
+    post:
+      operationId: adminSupportReply
+      tags: [admin]
+      summary: Send an admin reply to a user's support thread
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminSupportReplyInput" }
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminSupportReplyResult" }
+  /trading/account:
+    get:
+      operationId: getTradingAccount
+      tags: [trading]
+      summary: Get the current user's demo trading account
+      responses:
+        "200":
+          description: Trading account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TradingAccount" }
+  /trading/trades:
+    get:
+      operationId: getTrades
+      tags: [trading]
+      summary: Get trade history (auto-settles any expired active trades)
+      responses:
+        "200":
+          description: Trade list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Trade" }
+    post:
+      operationId: placeTrade
+      tags: [trading]
+      summary: Place a new long or short trade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlaceTradeInput" }
+      responses:
+        "200":
+          description: Trade placed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceTradeResult" }
+  /admin/trading/trades:
+    get:
+      operationId: getAdminTrades
+      tags: [admin]
+      summary: List all trades across all users
+      responses:
+        "200":
+          description: All trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminTrade" }
+  /admin/trading/stats:
+    get:
+      operationId: getAdminTradingStats
+      tags: [admin]
+      summary: Aggregate trading statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminTradingStats" }
+  /admin/trading/trades/{id}/outcome:
+    patch:
+      operationId: setTradeOutcome
+      tags: [admin]
+      summary: Override a trade outcome to win or loss
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminTradeOverrideInput" }
+      responses:
+        "200":
+          description: Override applied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminTrade" }
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    MarketAsset:
+      type: object
+      required: [symbol, name, price, change24h, marketCap, volume24h, rank]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        price: { type: number }
+        change24h: { type: number }
+        marketCap: { type: number }
+        volume24h: { type: number }
+        rank: { type: number }
+        color: { type: string }
+    ChartPoint:
+      type: object
+      required: [time, value]
+      properties:
+        time: { type: string }
+        value: { type: number }
+    MarketDetail:
+      type: object
+      required: [asset, chart]
+      properties:
+        asset: { $ref: "#/components/schemas/MarketAsset" }
+        chart:
+          type: array
+          items: { $ref: "#/components/schemas/ChartPoint" }
+    Profile:
+      type: object
+      required: [id, name, email, initials, verificationStatus, twoFactorEnabled]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string }
+        initials: { type: string }
+        verificationStatus: { type: string, enum: [unverified, pending, verified, rejected] }
+        twoFactorEnabled: { type: boolean }
+        smsPhoneNumber: { type: string, nullable: true }
+        smsPhoneVerified: { type: boolean }
+    TradingAccount:
+      type: object
+      required: [balance, totalTrades, wins, losses]
+      properties:
+        balance: { type: number }
+        totalTrades: { type: number }
+        wins: { type: number }
+        losses: { type: number }
+    Trade:
+      type: object
+      required: [id, asset, direction, amount, timeframeSecs, status, entryPrice, payoutRate, createdAt, expiresAt]
+      properties:
+        id: { type: number }
+        asset: { type: string }
+        direction: { type: string }
+        amount: { type: number }
+        timeframeSecs: { type: number }
+        status: { type: string }
+        result: { type: string, nullable: true }
+        adminOverride: { type: string, nullable: true }
+        entryPrice: { type: number }
+        exitPrice: { type: number, nullable: true }
+        payout: { type: number, nullable: true }
+        payoutRate: { type: number }
+        createdAt: { type: string }
+        expiresAt: { type: string }
+        settledAt: { type: string, nullable: true }
+    PlaceTradeInput:
+      type: object
+      required: [asset, direction, amount, timeframeSecs]
+      properties:
+        asset: { type: string }
+        direction: { type: string }
+        amount: { type: number }
+        timeframeSecs: { type: number }
+    PlaceTradeResult:
+      type: object
+      required: [tradeId, balance, entryPrice, expiresAt]
+      properties:
+        tradeId: { type: number }
+        balance: { type: number }
+        entryPrice: { type: number }
+        expiresAt: { type: string }
+    AdminTrade:
+      type: object
+      required: [id, clerkUserId, displayName, email, asset, direction, amount, timeframeSecs, status, entryPrice, payoutRate, createdAt, expiresAt]
+      properties:
+        id: { type: number }
+        clerkUserId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        asset: { type: string }
+        direction: { type: string }
+        amount: { type: number }
+        timeframeSecs: { type: number }
+        status: { type: string }
+        result: { type: string, nullable: true }
+        adminOverride: { type: string, nullable: true }
+        entryPrice: { type: number }
+        exitPrice: { type: number, nullable: true }
+        payout: { type: number, nullable: true }
+        payoutRate: { type: number }
+        createdAt: { type: string }
+        expiresAt: { type: string }
+        settledAt: { type: string, nullable: true }
+    AdminTradeOverrideInput:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { type: string }
+    AdminTradingStats:
+      type: object
+      required: [totalTrades, activeTrades, wins, losses, totalVolume]
+      properties:
+        totalTrades: { type: number }
+        activeTrades: { type: number }
+        wins: { type: number }
+        losses: { type: number }
+        totalVolume: { type: number }
+    SupportMessage:
+      type: object
+      required: [id, threadId, senderRole, content, createdAt]
+      properties:
+        id: { type: number }
+        threadId: { type: number }
+        senderRole: { type: string, enum: [user, admin] }
+        content: { type: string }
+        createdAt: { type: string }
+    SupportMessages:
+      type: object
+      required: [messages]
+      properties:
+        threadId: { type: number, nullable: true }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/SupportMessage" }
+    SendSupportMessageInput:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1 }
+    SendSupportMessageResult:
+      type: object
+      required: [sent, messageId]
+      properties:
+        sent: { type: boolean }
+        messageId: { type: number }
+    AdminSupportThreadItem:
+      type: object
+      required: [userId, displayName, email, threadId, lastMessage, lastMessageAt, unreadCount]
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        threadId: { type: number }
+        lastMessage: { type: string }
+        lastMessageAt: { type: string }
+        unreadCount: { type: number }
+    AdminSupportList:
+      type: object
+      required: [threads]
+      properties:
+        threads:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSupportThreadItem" }
+    AdminSupportDetail:
+      type: object
+      required: [userId, displayName, email, threadId, messages]
+      properties:
+        userId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        threadId: { type: number }
+        messages:
+          type: array
+          items: { $ref: "#/components/schemas/SupportMessage" }
+    AdminSupportReplyInput:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1 }
+    AdminSupportReplyResult:
+      type: object
+      required: [sent, messageId]
+      properties:
+        sent: { type: boolean }
+        messageId: { type: number }
+    SendSmsOtpInput:
+      type: object
+      required: [phoneNumber]
+      properties:
+        phoneNumber: { type: string, minLength: 7 }
+    SendSmsOtpResult:
+      type: object
+      required: [sent]
+      properties:
+        sent: { type: boolean }
+        expiresAt: { type: string }
+    VerifySmsOtpInput:
+      type: object
+      required: [phoneNumber, code]
+      properties:
+        phoneNumber: { type: string }
+        code: { type: string, minLength: 6, maxLength: 6 }
+    VerifySmsOtpResult:
+      type: object
+      required: [verified]
+      properties:
+        verified: { type: boolean }
+        phoneNumber: { type: string }
+    TotpSetupResult:
+      type: object
+      required: [secret, uri]
+      properties:
+        secret: { type: string }
+        uri: { type: string }
+    TotpVerifyInput:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+    SecurityActionResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+    PasskeyItem:
+      type: object
+      required: [id, deviceName, createdAt]
+      properties:
+        id: { type: string }
+        deviceName: { type: string }
+        createdAt: { type: string }
+        transports: { type: string }
+    PasskeyBeginInput:
+      type: object
+      required: [origin]
+      properties:
+        origin: { type: string }
+    PasskeyBeginResult:
+      type: object
+      required: [challenge, rpId, rpName, userId, userDisplayName]
+      properties:
+        challenge: { type: string }
+        rpId: { type: string }
+        rpName: { type: string }
+        userId: { type: string }
+        userDisplayName: { type: string }
+        timeout: { type: number }
+    PasskeyFinishInput:
+      type: object
+      required: [credentialId, publicKey, challenge, deviceName]
+      properties:
+        credentialId: { type: string }
+        publicKey: { type: string }
+        challenge: { type: string }
+        deviceName: { type: string }
+        transports: { type: string }
+    Holding:
+      type: object
+      required: [symbol, name, amount, value, allocation, change24h, color]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        amount: { type: number }
+        value: { type: number }
+        allocation: { type: number }
+        change24h: { type: number }
+        color: { type: string }
+    Portfolio:
+      type: object
+      required: [totalValue, dayChange, dayChangePercent, cashBalance, holdings]
+      properties:
+        totalValue: { type: number }
+        dayChange: { type: number }
+        dayChangePercent: { type: number }
+        cashBalance: { type: number }
+        holdings:
+          type: array
+          items: { $ref: "#/components/schemas/Holding" }
+    Activity:
+      type: object
+      required: [id, type, asset, amount, value, status, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [deposit, send, withdrawal, buy, sell, convert] }
+        asset: { type: string }
+        amount: { type: number }
+        value: { type: number }
+        status: { type: string, enum: [completed, pending, failed] }
+        createdAt: { type: string }
+    Referral:
+      type: object
+      required: [code, invitedCount, reward, shareUrl]
+      properties:
+        code: { type: string }
+        invitedCount: { type: number }
+        reward: { type: number }
+        shareUrl: { type: string }
+    ReferralShareInput:
+      type: object
+      required: [channel]
+      properties:
+        channel: { type: string, enum: [copy, email, native] }
+    UpdateProfileInput:
+      type: object
+      required: [displayName]
+      properties:
+        displayName: { type: string, minLength: 1 }
+    ProfileUpdateResult:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean }
+    Notification:
+      type: object
+      required: [id, type, asset, amount, status, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string }
+        asset: { type: string }
+        amount: { type: string }
+        status: { type: string }
+        createdAt: { type: string }
+    AdminUserDetail:
+      type: object
+      required: [id, clerkUserId, displayName, email, verificationStatus, totalHoldings, createdAt, holdings, transactions]
+      properties:
+        id: { type: string }
+        clerkUserId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        verificationStatus: { type: string }
+        totalHoldings: { type: number }
+        createdAt: { type: string }
+        holdings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Holding"
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTransaction"
+        kyc:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AdminKyc"
+    KycInput:
+      type: object
+      required: [fullName, country, city, occupation, ssn, documentType]
+      properties:
+        fullName: { type: string, minLength: 2 }
+        country: { type: string, minLength: 2 }
+        city: { type: string, minLength: 1 }
+        occupation: { type: string, minLength: 1 }
+        ssn: { type: string, minLength: 4 }
+        documentType: { type: string, enum: [passport, drivers_license, national_id] }
+        documentImageBase64: { type: string }
+    KycStatus:
+      type: object
+      required: [status, submittedAt]
+      properties:
+        status: { type: string, enum: [pending, verified, rejected] }
+        submittedAt: { type: string }
+    DepositInput:
+      type: object
+      required: [asset, amount, txHash]
+      properties:
+        asset: { type: string }
+        amount: { type: number, minimum: 0 }
+        txHash: { type: string, minLength: 4 }
+        proofPath: { type: ["string", "null"] }
+    TransferInput:
+      type: object
+      required: [asset, amount, destination]
+      properties:
+        asset: { type: string }
+        amount: { type: number, minimum: 0 }
+        destination: { type: string, minLength: 4 }
+    Transaction:
+      type: object
+      required: [id, type, asset, amount, status, createdAt]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [deposit, send, withdrawal] }
+        asset: { type: string }
+        amount: { type: number }
+        status: { type: string, enum: [pending, completed, failed] }
+        createdAt: { type: string }
+    FxRates:
+      type: object
+      required: [base, rates]
+      properties:
+        base: { type: string }
+        rates:
+          type: object
+          additionalProperties: { type: number }
+    SwapInput:
+      type: object
+      required: [fromAsset, toAsset, fromAmount]
+      properties:
+        fromAsset: { type: string }
+        toAsset: { type: string }
+        fromAmount: { type: number, minimum: 0 }
+    SwapResult:
+      type: object
+      required: [fromAsset, toAsset, fromAmount, toAmount, rate, executedAt]
+      properties:
+        fromAsset: { type: string }
+        toAsset: { type: string }
+        fromAmount: { type: number }
+        toAmount: { type: number }
+        rate: { type: number }
+        executedAt: { type: string }
+    AdminStats:
+      type: object
+      required: [totalUsers, pendingDeposits, pendingWithdrawals, pendingKyc, totalTransactions]
+      properties:
+        totalUsers: { type: number }
+        pendingDeposits: { type: number }
+        pendingWithdrawals: { type: number }
+        pendingKyc: { type: number }
+        totalTransactions: { type: number }
+    AdminUser:
+      type: object
+      required: [id, clerkUserId, displayName, email, verificationStatus, referralCode, totalHoldings, createdAt]
+      properties:
+        id: { type: string }
+        clerkUserId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        verificationStatus: { type: string }
+        referralCode: { type: string }
+        totalHoldings: { type: number }
+        createdAt: { type: string }
+    AdminTransaction:
+      type: object
+      required: [id, clerkUserId, displayName, email, type, asset, amount, status, createdAt]
+      properties:
+        id: { type: string }
+        clerkUserId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        type: { type: string }
+        asset: { type: string }
+        amount: { type: number }
+        destination: { type: string }
+        txHash: { type: string }
+        proofPath: { type: string }
+        status: { type: string }
+        createdAt: { type: string }
+    AdminKyc:
+      type: object
+      required: [id, clerkUserId, displayName, email, fullName, country, city, occupation, ssn, documentType, status, submittedAt]
+      properties:
+        id: { type: string }
+        clerkUserId: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        fullName: { type: string }
+        country: { type: string }
+        city: { type: string }
+        occupation: { type: string }
+        ssn: { type: string }
+        documentType: { type: string }
+        documentImageBase64: { type: string }
+        status: { type: string }
+        submittedAt: { type: string }
+
