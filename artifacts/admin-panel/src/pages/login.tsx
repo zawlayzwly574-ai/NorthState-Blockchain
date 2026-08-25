@@ -44,7 +44,7 @@ export default function Login() {
             <TerminalSquare className="w-8 h-8 text-primary relative z-10" />
           </div>
           <h1 className="text-2xl font-mono font-bold tracking-tight text-foreground">
-            NORTHSTAR<span className="text-primary">ADMIN</span>
+            NORTH STATE <span className="text-primary">BLOCKCHAIN ADMIN</span>
           </h1>
           <p className="text-muted-foreground mt-2 text-sm">Secure Command Center</p>
         </div>

@@ -36,7 +36,7 @@ export function Layout({ children }: LayoutProps) {
       <div className="w-64 border-r border-border bg-card flex flex-col hidden md:flex shrink-0">
         <div className="h-16 flex items-center px-6 border-b border-border">
           <TerminalSquare className="w-6 h-6 text-primary mr-3" />
-          <span className="font-mono font-bold tracking-tight">NORTHSTAR<span className="text-primary">ADMIN</span></span>
+          <span className="font-mono font-bold tracking-tight">NORTH STATE <span className="text-primary">BLOCKCHAIN ADMIN</span></span>
         </div>
         
         <nav className="flex-1 overflow-y-auto py-6 px-3 space-y-1">
@@ -87,7 +87,7 @@ export function Layout({ children }: LayoutProps) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 md:hidden flex items-center px-4 border-b border-border bg-card">
           <TerminalSquare className="w-6 h-6 text-primary mr-3" />
-          <span className="font-mono font-bold tracking-tight">NORTHSTAR</span>
+          <span className="font-mono font-bold tracking-tight">NORTH STATE <span className="text-primary">BLOCKCHAIN ADMIN</span></span>
           <button
             onClick={() => clearAdminKey()}
             className="ml-auto p-2 text-muted-foreground hover:text-foreground"
