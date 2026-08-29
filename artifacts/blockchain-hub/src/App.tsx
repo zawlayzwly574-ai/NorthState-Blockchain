@@ -1714,24 +1714,29 @@ function Settings() {
   const share = useCreateReferralShare();
   const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
   const [feedback, setFeedback] = useState('');
-  const [docPreview, setDocPreview] = useState<string | null>(null);
-  const [docFileName, setDocFileName] = useState('');
+  const [docFrontPreview, setDocFrontPreview] = useState<string | null>(null);
+  const [docBackPreview, setDocBackPreview] = useState<string | null>(null);
+  const [docFrontFileName, setDocFrontFileName] = useState('');
+  const [docBackFileName, setDocBackFileName] = useState('');
+  const [docUploadError, setDocUploadError] = useState('');
+  const [docComposing, setDocComposing] = useState(false);
   const profileData = profile.data;
   const referralData = referral.data;
   const verStatus = profileData?.verificationStatus;
 
   const showFeedback = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 3000); };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDocFileName(file.name);
+  const compressDocumentImage = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error('The selected image could not be read.'));
     reader.onload = (ev) => {
-      const raw = ev.target?.result as string;
-      if (!file.type.startsWith('image/')) { setDocPreview(raw); return; }
-      // Client-side compression: resize to ≤1200px, JPEG @ 82%
+      const raw = ev.target?.result;
+      if (typeof raw !== 'string') {
+        reject(new Error('The selected image could not be read.'));
+        return;
+      }
       const img = new Image();
+      img.onerror = () => reject(new Error('The selected image could not be decoded.'));
       img.onload = () => {
         const MAX = 1200;
         let { width, height } = img;
@@ -1742,16 +1747,89 @@ function Settings() {
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
         canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
-        setDocPreview(canvas.toDataURL('image/jpeg', 0.82));
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
       };
       img.src = raw;
     };
     reader.readAsDataURL(file);
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setDocUploadError('');
+    if (!file.type.startsWith('image/')) {
+      setDocUploadError('Please upload an image file for both sides of your ID.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setDocUploadError('Each ID image must be 5 MB or smaller.');
+      return;
+    }
+    try {
+      const preview = await compressDocumentImage(file);
+      if (side === 'front') {
+        setDocFrontFileName(file.name);
+        setDocFrontPreview(preview);
+      } else {
+        setDocBackFileName(file.name);
+        setDocBackPreview(preview);
+      }
+    } catch {
+      setDocUploadError('We could not process that image. Please choose another file.');
+    }
   };
 
-  const submitKyc = (event: React.FormEvent<HTMLFormElement>) => {
+  const composeDocumentImages = (front: string, back: string) => new Promise<string>((resolve, reject) => {
+    const frontImage = new Image();
+    const backImage = new Image();
+    let loaded = 0;
+    const onError = () => reject(new Error('The ID images could not be prepared.'));
+    const onLoad = () => {
+      loaded += 1;
+      if (loaded !== 2) return;
+      const width = Math.max(frontImage.width, backImage.width);
+      const gap = 32;
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = frontImage.height + gap + backImage.height;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('The ID images could not be prepared.'));
+        return;
+      }
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
+      context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    frontImage.onerror = onError; backImage.onerror = onError;
+    frontImage.onload = onLoad; backImage.onload = onLoad;
+    frontImage.src = front; backImage.src = back;
+  });
+
+  const submitKyc = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (!docFrontPreview || !docBackPreview) {
+      setDocUploadError('Upload both the Front Side of ID and Back Side of ID before submitting.');
+      return;
+    }
+    setDocUploadError('');
+    setDocComposing(true);
+    let combinedDocument: string;
+    try {
+      // Keep the existing single-image API/database contract backward-compatible
+      // by storing both required sides in one reviewable composite image.
+      combinedDocument = await composeDocumentImages(docFrontPreview, docBackPreview);
+    } catch {
+      setDocUploadError('We could not prepare both ID images. Please upload them again.');
+      setDocComposing(false);
+      return;
+    }
+    setDocComposing(false);
     kyc.mutate({
       data: {
         fullName: String(form.get('fullName')),
@@ -1759,7 +1837,7 @@ function Settings() {
         city: String(form.get('city')),
         occupation: String(form.get('occupation')),
         documentType: String(form.get('documentType')) as 'passport' | 'drivers_license' | 'national_id',
-        documentImageBase64: docPreview || undefined,
+        documentImageBase64: combinedDocument,
       }
     }, {
       onSuccess: (result) => {
@@ -1932,30 +2010,40 @@ function Settings() {
                     </SelectField>
                   </div>
 
-                  {/* Document image upload */}
-                  <div className="grid gap-2">
-                    <label className="text-sm font-semibold text-foreground">Upload ID Document Image</label>
-                    <div className="relative flex items-center gap-3 rounded-xl border border-dashed border-border bg-secondary/40 px-4 py-4 hover:border-primary/40 hover:bg-secondary/70 transition cursor-pointer"
-                      onClick={() => (document.getElementById('doc-upload') as HTMLInputElement)?.click()}>
-                      <Upload size={18} className="shrink-0 text-muted-foreground" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold">{docFileName || 'Choose a file to upload'}</p>
-                        <p className="text-xs text-muted-foreground">JPG, PNG or PDF — max 5 MB</p>
-                      </div>
-                      <input id="doc-upload" type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileChange} data-testid="input-kyc-document-image" />
+                  {/* Both ID sides are required; the submit handler preserves the existing API payload. */}
+                  <div className="grid gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Upload ID images</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JPG or PNG — max 5 MB each.</p>
                     </div>
-                    {docPreview && docPreview.startsWith('data:image') && (
-                      <div className="mt-2 overflow-hidden rounded-xl border border-border">
-                        <img src={docPreview} alt="Document preview" className="max-h-48 w-full object-contain bg-secondary/30" />
-                      </div>
-                    )}
-                    {docPreview && !docPreview.startsWith('data:image') && (
-                      <p className="mt-1 text-xs font-semibold text-primary">✓ Document attached: {docFileName}</p>
-                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {([
+                        { side: 'front' as const, id: 'kyc-id-front', label: 'Front Side of ID', fileName: docFrontFileName, preview: docFrontPreview, testId: 'input-kyc-id-front' },
+                        { side: 'back' as const, id: 'kyc-id-back', label: 'Back Side of ID', fileName: docBackFileName, preview: docBackPreview, testId: 'input-kyc-id-back' },
+                      ]).map(({ side, id, label, fileName, preview, testId }) => (
+                        <div key={side} className="grid gap-2">
+                          <label htmlFor={id} className="text-sm font-semibold text-foreground">{label}</label>
+                          <label htmlFor={id} className="relative flex min-h-28 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border bg-secondary/40 px-4 py-4 transition hover:border-primary/40 hover:bg-secondary/70">
+                            <Upload size={18} className="shrink-0 text-muted-foreground" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{fileName || `Choose ${side} image`}</p>
+                              <p className="text-xs text-muted-foreground">Image only</p>
+                            </div>
+                            <input id={id} type="file" accept="image/*" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
+                          </label>
+                          {preview && (
+                            <div className="overflow-hidden rounded-xl border border-border">
+                              <img src={preview} alt={`${label} preview`} className="max-h-40 w-full object-contain bg-secondary/30" />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {docUploadError && <p className="text-sm font-semibold text-destructive" role="alert" data-testid="status-kyc-document-error">{docUploadError}</p>}
                   </div>
 
-                  <Button type="submit" className="mt-2 sm:w-fit" disabled={kyc.isPending} data-testid="button-submit-kyc">
-                    {kyc.isPending ? 'Submitting…' : 'Submit for review'} <ArrowUpRight size={16} />
+                  <Button type="submit" className="mt-2 sm:w-fit" disabled={kyc.isPending || docComposing} data-testid="button-submit-kyc">
+                    {kyc.isPending || docComposing ? 'Preparing…' : 'Submit for review'} <ArrowUpRight size={16} />
                   </Button>
                   {kyc.isError && (
                     <p className="text-sm font-semibold text-destructive" data-testid="status-kyc-error">
