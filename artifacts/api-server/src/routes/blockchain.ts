@@ -121,12 +121,12 @@ async function ensureSeededUser(userId: string) {
 
   if (existing) {
     // Backfill real Clerk email/name for real users that still have fallback defaults
-    if (userId !== "demo_user" && (existing.email === "member@northstar.app" || existing.displayName === "Northstar Member")) {
+    if (userId !== "demo_user" && (existing.email === "member@northstateblockchain.app" || existing.displayName === "North State Blockchain Member")) {
       const { email, name } = await fetchClerkUserInfo(userId);
       if (email || name) {
         const update: Partial<typeof walletProfilesTable.$inferInsert> = {};
-        if (email && existing.email === "member@northstar.app") update.email = email;
-        if (name && existing.displayName === "Northstar Member") update.displayName = name;
+        if (email && existing.email === "member@northstateblockchain.app") update.email = email;
+        if (name && existing.displayName === "North State Blockchain Member") update.displayName = name;
         if (Object.keys(update).length) {
           await db.update(walletProfilesTable).set(update).where(eq(walletProfilesTable.clerkUserId, userId));
           return { ...existing, ...update };
@@ -138,8 +138,8 @@ async function ensureSeededUser(userId: string) {
 
   const isDemoUser = userId === "demo_user";
 
-  let displayName = isDemoUser ? "Alex Morgan" : "Northstar Member";
-  let email = isDemoUser ? "alex@example.com" : "member@northstar.app";
+  let displayName = isDemoUser ? "Alex Morgan" : "North State Blockchain Member";
+  let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
 
   if (!isDemoUser) {
     const info = await fetchClerkUserInfo(userId);
@@ -153,7 +153,7 @@ async function ensureSeededUser(userId: string) {
       clerkUserId: userId,
       displayName,
       email,
-      referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-${userId.slice(-6).toUpperCase()}`,
+      referralCode: isDemoUser ? "NORTHSTATE-ALEX" : `NORTHSTATE-${userId.slice(-6).toUpperCase()}`,
       // Real users start unverified and must complete KYC; demo user is pre-verified
       verificationStatus: isDemoUser ? "verified" : "unverified",
       referralInvitedCount: isDemoUser ? 3 : 0,
@@ -463,7 +463,7 @@ router.get("/referral", async (req, res) => {
     code: profile.referralCode,
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
-    shareUrl: `https://northstar.app/join/${profile.referralCode}`,
+    shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
   }));
 });
 
@@ -475,7 +475,7 @@ router.post("/referral", async (req, res) => {
     code: profile.referralCode,
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
-    shareUrl: `https://northstar.app/join/${profile.referralCode}`,
+    shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
   }));
 });
 
@@ -668,7 +668,7 @@ router.post("/security/totp/setup", async (req, res) => {
   const userId = getUserId(req);
   const profile = await ensureSeededUser(userId);
   const secret = totpGenerateSecret({ length: 20 });
-  const uri = totpGenerateURI({ label: profile.email, issuer: "Northstar", secret });
+  const uri = totpGenerateURI({ label: profile.email, issuer: "North State Blockchain", secret });
   totpPending.set(userId, { secret, expires: Date.now() + 10 * 60_000 });
   res.json({ secret, uri });
 });
@@ -722,7 +722,7 @@ router.post("/security/passkeys/begin", async (req, res) => {
   const challenge = randomBytes(32).toString("base64url");
   const webAuthnUserId = Buffer.from(userId.padEnd(16, "0").slice(0, 16)).toString("base64url");
   passkeyChallenges.set(userId, { challenge, expires: Date.now() + 5 * 60_000 });
-  res.json({ challenge, rpId, rpName: "Northstar", userId: webAuthnUserId, userDisplayName: profile.displayName, timeout: 60000 });
+  res.json({ challenge, rpId, rpName: "North State Blockchain", userId: webAuthnUserId, userDisplayName: profile.displayName, timeout: 60000 });
 });
 
 router.post("/security/passkeys/finish", async (req, res) => {
@@ -787,7 +787,7 @@ router.post("/sms/send-otp", async (req, res) => {
     const { default: twilio } = await import("twilio");
     const client = twilio(accountSid, authToken);
     await client.messages.create({
-      body: `Your Northstar verification code is ${code}. Valid for 5 minutes. Do not share this code.`,
+      body: `Your North State Blockchain verification code is ${code}. Valid for 5 minutes. Do not share this code.`,
       from: fromNumber,
       to: phone,
     });

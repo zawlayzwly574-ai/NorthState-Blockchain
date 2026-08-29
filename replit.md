@@ -1,12 +1,12 @@
 # North State Blockchain
 
-North State Blockchain is a digital-asset wallet and market dashboard with a separate Northstar Admin review panel.
+North State Blockchain is a digital-asset wallet and market dashboard with a separate North State Blockchain Admin review panel.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm --filter @workspace/blockchain-hub run dev` — run the North State Blockchain user app
-- `pnpm --filter @workspace/admin-panel run dev` — run the Northstar Admin panel
+- `pnpm --filter @workspace/admin-panel run dev` — run the North State Blockchain Admin panel
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -35,7 +35,7 @@ _Populate as you build — non-obvious choices a reader couldn't infer from the 
 ## Product
 
 - **User app**: North State Blockchain lets users view market data and wallet activity, move supported assets, and submit identity verification with their personal details and an ID document. SSN is not collected.
-- **Admin panel**: Northstar Admin manages verification, transaction approval, and support workflows without changing its existing identity or interface.
+- **Admin panel**: North State Blockchain Admin manages verification, transaction approval, and support workflows without changing its existing identity or interface.
 
 ## User preferences
 
