@@ -120,6 +120,7 @@ let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
 let miningPlaceRefreshPromise: Promise<{ assets: MiningPlaceAsset[]; ts: number }> | null = null;
 const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
+const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
 function getUserId(req: Request) {
   return getAuth(req).userId!;
@@ -285,6 +286,17 @@ type MarketQuote = {
   usd_24h_vol?: number;
 };
 
+type MarketAsset = {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  marketCap: number;
+  volume24h: number;
+  rank: number;
+  color: string;
+};
+
 type BinanceTicker = {
   symbol?: string;
   lastPrice?: string;
@@ -304,6 +316,10 @@ const binanceSymbols: Record<string, string> = {
 function isValidMarketQuote(quote: MarketQuote | undefined) {
   return Number.isFinite(quote?.usd) && (quote?.usd ?? 0) > 0;
 }
+
+let marketCache: { assets: MarketAsset[]; ts: number } | null = null;
+let marketRefreshPromise: Promise<MarketAsset[]> | null = null;
+const MARKET_DATA_TTL = 3_000;
 
 async function fetchBinanceMarketData(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
@@ -340,7 +356,7 @@ async function fetchBinanceMarketData(
   }
 }
 
-async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]) {
+async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]): Promise<MarketAsset[]> {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
   const endpoint = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
   let liveData: Record<string, MarketQuote> = {};
@@ -385,6 +401,26 @@ async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[
   });
 }
 
+async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]) {
+  const now = Date.now();
+  if (marketCache && now - marketCache.ts < MARKET_DATA_TTL) {
+    return marketCache.assets;
+  }
+
+  if (!marketRefreshPromise) {
+    marketRefreshPromise = fetchFreshMarketAssets(req)
+      .then((assets) => {
+        marketCache = { assets, ts: Date.now() };
+        return assets;
+      })
+      .finally(() => {
+        marketRefreshPromise = null;
+      });
+  }
+
+  return marketRefreshPromise;
+}
+
 router.get("/markets", async (req, res) => {
   const data = GetMarketSummaryResponse.parse(await fetchMarketAssets(req));
   res.json(data);
@@ -403,52 +439,67 @@ router.get("/mining-place", async (req, res) => {
   if (!miningPlaceRefreshPromise) {
     const previousAssets = new Map(miningPlaceCache?.assets.map((asset) => [asset.symbol, asset]));
     miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset> => {
-    try {
-      const response = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(definition.yahooSymbol)}?range=1d&interval=5m`,
-        {
-          headers: { accept: "application/json", "user-agent": "Mozilla/5.0 NorthStateBlockchain/1.0" },
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`Quote provider returned ${response.status}`);
-      }
-      const payload = (await response.json()) as {
-        chart?: {
-          result?: Array<{
-            meta?: {
-              currency?: string;
-              regularMarketPrice?: number;
-              chartPreviousClose?: number;
-              previousClose?: number;
-              regularMarketTime?: number;
-            };
-          }>;
+    let liveAsset: MiningPlaceAsset | null = null;
+    let lastError: unknown = null;
+    for (const host of YAHOO_FINANCE_HOSTS) {
+      try {
+        const response = await fetch(
+          `https://${host}/v8/finance/chart/${encodeURIComponent(definition.yahooSymbol)}?range=1d&interval=5m`,
+          {
+            headers: { accept: "application/json", "user-agent": "Mozilla/5.0 NorthStateBlockchain/1.0" },
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`${host} returned ${response.status}`);
+        }
+        const payload = (await response.json()) as {
+          chart?: {
+            result?: Array<{
+              meta?: {
+                currency?: string;
+                regularMarketPrice?: number;
+                chartPreviousClose?: number;
+                previousClose?: number;
+                regularMarketTime?: number;
+              };
+            }>;
+          };
         };
-      };
-      const meta = payload.chart?.result?.[0]?.meta;
-      const price = Number(meta?.regularMarketPrice);
-      const previousClose = Number(meta?.chartPreviousClose ?? meta?.previousClose);
-      if (!Number.isFinite(price) || price <= 0) {
-        throw new Error("Quote provider did not return a valid price");
+        const meta = payload.chart?.result?.[0]?.meta;
+        const price = Number(meta?.regularMarketPrice);
+        const previousClose = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+        if (!Number.isFinite(price) || price <= 0) {
+          throw new Error(`${host} did not return a valid price`);
+        }
+        const change24h = Number.isFinite(previousClose) && previousClose > 0
+          ? ((price - previousClose) / previousClose) * 100
+          : definition.fallbackChange;
+        liveAsset = {
+          symbol: definition.symbol,
+          name: definition.name,
+          category: definition.category,
+          price,
+          change24h,
+          currency: meta?.currency ?? "USD",
+          unit: definition.unit,
+          status: "live",
+          updatedAt: new Date((meta?.regularMarketTime ?? Math.floor(now / 1000)) * 1000).toISOString(),
+          color: definition.color,
+        };
+        break;
+      } catch (error) {
+        lastError = error;
+        req.log.warn({ err: error, symbol: definition.symbol, host }, "Mining Place quote host failed");
       }
-      const change24h = Number.isFinite(previousClose) && previousClose > 0
-        ? ((price - previousClose) / previousClose) * 100
-        : definition.fallbackChange;
-      return {
-        symbol: definition.symbol,
-        name: definition.name,
-        category: definition.category,
-        price,
-        change24h,
-        currency: meta?.currency ?? "USD",
-        unit: definition.unit,
-        status: "live",
-        updatedAt: new Date((meta?.regularMarketTime ?? Math.floor(now / 1000)) * 1000).toISOString(),
-        color: definition.color,
-      };
-    } catch (error) {
+    }
+
+    if (liveAsset) {
+      return liveAsset;
+    }
+
+    {
+      const error = lastError ?? new Error("No Mining Place quote host returned a valid price");
       req.log.warn({ err: error, symbol: definition.symbol }, "Mining Place quote provider could not be reached");
       const previous = previousAssets.get(definition.symbol);
       const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;

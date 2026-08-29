@@ -34,6 +34,7 @@ description: Instant crypto swap route, Frankfurter FX rates, multi-currency bal
 ## Market auto-refresh
 - `useGetMarketSummary` and `useGetMarketDetail`: `refetchInterval: 3_000` (3 s).
 - CoinGecko remains the primary quote provider; missing or failed quotes are filled from Binance's public 24-hour ticker feed before legacy fallback values are considered.
+- Markets API responses share a 3-second in-memory cache and single-flight refresh so multiple polling views do not multiply external provider calls.
 - Portfolio/activity: `refetchInterval: 60_000`.
 - FX rates: `refetchInterval: 5 * 60_000`, `staleTime: 5 * 60_000`.
 
@@ -41,6 +42,7 @@ description: Instant crypto swap route, Frankfurter FX rates, multi-currency bal
 
 ## Mining Place quotes
 - Real-world benchmark quotes are deliberately isolated from the crypto market feed and never mutate holdings, transactions, or account data.
+- Yahoo Finance chart quotes use both public query hosts so a host-level outage can fail over without changing the response contract.
 - Public-provider refreshes must be single-flight. Preserve a recent successful quote as explicitly stale during outages, then expire to an explicit fallback rather than retaining stale data forever.
 - Keep the Mining Place client polling interval and server quote-cache TTL aligned at 3 seconds; cards and detail views are expected to reflect each available refresh and animate only when the numeric quote changes.
 
