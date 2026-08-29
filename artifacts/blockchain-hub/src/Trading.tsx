@@ -394,23 +394,25 @@ export function TradingPage() {
               onChange={e => setAmount(e.target.value)}
               min="1"
               step="1"
-              className="h-10 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
               placeholder="100"
               data-testid="input-trade-amount"
             />
-            {[25, 50, 100, 250].map(v => (
-              <button
-                key={v}
-                onClick={() => setAmount(String(v))}
-                className={`h-10 shrink-0 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
-                  Number(amount) === v
-                    ? 'border-primary/60 bg-primary/10 text-primary'
-                    : 'border-border/60 text-muted-foreground'
-                }`}
-              >
-                {v}
-              </button>
-            ))}
+            <div className="grid shrink-0 grid-cols-2 gap-2">
+              {[25, 50, 100, 250].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setAmount(String(v))}
+                  className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                    Number(amount) === v
+                      ? 'border-primary/60 bg-primary/10 text-primary'
+                      : 'border-border/60 text-muted-foreground'
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
           </div>
           {insufficient && (
             <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-destructive">
