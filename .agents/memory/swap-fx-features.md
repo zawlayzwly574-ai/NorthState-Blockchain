@@ -42,8 +42,11 @@ description: Instant crypto swap route, Frankfurter FX rates, multi-currency bal
 ## Mining Place quotes
 - Real-world benchmark quotes are deliberately isolated from the crypto market feed and never mutate holdings, transactions, or account data.
 - Public-provider refreshes must be single-flight. Preserve a recent successful quote as explicitly stale during outages, then expire to an explicit fallback rather than retaining stale data forever.
+- Keep the Mining Place client polling interval and server quote-cache TTL aligned at 3 seconds; cards and detail views are expected to reflect each available refresh and animate only when the numeric quote changes.
 
-**Why:** The quote provider can throttle concurrent batches. Sharing one refresh protects reliability, while visible stale/fallback states keep degraded data honest.
+**Why:** The quote provider can throttle concurrent batches. Sharing one refresh protects reliability, while visible stale/fallback states keep degraded data honest. A longer server TTL silently defeats the user-visible 3-second refresh promise.
+
+**How to apply:** If the Mining Place refresh cadence changes, update both sides together and retain single-flight refresh protection.
 
 ## OpenAPI/codegen
 - Added `/markets/fx-rates` GET → `FxRates` schema.

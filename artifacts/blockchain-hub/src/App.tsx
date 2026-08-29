@@ -2146,8 +2146,24 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
+  const previousPrice = useRef(asset.price);
+  const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
+
+  useEffect(() => {
+    if (previousPrice.current === asset.price) return;
+    setPriceDirection(asset.price > previousPrice.current ? 'up' : 'down');
+    previousPrice.current = asset.price;
+    const timeout = window.setTimeout(() => setPriceDirection(null), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [asset.price]);
+
   return (
-    <div className="surface flex flex-col justify-between rounded-2xl p-5 hover:bg-secondary/45 transition duration-300" data-testid={`card-mining-${asset.symbol}`}>
+    <Link
+      href={`/mining-place/${encodeURIComponent(asset.symbol)}`}
+      className="surface group flex flex-col justify-between rounded-2xl p-5 transition duration-300 hover:-translate-y-0.5 hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      aria-label={`View ${asset.name} price details`}
+      data-testid={`card-mining-${asset.symbol}`}
+    >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-inner bg-background/50 border border-border" style={{ borderColor: `${asset.color}40` }}>
@@ -2162,16 +2178,20 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
       </div>
       <div className="mt-8 flex items-end justify-between">
         <div>
-          <p className="font-mono-ui text-2xl font-extrabold tracking-tight text-foreground">
-            {new Intl.NumberFormat('en-US', { style: 'currency', currency: asset.currency }).format(asset.price)}
+          <p className={`font-mono-ui text-2xl font-extrabold tracking-tight text-foreground ${priceDirection ? `quote-flash-${priceDirection}` : ''}`}>
+            {money(asset.price, asset.currency)}
           </p>
           {asset.unit && <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Per {asset.unit}</p>}
         </div>
-        <p className={`font-mono-ui text-sm font-bold ${asset.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>
+        <p className={`font-mono-ui text-sm font-bold transition-colors ${asset.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'} ${priceDirection ? `quote-change-${priceDirection}` : ''}`}>
           {pct(asset.change24h)}
         </p>
       </div>
-    </div>
+      <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span>View details</span>
+        <ArrowUpRight size={14} className="text-primary transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      </div>
+    </Link>
   );
 }
 
@@ -2179,7 +2199,7 @@ function MiningPlace() {
   const { data, isLoading, isError, refetch } = useGetMiningPlace({
     query: {
       queryKey: getGetMiningPlaceQueryKey(),
-      refetchInterval: 10_000,
+      refetchInterval: 3_000,
       placeholderData: (prev) => prev
     }
   });
@@ -2220,7 +2240,7 @@ function MiningPlace() {
           <div className="flex items-center justify-between border-b border-border/60 pb-4">
              <h2 className="text-sm font-bold text-foreground">Market Feeds</h2>
              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-               <RefreshCw size={12} className="text-primary" /> Updated {new Date(data.updatedAt).toLocaleTimeString()}
+               <RefreshCw size={12} className="text-primary" /> Live · 3 sec refresh · Updated {new Date(data.updatedAt).toLocaleTimeString()}
              </span>
           </div>
           {categories.map(category => (
@@ -2239,7 +2259,87 @@ function MiningPlace() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={Dashboard} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place" component={MiningPlace} /><Route path="/activity" component={ActivityPage} /><Route path="/trading" component={TradingRoute} /><Route path="/settings" component={Settings} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function MiningPlaceDetail() {
+  const { symbol = '' } = useParams<{ symbol: string }>();
+  const miningPlace = useGetMiningPlace({
+    query: {
+      queryKey: getGetMiningPlaceQueryKey(),
+      refetchInterval: 3_000,
+      placeholderData: (prev) => prev
+    }
+  });
+  const item = miningPlace.data?.assets.find((asset) => asset.symbol.toLowerCase() === symbol.toLowerCase());
+  const chart = useMemo(() => {
+    if (!item) return [];
+    const direction = item.change24h >= 0 ? 1 : -1;
+    const movement = Math.max(Math.abs(item.change24h), 0.35) / 100;
+    return Array.from({ length: 24 }, (_, index) => ({
+      time: `${String(index).padStart(2, '0')}:00`,
+      value: index === 23 ? item.price : item.price * (
+        1
+        - direction * movement
+        + direction * movement * (index / 23)
+        + Math.sin(index / 2.8) * movement * 0.18
+      ),
+    }));
+  }, [item]);
+
+  return (
+    <Shell>
+      <Link href="/mining-place" className="mb-7 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-back-mining-place">
+        <ArrowLeft size={16} /> Back to Mining Place
+      </Link>
+      {miningPlace.isLoading ? <LoadingState lines={5} /> : miningPlace.isError ? <ErrorState retry={() => miningPlace.refetch()} /> : !item ? (
+        <EmptyState title="Benchmark not found" detail="That asset is not part of the current Mining Place benchmark set." />
+      ) : (
+        <>
+          <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+            <div className="flex items-center gap-4">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl text-xl font-extrabold text-[#071326]" style={{ backgroundColor: item.color }}>
+                {item.symbol.slice(0, 1)}
+              </span>
+              <div>
+                <p className="eyebrow">{item.symbol} benchmark</p>
+                <h1 className="mt-1 text-3xl font-extrabold tracking-[-.05em]">{item.name}</h1>
+              </div>
+            </div>
+            <div className="sm:text-right">
+              <p className="font-mono-ui text-3xl font-medium" data-testid="text-mining-price">{money(item.price, item.currency)}</p>
+              <p className={`mt-1 text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(item.change24h)} today</p>
+            </div>
+          </div>
+          <div className="mt-7 grid gap-4 sm:grid-cols-4">
+            <Stat label="Unit" value={item.unit ? `Per ${item.unit}` : 'Benchmark'} />
+            <Stat label="Category" value={categoryLabels[item.category] ?? item.category} />
+            <Stat label="Feed" value={item.status === 'live' ? 'Live quote' : item.status === 'stale' ? 'Stale quote' : 'Fallback quote'} accent={item.status === 'live'} />
+            <Stat label="Updated" value={new Date(item.updatedAt).toLocaleTimeString()} />
+          </div>
+          <div className="surface mt-7 rounded-2xl p-5 sm:p-7">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <p className="eyebrow">Movement preview</p>
+                <h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Benchmark price movement</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={item.status} />
+                <span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">Updates every 3 sec</span>
+              </div>
+            </div>
+            <div className="mt-8 h-64">
+              <Chart points={chart} />
+            </div>
+            <div className="mt-3 flex justify-between text-[10px] font-mono-ui text-muted-foreground">
+              <span>EARLIER</span><span>NOW</span>
+            </div>
+            <p className="mt-5 text-xs leading-5 text-muted-foreground">Chart preview is anchored to the latest public quote and its reported 24-hour movement. Refreshing quotes update the view automatically.</p>
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={Dashboard} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={MiningPlaceDetail} /><Route path="/mining-place" component={MiningPlace} /><Route path="/activity" component={ActivityPage} /><Route path="/trading" component={TradingRoute} /><Route path="/settings" component={Settings} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);

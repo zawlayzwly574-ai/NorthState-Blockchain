@@ -118,7 +118,7 @@ const miningPlaceDefinitions: MiningPlaceDefinition[] = [
 
 let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
 let miningPlaceRefreshPromise: Promise<{ assets: MiningPlaceAsset[]; ts: number }> | null = null;
-const MINING_PLACE_TTL = 30_000;
+const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 
 function getUserId(req: Request) {

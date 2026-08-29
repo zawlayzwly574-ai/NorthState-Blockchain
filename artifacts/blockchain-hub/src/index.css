@@ -46,6 +46,17 @@
 }
 @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse-line { 0%,100% { opacity:.45; } 50% { opacity:1; } }
+@keyframes quote-flash-up { 0% { color: inherit; background-color: transparent; } 35% { color: #2db87a; background-color: rgba(45,184,122,.14); } 100% { color: inherit; background-color: transparent; } }
+@keyframes quote-flash-down { 0% { color: inherit; background-color: transparent; } 35% { color: hsl(var(--destructive)); background-color: hsl(var(--destructive) / .14); } 100% { color: inherit; background-color: transparent; } }
+@keyframes quote-change-up { 0%,100% { transform: translateX(0); } 35% { transform: translateX(3px); } }
+@keyframes quote-change-down { 0%,100% { transform: translateX(0); } 35% { transform: translateX(-3px); } }
 .animate-rise { animation: rise .5s ease both; } .animate-rise-2 { animation: rise .5s .1s ease both; } .animate-rise-3 { animation: rise .5s .2s ease both; } .pulse-line { animation: pulse-line 2.4s ease-in-out infinite; }
+.quote-flash-up { animation: quote-flash-up 1.4s ease-out both; border-radius: .35rem; }
+.quote-flash-down { animation: quote-flash-down 1.4s ease-out both; border-radius: .35rem; }
+.quote-change-up { animation: quote-change-up 1.4s ease-out both; }
+.quote-change-down { animation: quote-change-down 1.4s ease-out both; }
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
 .reveal-visible { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  .quote-flash-up, .quote-flash-down, .quote-change-up, .quote-change-down { animation: none; }
+}
