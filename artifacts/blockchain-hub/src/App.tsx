@@ -23,7 +23,7 @@ import {
   useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
   useGetMiningPlace,
 } from '@workspace/api-client-react';
-import type { MiningPlaceAsset } from '@workspace/api-client-react';
+import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -1680,7 +1680,39 @@ function Dashboard() {
 function Markets() {
   const [search, setSearch] = useState('');
   const market = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } }); const list = useMemo(() => (market.data ?? []).filter((item) => `${item.symbol} ${item.name}`.toLowerCase().includes(search.toLowerCase())), [market.data, search]);
-  return <Shell><PageHeader eyebrow="Markets" title="Know what is moving" detail="Supported assets, with the numbers that matter." action={<label className="relative"><Search size={16} className="absolute left-3 top-3 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search assets" className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-9 pr-4 text-sm outline-none focus:border-primary sm:w-64" data-testid="input-market-search" /></label>} />{market.isLoading ? <LoadingState lines={7} /> : market.isError ? <ErrorState retry={() => market.refetch()} /> : list.length === 0 ? <EmptyState title="No matching assets" detail="Try a symbol or asset name, such as Bitcoin or ETH." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[48px_1.4fr_1fr_1fr_1fr_72px] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid"><span>#</span><span>Asset</span><span>Price</span><span>24h change</span><span>Market cap</span><span></span></div><div className="divide-y divide-border/70">{list.map((item) => <Link href={`/markets/${item.symbol}`} key={item.symbol} className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-4 transition hover:bg-secondary/45 md:grid-cols-[48px_1.4fr_1fr_1fr_1fr_72px] md:px-5" data-testid={`row-market-${item.symbol}`}><span className="hidden font-mono-ui text-xs text-muted-foreground md:block">{String(item.rank).padStart(2, '0')}</span><div className="flex items-center gap-3"><CoinLogo symbol={item.symbol} color={item.color ?? '#0ea5e9'} size={40} /><div><p className="text-sm font-bold">{item.name}</p><p className="font-mono-ui text-xs text-muted-foreground">{item.symbol}</p></div></div><p className="font-mono-ui text-sm">{money(item.price)}</p><p className={`text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(item.change24h)}</p><p className="hidden font-mono-ui text-sm text-muted-foreground md:block">${compact(item.marketCap)}</p><span className="hidden items-center justify-end text-primary md:flex"><ArrowUpRight size={17} /></span></Link>)}</div></div>}</Shell>;
+  return <Shell><PageHeader eyebrow="Markets" title="Know what is moving" detail="Supported assets, with the numbers that matter." action={<label className="relative"><Search size={16} className="absolute left-3 top-3 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search assets" className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-9 pr-4 text-sm outline-none focus:border-primary sm:w-64" data-testid="input-market-search" /></label>} />{market.isLoading ? <LoadingState lines={7} /> : market.isError ? <ErrorState retry={() => market.refetch()} /> : list.length === 0 ? <EmptyState title="No matching assets" detail="Try a symbol or asset name, such as Bitcoin or ETH." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[48px_1.4fr_1fr_1fr_1fr_72px] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid"><span>#</span><span>Asset</span><span>Price</span><span>24h change</span><span>Market cap</span><span></span></div><div className="divide-y divide-border/70">{list.map((item) => <MarketRow item={item} key={item.symbol} />)}</div></div>}</Shell>;
+}
+
+function MarketRow({ item }: { item: MarketAsset }) {
+  const previousPrice = useRef(item.price);
+  const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
+
+  useEffect(() => {
+    if (previousPrice.current === item.price) return;
+    setPriceDirection(item.price > previousPrice.current ? 'up' : 'down');
+    previousPrice.current = item.price;
+    const timeout = window.setTimeout(() => setPriceDirection(null), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [item.price]);
+
+  return (
+    <Link
+      href={`/markets/${item.symbol}`}
+      className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-4 transition hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary md:grid-cols-[48px_1.4fr_1fr_1fr_1fr_72px] md:px-5"
+      data-testid={`row-market-${item.symbol}`}
+      aria-label={`View ${item.name} market details`}
+    >
+      <span className="hidden font-mono-ui text-xs text-muted-foreground md:block">{String(item.rank).padStart(2, '0')}</span>
+      <div className="flex items-center gap-3">
+        <CoinLogo symbol={item.symbol} color={item.color ?? '#0ea5e9'} size={40} />
+        <div><p className="text-sm font-bold">{item.name}</p><p className="font-mono-ui text-xs text-muted-foreground">{item.symbol}</p></div>
+      </div>
+      <p className={`font-mono-ui text-sm ${priceDirection ? `quote-flash-${priceDirection}` : ''}`}>{money(item.price)}</p>
+      <p className={`text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'} ${priceDirection ? `quote-change-${priceDirection}` : ''}`}>{pct(item.change24h)}</p>
+      <p className="hidden font-mono-ui text-sm text-muted-foreground md:block">${compact(item.marketCap)}</p>
+      <span className="hidden items-center justify-end text-primary md:flex"><ArrowUpRight size={17} /></span>
+    </Link>
+  );
 }
 
 function Chart({ points }: { points: { time: string; value: number }[] }) {
