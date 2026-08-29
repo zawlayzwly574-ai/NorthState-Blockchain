@@ -26,6 +26,7 @@ import {
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { getMarketLogoFile } from '@/market-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -1614,7 +1615,7 @@ function Dashboard() {
                       <Link href={`/markets/${holding.symbol}`} key={holding.symbol}
                         className="group grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl px-2 py-3 transition hover:bg-secondary sm:grid-cols-[1.3fr_1fr_.8fr_.7fr]">
                         <div className="flex items-center gap-3">
-                          <CoinLogo symbol={holding.symbol} color={holding.color} size={36} />
+                          <CoinLogo symbol={holding.symbol} name={holding.name} color={holding.color} size={36} />
                           <div><p className="text-sm font-bold">{holding.symbol}</p><p className="text-xs text-muted-foreground">{holding.name}</p></div>
                         </div>
                         <div className="hidden text-right sm:block">
@@ -1704,7 +1705,7 @@ function MarketRow({ item }: { item: MarketAsset }) {
     >
       <span className="hidden font-mono-ui text-xs text-muted-foreground md:block">{String(item.rank).padStart(2, '0')}</span>
       <div className="flex items-center gap-3">
-        <CoinLogo symbol={item.symbol} color={item.color ?? '#0ea5e9'} size={40} />
+        <CoinLogo symbol={item.symbol} name={item.name} color={item.color ?? '#0ea5e9'} size={40} />
         <div><p className="text-sm font-bold">{item.name}</p><p className="font-mono-ui text-xs text-muted-foreground">{item.symbol}</p></div>
       </div>
       <p className={`font-mono-ui text-sm ${priceDirection ? `quote-flash-${priceDirection}` : ''}`}>{money(item.price)}</p>
@@ -1723,15 +1724,17 @@ function Chart({ points }: { points: { time: string; value: number }[] }) {
 }
 function MarketDetail() {
   const { symbol = '' } = useParams<{ symbol: string }>(); const detail = useGetMarketDetail(symbol.toUpperCase(), { query: { queryKey: getGetMarketDetailQueryKey(symbol.toUpperCase()), refetchInterval: 3_000, placeholderData: (prev) => prev } }); const item = detail.data?.asset;
-  return <Shell><Link href="/markets" className="mb-7 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-back-markets"><ArrowLeft size={16} />Back to markets</Link>{detail.isLoading ? <LoadingState lines={5} /> : detail.isError || !item ? detail.isError ? <ErrorState retry={() => detail.refetch()} /> : <EmptyState title="Market not found" detail="That asset is not part of the current North State Blockchain market set." /> : <><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div className="flex items-center gap-4"><span className="grid h-14 w-14 place-items-center rounded-2xl text-xl font-extrabold text-[#071326]" style={{ backgroundColor: item.color ?? '#0ea5e9' }}>{item.symbol.slice(0, 1)}</span><div><p className="eyebrow">{item.symbol} market</p><h1 className="mt-1 text-3xl font-extrabold tracking-[-.05em]">{item.name}</h1></div></div><div className="sm:text-right"><p className="font-mono-ui text-3xl font-medium" data-testid="text-market-price">{money(item.price)}</p><p className={`mt-1 text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(item.change24h)} today</p></div></div><div className="mt-7 grid gap-4 sm:grid-cols-4"><Stat label="Market cap" value={`$${compact(item.marketCap)}`} /><Stat label="24h volume" value={`$${compact(item.volume24h)}`} /><Stat label="Rank" value={`#${item.rank}`} /><Stat label="Session" value="Live" accent /></div><div className="surface mt-7 rounded-2xl p-5 sm:p-7"><div className="flex items-center justify-between"><div><p className="eyebrow">Price history</p><h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Market movement</h2></div><span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">Live feed</span></div><div className="mt-8 h-64"><Chart points={detail.data?.chart ?? []} /></div><div className="mt-3 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>7D AGO</span><span>5D AGO</span><span>3D AGO</span><span>NOW</span></div></div></>}</Shell>;
+  return <Shell><Link href="/markets" className="mb-7 inline-flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-back-markets"><ArrowLeft size={16} />Back to markets</Link>{detail.isLoading ? <LoadingState lines={5} /> : detail.isError || !item ? detail.isError ? <ErrorState retry={() => detail.refetch()} /> : <EmptyState title="Market not found" detail="That asset is not part of the current North State Blockchain market set." /> : <><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div className="flex items-center gap-4"><CoinLogo symbol={item.symbol} name={item.name} color={item.color ?? '#0ea5e9'} size={56} /><div><p className="eyebrow">{item.symbol} market</p><h1 className="mt-1 text-3xl font-extrabold tracking-[-.05em]">{item.name}</h1></div></div><div className="sm:text-right"><p className="font-mono-ui text-3xl font-medium" data-testid="text-market-price">{money(item.price)}</p><p className={`mt-1 text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(item.change24h)} today</p></div></div><div className="mt-7 grid gap-4 sm:grid-cols-4"><Stat label="Market cap" value={`$${compact(item.marketCap)}`} /><Stat label="24h volume" value={`$${compact(item.volume24h)}`} /><Stat label="Rank" value={`#${item.rank}`} /><Stat label="Session" value="Live" accent /></div><div className="surface mt-7 rounded-2xl p-5 sm:p-7"><div className="flex items-center justify-between"><div><p className="eyebrow">Price history</p><h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Market movement</h2></div><span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">Live feed</span></div><div className="mt-8 h-64"><Chart points={detail.data?.chart ?? []} /></div><div className="mt-3 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>7D AGO</span><span>5D AGO</span><span>3D AGO</span><span>NOW</span></div></div></>}</Shell>;
 }
 function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) { return <div className="surface-muted rounded-xl p-4"><p className="text-xs font-semibold text-muted-foreground">{label}</p><p className={`mt-2 font-mono-ui text-lg font-medium ${accent ? 'text-primary' : ''}`}>{value}</p></div>; }
 
-function CoinLogo({ symbol, color, size = 36 }: { symbol: string; color?: string; size?: number }) {
+function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: string; color?: string; size?: number }) {
   const [err, setErr] = useState(false);
-  const src = `https://cdn.jsdelivr.net/gh/atomiclabs/cryptocurrency-icons@master/svg/color/${symbol.toLowerCase()}.svg`;
-  if (err) return <span className="grid shrink-0 place-items-center rounded-full text-xs font-extrabold text-[#071326]" style={{ width: size, height: size, backgroundColor: color ?? '#55dbe1' }}>{symbol.slice(0, 1)}</span>;
-  return <img src={src} alt={symbol} width={size} height={size} className="shrink-0 rounded-full" onError={() => setErr(true)} />;
+  const file = getMarketLogoFile(symbol);
+  const src = file ? `${basePath}/market-logos/${file}` : '';
+  useEffect(() => setErr(false), [src]);
+  if (!src || err) return <span role="img" aria-label={`${name ?? symbol} logo unavailable`} className="grid shrink-0 place-items-center rounded-full border border-white/10 text-[10px] font-extrabold text-[#071326]" style={{ width: size, height: size, backgroundColor: color ?? '#55dbe1' }}>{symbol.slice(0, 2).toUpperCase()}</span>;
+  return <img src={src} alt={`${name ?? symbol} logo`} width={size} height={size} className="shrink-0 rounded-full object-contain" onError={() => setErr(true)} />;
 }
 
 function ActivityPage() {
