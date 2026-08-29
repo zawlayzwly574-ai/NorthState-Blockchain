@@ -1,13 +1,14 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
-import { eq, desc, count, and, inArray } from "drizzle-orm";
+import { eq, desc, count, and, inArray, sql } from "drizzle-orm";
 import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, verifySync as totpVerifySync } from "otplib";
 import {
   db,
   activitiesTable,
   holdingsTable,
   kycSubmissionsTable,
+  miningInvestmentsTable,
   passkeysTable,
   supportMessagesTable,
   supportThreadsTable,
@@ -53,7 +54,7 @@ type MarketDefinition = {
 type MiningPlaceDefinition = {
   symbol: string;
   name: string;
-  category: "gold" | "energy" | "stock" | "oil" | "real_estate";
+  category: "gold" | "energy" | "stock" | "oil";
   yahooSymbol: string;
   unit: string;
   fallbackPrice: number;
@@ -192,7 +193,6 @@ const miningPlaceDefinitions: MiningPlaceDefinition[] = [
   { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", fallbackPrice: 2348.4, fallbackChange: 0.42, color: "#d6ad3b" },
   { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", fallbackPrice: 91.72, fallbackChange: 0.68, color: "#4dbb8a" },
   { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", fallbackPrice: 78.34, fallbackChange: -0.31, color: "#9d7b52" },
-  { symbol: "VNQ", name: "Real Estate", category: "real_estate", yahooSymbol: "VNQ", unit: "share", fallbackPrice: 88.26, fallbackChange: 0.24, color: "#7b9bb8" },
   { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", fallbackPrice: 229.35, fallbackChange: 0.87, color: "#b8c1cc" },
   { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", fallbackPrice: 348.68, fallbackChange: -1.14, color: "#d86464" },
   { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", fallbackPrice: 181.22, fallbackChange: 1.92, color: "#76b900" },
@@ -800,6 +800,242 @@ router.get("/portfolio", async (req, res) => {
   }));
 });
 
+const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => asset.symbol));
+
+function investmentQuote(symbol: string) {
+  const cached = miningPlaceCache?.assets.find((asset) => asset.symbol === symbol);
+  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol)!;
+  return cached ?? {
+    symbol: definition.symbol,
+    name: definition.name,
+    category: definition.category,
+    price: definition.fallbackPrice,
+    change24h: definition.fallbackChange,
+    currency: "USD",
+    unit: definition.unit,
+    status: "fallback" as const,
+    updatedAt: new Date().toISOString(),
+    color: definition.color,
+  };
+}
+
+function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
+  const amount = asNumber(investment.approvedAmount ?? investment.requestedAmount);
+  const currentValue = asNumber(investment.currentValue);
+  return {
+    id: String(investment.id),
+    symbol: investment.symbol,
+    assetName: investment.assetName,
+    category: investment.category,
+    requestedAmount: asNumber(investment.requestedAmount),
+    approvedAmount: investment.approvedAmount == null ? null : asNumber(investment.approvedAmount),
+    units: investment.units == null ? null : asNumber(investment.units),
+    entryPrice: asNumber(investment.entryPrice),
+    currentValue,
+    gainLoss: investment.status === "active" ? currentValue - amount : 0,
+    status: investment.status,
+    adminNote: investment.adminNote ?? "",
+    createdAt: investment.createdAt.toISOString(),
+    reviewedAt: investment.reviewedAt?.toISOString() ?? null,
+    updatedAt: investment.updatedAt.toISOString(),
+  };
+}
+
+async function getAvailableUsdc(userId: string) {
+  const [holding] = await db.select().from(holdingsTable).where(
+    and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDC")),
+  ).limit(1);
+  const pending = await db.select().from(miningInvestmentsTable).where(
+    and(eq(miningInvestmentsTable.clerkUserId, userId), eq(miningInvestmentsTable.status, "pending")),
+  );
+  const reserved = pending.reduce((sum, investment) => sum + asNumber(investment.approvedAmount ?? investment.requestedAmount), 0);
+  return { holding, balance: Math.max(0, asNumber(holding?.amount) - reserved) };
+}
+
+router.get("/mining-investments", async (req, res) => {
+  const userId = getUserId(req);
+  await ensureSeededUser(userId);
+  const [investments, usdc] = await Promise.all([
+    db.select().from(miningInvestmentsTable)
+      .where(eq(miningInvestmentsTable.clerkUserId, userId))
+      .orderBy(desc(miningInvestmentsTable.createdAt)),
+    getAvailableUsdc(userId),
+  ]);
+  res.json({ investments: investments.map(serializeInvestment), availableUsdc: usdc.balance });
+});
+
+router.post("/mining-investments", async (req, res) => {
+  const userId = getUserId(req);
+  const symbol = String(req.body?.symbol ?? "").toUpperCase();
+  const amount = Number(req.body?.amount);
+  if (!miningInvestmentSymbols.has(symbol)) {
+    res.status(400).json({ error: "That Mining Place asset is not available for investment." });
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000) {
+    res.status(400).json({ error: "Investment amount must be a positive USDC amount." });
+    return;
+  }
+  await ensureSeededUser(userId);
+  const quote = investmentQuote(symbol);
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      select id from ${holdingsTable}
+      where ${holdingsTable.clerkUserId} = ${userId}
+        and ${holdingsTable.symbol} = 'USDC'
+      for update
+    `);
+    const [holding] = await tx.select().from(holdingsTable).where(
+      and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDC")),
+    ).limit(1);
+    const pending = await tx.select().from(miningInvestmentsTable).where(
+      and(eq(miningInvestmentsTable.clerkUserId, userId), eq(miningInvestmentsTable.status, "pending")),
+    );
+    const reserved = pending.reduce(
+      (sum, investment) => sum + asNumber(investment.approvedAmount ?? investment.requestedAmount),
+      0,
+    );
+    const available = Math.max(0, asNumber(holding?.amount) - reserved);
+    if (available < amount) return { investment: null, available };
+    const [investment] = await tx.insert(miningInvestmentsTable).values({
+      clerkUserId: userId,
+      symbol,
+      assetName: quote.name,
+      category: quote.category,
+      requestedAmount: amount.toFixed(8),
+      units: (amount / quote.price).toFixed(12),
+      entryPrice: quote.price.toFixed(8),
+      currentValue: "0",
+      status: "pending",
+    }).returning();
+    return { investment, available: available - amount };
+  });
+  if (!result.investment) {
+    res.status(409).json({ error: `Insufficient available USDC. You have ${result.available.toFixed(2)} USDC available.` });
+    return;
+  }
+  const investment = result.investment;
+  res.status(201).json(serializeInvestment(investment));
+});
+
+router.get("/admin/mining-investments", requireAdmin, async (_req, res) => {
+  const investments = await db.select().from(miningInvestmentsTable).orderBy(desc(miningInvestmentsTable.createdAt));
+  const profiles = await db.select().from(walletProfilesTable);
+  const profileById = new Map(profiles.map((profile) => [profile.clerkUserId, profile]));
+  res.json(investments.map((investment) => ({
+    ...serializeInvestment(investment),
+    clerkUserId: investment.clerkUserId,
+    displayName: profileById.get(investment.clerkUserId)?.displayName ?? investment.clerkUserId,
+    email: profileById.get(investment.clerkUserId)?.email ?? "",
+  })));
+});
+
+router.patch("/admin/mining-investments/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const [existing] = await db.select().from(miningInvestmentsTable).where(eq(miningInvestmentsTable.id, id)).limit(1);
+  if (!existing) { res.status(404).json({ error: "Mining investment not found" }); return; }
+  const updates: Partial<typeof miningInvestmentsTable.$inferInsert> = { updatedAt: new Date() };
+  if (req.body?.approvedAmount !== undefined) {
+    const approvedAmount = Number(req.body.approvedAmount);
+    if (existing.status !== "pending" || !Number.isFinite(approvedAmount) || approvedAmount <= 0) {
+      res.status(400).json({ error: "Only pending investments may receive a positive approved amount." }); return;
+    }
+    const adjusted = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        select id from ${holdingsTable}
+        where ${holdingsTable.clerkUserId} = ${existing.clerkUserId}
+          and ${holdingsTable.symbol} = 'USDC'
+        for update
+      `);
+      const [holding] = await tx.select().from(holdingsTable).where(and(
+        eq(holdingsTable.clerkUserId, existing.clerkUserId),
+        eq(holdingsTable.symbol, "USDC"),
+      )).limit(1);
+      const pending = await tx.select().from(miningInvestmentsTable).where(and(
+        eq(miningInvestmentsTable.clerkUserId, existing.clerkUserId),
+        eq(miningInvestmentsTable.status, "pending"),
+      ));
+      const otherReservations = pending
+        .filter((investment) => investment.id !== existing.id)
+        .reduce((sum, investment) => sum + asNumber(investment.approvedAmount ?? investment.requestedAmount), 0);
+      if (asNumber(holding?.amount) - otherReservations < approvedAmount) return null;
+      const [investment] = await tx.update(miningInvestmentsTable).set({
+        approvedAmount: approvedAmount.toFixed(8),
+        adminNote: typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 1000) : existing.adminNote,
+        updatedAt: new Date(),
+      }).where(and(eq(miningInvestmentsTable.id, id), eq(miningInvestmentsTable.status, "pending"))).returning();
+      return investment;
+    });
+    if (!adjusted) {
+      res.status(409).json({ error: "The adjusted amount exceeds the user's available USDC." });
+      return;
+    }
+    res.json(serializeInvestment(adjusted));
+    return;
+  }
+  if (req.body?.currentValue !== undefined) {
+    const currentValue = Number(req.body.currentValue);
+    if (existing.status !== "active" || !Number.isFinite(currentValue) || currentValue < 0) {
+      res.status(400).json({ error: "Only active investments may receive a non-negative current value." }); return;
+    }
+    updates.currentValue = currentValue.toFixed(8);
+  }
+  if (req.body?.adminNote !== undefined) {
+    if (typeof req.body.adminNote !== "string" || req.body.adminNote.length > 1000) {
+      res.status(400).json({ error: "Admin note must be 1,000 characters or fewer." }); return;
+    }
+    updates.adminNote = req.body.adminNote.trim();
+  }
+  const [investment] = await db.update(miningInvestmentsTable).set(updates).where(eq(miningInvestmentsTable.id, id)).returning();
+  res.json(serializeInvestment(investment));
+});
+
+router.post("/admin/mining-investments/:id/approve", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const result = await db.transaction(async (tx) => {
+    const [current] = await tx.update(miningInvestmentsTable)
+      .set({ status: "processing", updatedAt: new Date() })
+      .where(and(eq(miningInvestmentsTable.id, id), eq(miningInvestmentsTable.status, "pending")))
+      .returning();
+    if (!current) return null;
+    const amount = asNumber(current.approvedAmount ?? current.requestedAmount);
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error("Investment amount is invalid.");
+    const [holding] = await tx.update(holdingsTable).set({
+      amount: sql`${holdingsTable.amount} - ${amount}`,
+      value: sql`${holdingsTable.value} - ${amount}`,
+    }).where(and(
+      eq(holdingsTable.clerkUserId, current.clerkUserId),
+      eq(holdingsTable.symbol, "USDC"),
+      sql`${holdingsTable.amount} >= ${amount}`,
+    )).returning();
+    if (!holding) throw new Error("Insufficient available USDC to approve this investment.");
+    const [approved] = await tx.update(miningInvestmentsTable).set({
+      status: "active",
+      approvedAmount: amount.toFixed(8),
+      units: (amount / asNumber(current.entryPrice)).toFixed(12),
+      currentValue: amount.toFixed(8),
+      reviewedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(and(eq(miningInvestmentsTable.id, id), eq(miningInvestmentsTable.status, "processing"))).returning();
+    if (!approved) throw new Error("Investment settlement could not be completed.");
+    return approved;
+  });
+  if (!result) { res.status(409).json({ error: "Investment is no longer pending." }); return; }
+  res.json(serializeInvestment(result));
+});
+
+router.post("/admin/mining-investments/:id/reject", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const [investment] = await db.update(miningInvestmentsTable).set({
+    status: "rejected",
+    adminNote: typeof req.body?.adminNote === "string" ? req.body.adminNote.trim().slice(0, 1000) : undefined,
+    reviewedAt: new Date(),
+    updatedAt: new Date(),
+  }).where(and(eq(miningInvestmentsTable.id, id), eq(miningInvestmentsTable.status, "pending"))).returning();
+  if (!investment) { res.status(409).json({ error: "Investment is no longer pending." }); return; }
+  res.json(serializeInvestment(investment));
+});
+
 router.get("/activity", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
@@ -1331,7 +1567,7 @@ function requireAdmin(
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 
 router.get("/admin/stats", requireAdmin, async (_req, res) => {
-  const [[{ totalUsers }], [{ pendingDeposits }], [{ pendingWithdrawals }], [{ pendingKyc }], [{ totalTransactions }]] =
+  const [[{ totalUsers }], [{ pendingDeposits }], [{ pendingWithdrawals }], [{ pendingKyc }], [{ pendingInvestments }], [{ totalTransactions }]] =
     await Promise.all([
       db.select({ totalUsers: count() }).from(walletProfilesTable),
       db
@@ -1346,9 +1582,13 @@ router.get("/admin/stats", requireAdmin, async (_req, res) => {
         .select({ pendingKyc: count() })
         .from(kycSubmissionsTable)
         .where(eq(kycSubmissionsTable.status, "pending")),
+      db
+        .select({ pendingInvestments: count() })
+        .from(miningInvestmentsTable)
+        .where(eq(miningInvestmentsTable.status, "pending")),
       db.select({ totalTransactions: count() }).from(transactionsTable),
     ]);
-  res.json({ totalUsers, pendingDeposits, pendingWithdrawals, pendingKyc, totalTransactions });
+  res.json({ totalUsers, pendingDeposits, pendingWithdrawals, pendingKyc, pendingInvestments, totalTransactions });
 });
 
 // ─── Admin: users ────────────────────────────────────────────────────────────

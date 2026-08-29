@@ -15,6 +15,7 @@ import Users from '@/pages/users';
 import Kyc from '@/pages/kyc';
 import Support from '@/pages/support';
 import TradingControl from '@/pages/trading';
+import MiningInvestments from '@/pages/mining-investments';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient({
@@ -77,6 +78,9 @@ function Router() {
 
         <Route path="/trading">
           <ProtectedRoute component={TradingControl} />
+        </Route>
+        <Route path="/mining-investments">
+          <ProtectedRoute component={MiningInvestments} />
         </Route>
         
         <Route component={NotFound} />

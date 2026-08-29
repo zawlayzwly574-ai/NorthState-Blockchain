@@ -44,14 +44,14 @@ export const GetFxRatesResponse = zod.object({
 
 
 /**
- * Returns cached public quotes for commodities, sectors, real estate, and major stocks.
+ * Returns cached public quotes for commodities, sectors, oil, and major stocks.
  * @summary Get real-world asset benchmark quotes
  */
 export const GetMiningPlaceResponse = zod.object({
   "assets": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),
-  "category": zod.enum(['gold', 'energy', 'stock', 'oil', 'real_estate']),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
   "price": zod.number(),
   "change24h": zod.number(),
   "currency": zod.string(),
@@ -60,6 +60,62 @@ export const GetMiningPlaceResponse = zod.object({
   "updatedAt": zod.string(),
   "color": zod.string()
 })),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary List the signed-in user's Mining Place investments
+ */
+export const GetMiningInvestmentsResponse = zod.object({
+  "investments": zod.array(zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
+  "updatedAt": zod.string()
+})),
+  "availableUsdc": zod.number()
+})
+
+
+/**
+ * @summary Submit a Mining Place investment request
+ */
+export const createMiningInvestmentBodyAmountExclusiveMin = 0;
+
+
+
+export const CreateMiningInvestmentBody = zod.object({
+  "symbol": zod.enum(['GOLD', 'XLE', 'OIL', 'AAPL', 'TSLA', 'NVDA', 'MSFT', 'AMZN']),
+  "amount": zod.number().gt(createMiningInvestmentBodyAmountExclusiveMin)
+})
+
+export const CreateMiningInvestmentResponse = zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
   "updatedAt": zod.string()
 })
 
@@ -457,6 +513,7 @@ export const GetAdminStatsResponse = zod.object({
   "pendingDeposits": zod.number(),
   "pendingWithdrawals": zod.number(),
   "pendingKyc": zod.number(),
+  "pendingInvestments": zod.number(),
   "totalTransactions": zod.number()
 })
 
@@ -665,6 +722,139 @@ export const RejectKycResponse = zod.object({
   "documentImageBase64": zod.string().optional(),
   "status": zod.string(),
   "submittedAt": zod.string()
+})
+
+
+/**
+ * @summary List all Mining Place investment requests
+ */
+export const GetAdminMiningInvestmentsResponseItem = zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
+  "updatedAt": zod.string()
+}).and(zod.object({
+  "clerkUserId": zod.string(),
+  "displayName": zod.string(),
+  "email": zod.string()
+}))
+export const GetAdminMiningInvestmentsResponse = zod.array(GetAdminMiningInvestmentsResponseItem)
+
+
+/**
+ * @summary Adjust an investment before approval or while active
+ */
+export const UpdateAdminMiningInvestmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateAdminMiningInvestmentBodyApprovedAmountExclusiveMin = 0;
+
+export const updateAdminMiningInvestmentBodyCurrentValueMin = 0;
+
+export const updateAdminMiningInvestmentBodyAdminNoteMax = 1000;
+
+
+
+export const UpdateAdminMiningInvestmentBody = zod.object({
+  "approvedAmount": zod.number().gt(updateAdminMiningInvestmentBodyApprovedAmountExclusiveMin).optional(),
+  "currentValue": zod.number().min(updateAdminMiningInvestmentBodyCurrentValueMin).optional(),
+  "adminNote": zod.string().max(updateAdminMiningInvestmentBodyAdminNoteMax).optional()
+})
+
+export const UpdateAdminMiningInvestmentResponse = zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Approve and settle a pending investment
+ */
+export const ApproveMiningInvestmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ApproveMiningInvestmentResponse = zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Reject a pending investment
+ */
+export const RejectMiningInvestmentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const rejectMiningInvestmentBodyApprovedAmountExclusiveMin = 0;
+
+export const rejectMiningInvestmentBodyCurrentValueMin = 0;
+
+export const rejectMiningInvestmentBodyAdminNoteMax = 1000;
+
+
+
+export const RejectMiningInvestmentBody = zod.object({
+  "approvedAmount": zod.number().gt(rejectMiningInvestmentBodyApprovedAmountExclusiveMin).optional(),
+  "currentValue": zod.number().min(rejectMiningInvestmentBodyCurrentValueMin).optional(),
+  "adminNote": zod.string().max(rejectMiningInvestmentBodyAdminNoteMax).optional()
+})
+
+export const RejectMiningInvestmentResponse = zod.object({
+  "id": zod.string(),
+  "symbol": zod.string(),
+  "assetName": zod.string(),
+  "category": zod.enum(['gold', 'energy', 'stock', 'oil']),
+  "requestedAmount": zod.number(),
+  "approvedAmount": zod.number().nullish(),
+  "units": zod.number().nullish(),
+  "entryPrice": zod.number(),
+  "currentValue": zod.number(),
+  "gainLoss": zod.number(),
+  "status": zod.enum(['pending', 'active', 'rejected']),
+  "adminNote": zod.string(),
+  "createdAt": zod.string(),
+  "reviewedAt": zod.string().nullish(),
+  "updatedAt": zod.string()
 })
 
 

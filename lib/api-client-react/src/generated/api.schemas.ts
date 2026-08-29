@@ -38,7 +38,6 @@ export const MiningPlaceAssetCategory = {
   energy: 'energy',
   stock: 'stock',
   oil: 'oil',
-  real_estate: 'real_estate',
 } as const;
 
 export type MiningPlaceAssetStatus = typeof MiningPlaceAssetStatus[keyof typeof MiningPlaceAssetStatus];
@@ -67,6 +66,86 @@ export interface MiningPlaceSummary {
   assets: MiningPlaceAsset[];
   updatedAt: string;
 }
+
+export type CreateMiningInvestmentInputSymbol = typeof CreateMiningInvestmentInputSymbol[keyof typeof CreateMiningInvestmentInputSymbol];
+
+
+export const CreateMiningInvestmentInputSymbol = {
+  GOLD: 'GOLD',
+  XLE: 'XLE',
+  OIL: 'OIL',
+  AAPL: 'AAPL',
+  TSLA: 'TSLA',
+  NVDA: 'NVDA',
+  MSFT: 'MSFT',
+  AMZN: 'AMZN',
+} as const;
+
+export interface CreateMiningInvestmentInput {
+  symbol: CreateMiningInvestmentInputSymbol;
+  /** @exclusiveMinimum 0 */
+  amount: number;
+}
+
+export interface UpdateMiningInvestmentInput {
+  /** @exclusiveMinimum 0 */
+  approvedAmount?: number;
+  /** @minimum 0 */
+  currentValue?: number;
+  /** @maxLength 1000 */
+  adminNote?: string;
+}
+
+export type MiningInvestmentCategory = typeof MiningInvestmentCategory[keyof typeof MiningInvestmentCategory];
+
+
+export const MiningInvestmentCategory = {
+  gold: 'gold',
+  energy: 'energy',
+  stock: 'stock',
+  oil: 'oil',
+} as const;
+
+export type MiningInvestmentStatus = typeof MiningInvestmentStatus[keyof typeof MiningInvestmentStatus];
+
+
+export const MiningInvestmentStatus = {
+  pending: 'pending',
+  active: 'active',
+  rejected: 'rejected',
+} as const;
+
+export interface MiningInvestment {
+  id: string;
+  symbol: string;
+  assetName: string;
+  category: MiningInvestmentCategory;
+  requestedAmount: number;
+  /** @nullable */
+  approvedAmount?: number | null;
+  /** @nullable */
+  units?: number | null;
+  entryPrice: number;
+  currentValue: number;
+  gainLoss: number;
+  status: MiningInvestmentStatus;
+  adminNote: string;
+  createdAt: string;
+  /** @nullable */
+  reviewedAt?: string | null;
+  updatedAt: string;
+}
+
+export interface MiningInvestmentList {
+  investments: MiningInvestment[];
+  availableUsdc: number;
+}
+
+export type AdminMiningInvestment = MiningInvestment & {
+  clerkUserId: string;
+  displayName: string;
+  email: string;
+};
 
 export type ProfileVerificationStatus = typeof ProfileVerificationStatus[keyof typeof ProfileVerificationStatus];
 
@@ -534,6 +613,7 @@ export interface AdminStats {
   pendingDeposits: number;
   pendingWithdrawals: number;
   pendingKyc: number;
+  pendingInvestments: number;
   totalTransactions: number;
 }
 

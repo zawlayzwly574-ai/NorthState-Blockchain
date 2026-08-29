@@ -1,0 +1,10 @@
+---
+name: Mining investment settlement
+description: Durable funding and approval rules for Mining Place investments.
+---
+
+Mining Place requests reserve the effective requested or admin-adjusted amount when calculating available USDC. They do not debit wallet holdings while pending. Approval must atomically recheck and debit the USDC holding before activating the position; rejection never changes wallet funds.
+
+**Why:** Logical reservation prevents users from submitting overlapping requests, while final atomic settlement prevents duplicate approvals or concurrent balance overspending without altering the existing transaction ledger.
+
+**How to apply:** Keep investment records isolated from wallet transaction history. Any future approval, cancellation, or redemption behavior must preserve the wallet ledger and use guarded, atomic balance updates.

@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAdminStats, clearAdminKey } from '@/lib/api';
-import { LayoutDashboard, ArrowRightLeft, Users, FileCheck, LogOut, TerminalSquare, MessageSquare, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, FileCheck, LogOut, TerminalSquare, MessageSquare, TrendingUp, Pickaxe } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -27,6 +27,7 @@ export function Layout({ children }: LayoutProps) {
       badge: stats?.pendingKyc || 0
     },
     { name: 'Trading', href: '/trading', icon: TrendingUp },
+    { name: 'Mining Investments', href: '/mining-investments', icon: Pickaxe, badge: stats?.pendingInvestments || 0 },
     { name: 'Support', href: '/support', icon: MessageSquare },
   ];
 

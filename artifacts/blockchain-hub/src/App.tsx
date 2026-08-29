@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import {
   getGetActivityQueryKey, getGetFxRatesQueryKey, getGetMarketDetailQueryKey, getGetMarketSummaryQueryKey, getGetPortfolioQueryKey,
-  getGetProfileQueryKey, getGetReferralQueryKey, getGetMiningPlaceQueryKey,
+  getGetProfileQueryKey, getGetReferralQueryKey, getGetMiningPlaceQueryKey, getGetMiningInvestmentsQueryKey,
   useCreateDeposit, useCreateReferralShare, useCreateSend, useCreateSwap, useCreateWithdrawal,
   useGetActivity, useGetFxRates, useGetMarketDetail, useGetMarketSummary, useGetNotifications, useGetPortfolio, useGetProfile,
   useGetReferral, useSubmitKyc, useUpdateProfile,
@@ -21,12 +21,13 @@ import {
   useListPasskeys, useBeginPasskeyRegistration, useFinishPasskeyRegistration, useDeletePasskey,
   useSendSmsOtp, useVerifySmsOtp,
   useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
-  useGetMiningPlace,
+  useGetMiningPlace, useGetMiningInvestments, useCreateMiningInvestment,
 } from '@workspace/api-client-react';
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { getMarketLogoFile } from '@/market-logos';
+import { getMiningLogoFile } from '@/mining-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -2170,9 +2171,17 @@ const categoryLabels: Record<string, string> = {
   gold: 'Gold & Precious Metals',
   energy: 'Energy & Power',
   stock: 'Major Equities',
-  oil: 'Oil & Gas',
-  real_estate: 'Real Estate'
+  oil: 'Oil & Gas'
 };
+
+function MiningLogo({ symbol, name, color, size = 48 }: { symbol: string; name: string; color: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const file = getMiningLogoFile(symbol);
+  const src = file ? `${basePath}/mining-logos/${file}` : '';
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) return <span role="img" aria-label={`${name} logo unavailable`} className="grid shrink-0 place-items-center rounded-xl border border-border bg-background/50 text-xs font-extrabold" style={{ width: size, height: size, color }}>{symbol.slice(0, 3)}</span>;
+  return <img src={src} alt={`${name} logo`} width={size} height={size} className="shrink-0 rounded-xl bg-white p-1.5 object-contain" onError={() => setFailed(true)} />;
+}
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'live') return <span className="inline-flex items-center gap-1.5 rounded-md bg-[#2db87a]/15 px-2 py-0.5 text-[10px] font-bold text-[#2db87a] uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-[#2db87a] animate-pulse" />Live</span>;
@@ -2201,9 +2210,7 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-inner bg-background/50 border border-border" style={{ borderColor: `${asset.color}40` }}>
-             <span className="text-sm font-extrabold" style={{ color: asset.color }}>{asset.symbol.slice(0, 3)}</span>
-          </div>
+           <MiningLogo symbol={asset.symbol} name={asset.name} color={asset.color} />
           <div>
             <p className="text-sm font-bold text-foreground">{asset.name}</p>
             <p className="font-mono-ui text-xs text-muted-foreground">{asset.symbol}</p>
@@ -2238,6 +2245,7 @@ function MiningPlace() {
       placeholderData: (prev) => prev
     }
   });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), refetchInterval: 10_000 } });
 
   const assetsByCategory = useMemo(() => {
     if (!data?.assets) return {};
@@ -2259,7 +2267,7 @@ function MiningPlace() {
           <p className="eyebrow flex items-center gap-2"><Landmark size={14} /> Mining Place</p>
           <h1 className="mt-4 text-3xl font-extrabold tracking-[-.04em] text-foreground sm:text-4xl">Real-World Benchmarks</h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            A grounded perspective on the physical economy. Monitor live quotes across commodities, energy, major equities, and real estate.
+             A grounded perspective on the physical economy. Monitor live quotes and request USDC investments across commodities, energy, oil, and major equities.
           </p>
         </div>
       </div>
@@ -2272,6 +2280,22 @@ function MiningPlace() {
         <EmptyState title="No assets available" detail="Real-world benchmarks are currently offline." />
       ) : (
         <div className="animate-rise grid gap-10">
+          <section className="surface rounded-2xl p-5 sm:p-6">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+              <div><p className="eyebrow">Your investments</p><h2 className="mt-1 text-lg font-extrabold">Mining Place positions</h2></div>
+              <span className="font-mono-ui text-sm text-primary">Available: {money(investments.data?.availableUsdc ?? 0)} USDC</span>
+            </div>
+            {investments.isLoading ? <div className="mt-4"><LoadingState lines={2} /></div> : !investments.data?.investments.length ? (
+              <p className="mt-4 text-sm text-muted-foreground">Open an asset to submit your first investment request.</p>
+            ) : <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {investments.data.investments.map(investment => <div key={investment.id} className="rounded-xl border border-border bg-background/40 p-4">
+                <div className="flex items-center justify-between"><strong>{investment.symbol}</strong><span className={`text-xs font-bold capitalize ${investment.status === 'active' ? 'text-[#2db87a]' : investment.status === 'rejected' ? 'text-destructive' : 'text-accent'}`}>{investment.status}</span></div>
+                <p className="mt-2 font-mono-ui text-lg">{money(investment.approvedAmount ?? investment.requestedAmount)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{investment.units?.toFixed(6) ?? '—'} units · {dateLabel(investment.createdAt)}</p>
+                {investment.adminNote && <p className="mt-2 text-xs text-muted-foreground">{investment.adminNote}</p>}
+              </div>)}
+            </div>}
+          </section>
           <div className="flex items-center justify-between border-b border-border/60 pb-4">
              <h2 className="text-sm font-bold text-foreground">Market Feeds</h2>
              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -2303,6 +2327,11 @@ function MiningPlaceDetail() {
       placeholderData: (prev) => prev
     }
   });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey() } });
+  const createInvestment = useCreateMiningInvestment();
+  const queryClient = useQueryClient();
+  const [investmentAmount, setInvestmentAmount] = useState('');
+  const [investmentMessage, setInvestmentMessage] = useState('');
   const item = miningPlace.data?.assets.find((asset) => asset.symbol.toLowerCase() === symbol.toLowerCase());
   const chart = useMemo(() => {
     if (!item) return [];
@@ -2330,9 +2359,7 @@ function MiningPlaceDetail() {
         <>
           <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div className="flex items-center gap-4">
-              <span className="grid h-14 w-14 place-items-center rounded-2xl text-xl font-extrabold text-[#071326]" style={{ backgroundColor: item.color }}>
-                {item.symbol.slice(0, 1)}
-              </span>
+              <MiningLogo symbol={item.symbol} name={item.name} color={item.color} size={56} />
               <div>
                 <p className="eyebrow">{item.symbol} benchmark</p>
                 <h1 className="mt-1 text-3xl font-extrabold tracking-[-.05em]">{item.name}</h1>
@@ -2348,6 +2375,31 @@ function MiningPlaceDetail() {
             <Stat label="Category" value={categoryLabels[item.category] ?? item.category} />
             <Stat label="Feed" value={item.status === 'live' ? 'Live quote' : item.status === 'stale' ? 'Stale quote' : 'Fallback quote'} accent={item.status === 'live'} />
             <Stat label="Updated" value={new Date(item.updatedAt).toLocaleTimeString()} />
+          </div>
+          <div className="surface mt-7 grid gap-6 rounded-2xl p-5 sm:grid-cols-[1fr_.8fr] sm:p-7">
+            <div>
+              <p className="eyebrow">USDC investment request</p>
+              <h2 className="mt-2 text-xl font-extrabold">Invest in {item.name}</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Your request remains pending until an administrator reviews it. USDC is deducted only after approval.</p>
+              <p className="mt-4 text-sm font-bold text-primary">Available: {money(investments.data?.availableUsdc ?? 0)} USDC</p>
+            </div>
+            <form className="grid gap-3" onSubmit={(event) => {
+              event.preventDefault();
+              const amount = Number(investmentAmount);
+              createInvestment.mutate({ data: { symbol: item.symbol as never, amount } }, {
+                onSuccess: () => {
+                  setInvestmentAmount('');
+                  setInvestmentMessage('Investment request submitted for admin review.');
+                  queryClient.invalidateQueries({ queryKey: getGetMiningInvestmentsQueryKey() });
+                },
+                onError: (error) => setInvestmentMessage(error instanceof Error ? error.message : 'Unable to submit request.'),
+              });
+            }}>
+              <Field label="Amount (USDC)" type="number" min="0.01" step="0.01" value={investmentAmount} onChange={event => setInvestmentAmount(event.target.value)} required data-testid="input-mining-investment-amount" />
+              <p className="text-xs text-muted-foreground">Estimated units: {investmentAmount && Number(investmentAmount) > 0 ? (Number(investmentAmount) / item.price).toFixed(8) : '0.00000000'}</p>
+              {investmentMessage && <p className="text-xs font-semibold text-primary" data-testid="status-mining-investment">{investmentMessage}</p>}
+              <Button type="submit" disabled={createInvestment.isPending} data-testid="button-submit-mining-investment">{createInvestment.isPending ? 'Submitting…' : 'Submit for review'}</Button>
+            </form>
           </div>
           <div className="surface mt-7 rounded-2xl p-5 sm:p-7">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">

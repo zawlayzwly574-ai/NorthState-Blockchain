@@ -11,5 +11,6 @@ export interface AdminStats {
   pendingDeposits: number;
   pendingWithdrawals: number;
   pendingKyc: number;
+  pendingInvestments: number;
   totalTransactions: number;
 }

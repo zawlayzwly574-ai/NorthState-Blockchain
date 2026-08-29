@@ -22,6 +22,7 @@ import type {
 import type {
   Activity,
   AdminKyc,
+  AdminMiningInvestment,
   AdminStats,
   AdminSupportDetail,
   AdminSupportList,
@@ -33,6 +34,7 @@ import type {
   AdminTransaction,
   AdminUser,
   AdminUserDetail,
+  CreateMiningInvestmentInput,
   DepositInput,
   FxRates,
   HealthStatus,
@@ -40,6 +42,8 @@ import type {
   KycStatus,
   MarketAsset,
   MarketDetail,
+  MiningInvestment,
+  MiningInvestmentList,
   MiningPlaceSummary,
   Notification,
   PasskeyBeginInput,
@@ -67,6 +71,7 @@ import type {
   TradingAccount,
   Transaction,
   TransferInput,
+  UpdateMiningInvestmentInput,
   UpdateProfileInput,
   VerifySmsOtpInput,
   VerifySmsOtpResult
@@ -341,7 +346,7 @@ export const getGetMiningPlaceUrl = () => {
 }
 
 /**
- * Returns cached public quotes for commodities, sectors, real estate, and major stocks.
+ * Returns cached public quotes for commodities, sectors, oil, and major stocks.
  * @summary Get real-world asset benchmark quotes
  */
 export const getMiningPlace = async ( options?: Parameters<typeof customFetch>[1]): Promise<MiningPlaceSummary> => {
@@ -409,6 +414,154 @@ export function useGetMiningPlace<TData = Awaited<ReturnType<typeof getMiningPla
 
 
 
+
+export const getGetMiningInvestmentsUrl = () => {
+
+
+
+
+  return `/api/mining-investments`
+}
+
+/**
+ * @summary List the signed-in user's Mining Place investments
+ */
+export const getMiningInvestments = async ( options?: Parameters<typeof customFetch>[1]): Promise<MiningInvestmentList> => {
+
+  return customFetch<MiningInvestmentList>(getGetMiningInvestmentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMiningInvestmentsQueryKey = () => {
+    return [
+    `/api/mining-investments`
+    ] as const;
+    }
+
+
+export const getGetMiningInvestmentsQueryOptions = <TData = Awaited<ReturnType<typeof getMiningInvestments>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMiningInvestments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMiningInvestmentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMiningInvestments>>> = ({ signal }) => getMiningInvestments({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMiningInvestments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMiningInvestmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getMiningInvestments>>>
+export type GetMiningInvestmentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List the signed-in user's Mining Place investments
+ */
+
+export function useGetMiningInvestments<TData = Awaited<ReturnType<typeof getMiningInvestments>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMiningInvestments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMiningInvestmentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMiningInvestmentUrl = () => {
+
+
+
+
+  return `/api/mining-investments`
+}
+
+/**
+ * @summary Submit a Mining Place investment request
+ */
+export const createMiningInvestment = async (createMiningInvestmentInput: CreateMiningInvestmentInput, options?: Parameters<typeof customFetch>[1]): Promise<MiningInvestment> => {
+
+  return customFetch<MiningInvestment>(getCreateMiningInvestmentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createMiningInvestmentInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMiningInvestmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMiningInvestment>>, TError,{data: BodyType<CreateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMiningInvestment>>, TError,{data: BodyType<CreateMiningInvestmentInput>}, TContext> => {
+
+const mutationKey = ['createMiningInvestment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMiningInvestment>>, {data: BodyType<CreateMiningInvestmentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMiningInvestment(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMiningInvestmentMutationResult = NonNullable<Awaited<ReturnType<typeof createMiningInvestment>>>
+    export type CreateMiningInvestmentMutationBody = BodyType<CreateMiningInvestmentInput>
+    export type CreateMiningInvestmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Submit a Mining Place investment request
+ */
+export const useCreateMiningInvestment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMiningInvestment>>, TError,{data: BodyType<CreateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMiningInvestment>>,
+        TError,
+        {data: BodyType<CreateMiningInvestmentInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMiningInvestmentMutationOptions(options));
+    }
 
 export const getGetMarketDetailUrl = (symbol: string,) => {
 
@@ -2681,6 +2834,298 @@ export const useRejectKyc = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getRejectKycMutationOptions(options));
+    }
+
+export const getGetAdminMiningInvestmentsUrl = () => {
+
+
+
+
+  return `/api/admin/mining-investments`
+}
+
+/**
+ * @summary List all Mining Place investment requests
+ */
+export const getAdminMiningInvestments = async ( options?: Parameters<typeof customFetch>[1]): Promise<AdminMiningInvestment[]> => {
+
+  return customFetch<AdminMiningInvestment[]>(getGetAdminMiningInvestmentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminMiningInvestmentsQueryKey = () => {
+    return [
+    `/api/admin/mining-investments`
+    ] as const;
+    }
+
+
+export const getGetAdminMiningInvestmentsQueryOptions = <TData = Awaited<ReturnType<typeof getAdminMiningInvestments>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMiningInvestments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminMiningInvestmentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminMiningInvestments>>> = ({ signal }) => getAdminMiningInvestments({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminMiningInvestments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminMiningInvestmentsQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminMiningInvestments>>>
+export type GetAdminMiningInvestmentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all Mining Place investment requests
+ */
+
+export function useGetAdminMiningInvestments<TData = Awaited<ReturnType<typeof getAdminMiningInvestments>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminMiningInvestments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminMiningInvestmentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateAdminMiningInvestmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/mining-investments/${id}`
+}
+
+/**
+ * @summary Adjust an investment before approval or while active
+ */
+export const updateAdminMiningInvestment = async (id: string,
+    updateMiningInvestmentInput: UpdateMiningInvestmentInput, options?: Parameters<typeof customFetch>[1]): Promise<MiningInvestment> => {
+
+  return customFetch<MiningInvestment>(getUpdateAdminMiningInvestmentUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateMiningInvestmentInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAdminMiningInvestmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminMiningInvestment>>, TError,{id: string;data: BodyType<UpdateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAdminMiningInvestment>>, TError,{id: string;data: BodyType<UpdateMiningInvestmentInput>}, TContext> => {
+
+const mutationKey = ['updateAdminMiningInvestment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAdminMiningInvestment>>, {id: string;data: BodyType<UpdateMiningInvestmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAdminMiningInvestment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAdminMiningInvestmentMutationResult = NonNullable<Awaited<ReturnType<typeof updateAdminMiningInvestment>>>
+    export type UpdateAdminMiningInvestmentMutationBody = BodyType<UpdateMiningInvestmentInput>
+    export type UpdateAdminMiningInvestmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Adjust an investment before approval or while active
+ */
+export const useUpdateAdminMiningInvestment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAdminMiningInvestment>>, TError,{id: string;data: BodyType<UpdateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAdminMiningInvestment>>,
+        TError,
+        {id: string;data: BodyType<UpdateMiningInvestmentInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAdminMiningInvestmentMutationOptions(options));
+    }
+
+export const getApproveMiningInvestmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/mining-investments/${id}/approve`
+}
+
+/**
+ * @summary Approve and settle a pending investment
+ */
+export const approveMiningInvestment = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<MiningInvestment> => {
+
+  return customFetch<MiningInvestment>(getApproveMiningInvestmentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getApproveMiningInvestmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveMiningInvestment>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveMiningInvestment>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['approveMiningInvestment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveMiningInvestment>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  approveMiningInvestment(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveMiningInvestmentMutationResult = NonNullable<Awaited<ReturnType<typeof approveMiningInvestment>>>
+
+    export type ApproveMiningInvestmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Approve and settle a pending investment
+ */
+export const useApproveMiningInvestment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveMiningInvestment>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveMiningInvestment>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getApproveMiningInvestmentMutationOptions(options));
+    }
+
+export const getRejectMiningInvestmentUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/mining-investments/${id}/reject`
+}
+
+/**
+ * @summary Reject a pending investment
+ */
+export const rejectMiningInvestment = async (id: string,
+    updateMiningInvestmentInput?: UpdateMiningInvestmentInput, options?: Parameters<typeof customFetch>[1]): Promise<MiningInvestment> => {
+
+  return customFetch<MiningInvestment>(getRejectMiningInvestmentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateMiningInvestmentInput)
+  }
+);}
+
+
+
+
+
+export const getRejectMiningInvestmentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectMiningInvestment>>, TError,{id: string;data?: BodyType<UpdateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectMiningInvestment>>, TError,{id: string;data?: BodyType<UpdateMiningInvestmentInput>}, TContext> => {
+
+const mutationKey = ['rejectMiningInvestment'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectMiningInvestment>>, {id: string;data?: BodyType<UpdateMiningInvestmentInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  rejectMiningInvestment(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectMiningInvestmentMutationResult = NonNullable<Awaited<ReturnType<typeof rejectMiningInvestment>>>
+    export type RejectMiningInvestmentMutationBody = BodyType<UpdateMiningInvestmentInput> | undefined
+    export type RejectMiningInvestmentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Reject a pending investment
+ */
+export const useRejectMiningInvestment = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectMiningInvestment>>, TError,{id: string;data?: BodyType<UpdateMiningInvestmentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectMiningInvestment>>,
+        TError,
+        {id: string;data?: BodyType<UpdateMiningInvestmentInput>},
+        TContext
+      > => {
+      return useMutation(getRejectMiningInvestmentMutationOptions(options));
     }
 
 export const getGetSupportMessagesUrl = () => {

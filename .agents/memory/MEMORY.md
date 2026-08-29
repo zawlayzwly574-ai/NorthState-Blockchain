@@ -4,3 +4,4 @@
 - [Swap and FX features](swap-fx-features.md) — instant crypto swap route, fx-rates route (Frankfurter), multi-currency display, market auto-refresh, API key for CoinGecko.
 - [Market provider identity checks](market-provider-identity.md) — validate CoinGecko IDs and Binance base assets independently before adding market symbols.
 - [SMS OTP verification](sms-otp.md) — Twilio-backed phone verification; OTP store pattern, DB columns, codegen flow, trial-account caveat.
+- [Mining investment settlement](mining-investment-settlement.md) — pending requests reserve USDC logically; only admin approval atomically debits holdings and activates the position.

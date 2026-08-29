@@ -62,7 +62,7 @@ paths:
       operationId: getMiningPlace
       tags: [markets]
       summary: Get real-world asset benchmark quotes
-      description: Returns cached public quotes for commodities, sectors, real estate, and major stocks.
+      description: Returns cached public quotes for commodities, sectors, oil, and major stocks.
       responses:
         "200":
           description: Mining Place benchmark quotes
@@ -70,6 +70,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MiningPlaceSummary"
+  /mining-investments:
+    get:
+      operationId: getMiningInvestments
+      tags: [portfolio]
+      summary: List the signed-in user's Mining Place investments
+      responses:
+        "200":
+          description: Investment list and available USDC
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MiningInvestmentList" }
+    post:
+      operationId: createMiningInvestment
+      tags: [portfolio]
+      summary: Submit a Mining Place investment request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMiningInvestmentInput" }
+      responses:
+        "201":
+          description: Pending investment request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MiningInvestment" }
   /markets/{symbol}:
     get:
       operationId: getMarketDetail
@@ -555,6 +581,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminKyc"
+  /admin/mining-investments:
+    get:
+      operationId: getAdminMiningInvestments
+      tags: [admin]
+      summary: List all Mining Place investment requests
+      responses:
+        "200":
+          description: Investment requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminMiningInvestment" }
+  /admin/mining-investments/{id}:
+    patch:
+      operationId: updateAdminMiningInvestment
+      tags: [admin]
+      summary: Adjust an investment before approval or while active
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMiningInvestmentInput" }
+      responses:
+        "200":
+          description: Updated investment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MiningInvestment" }
+  /admin/mining-investments/{id}/approve:
+    post:
+      operationId: approveMiningInvestment
+      tags: [admin]
+      summary: Approve and settle a pending investment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Active investment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MiningInvestment" }
+  /admin/mining-investments/{id}/reject:
+    post:
+      operationId: rejectMiningInvestment
+      tags: [admin]
+      summary: Reject a pending investment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMiningInvestmentInput" }
+      responses:
+        "200":
+          description: Rejected investment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MiningInvestment" }
   /support/messages:
     get:
       operationId: getSupportMessages
@@ -754,7 +842,7 @@ components:
       properties:
         symbol: { type: string }
         name: { type: string }
-        category: { type: string, enum: [gold, energy, stock, oil, real_estate] }
+        category: { type: string, enum: [gold, energy, stock, oil] }
         price: { type: number }
         change24h: { type: number }
         currency: { type: string }
@@ -770,6 +858,54 @@ components:
           type: array
           items: { $ref: "#/components/schemas/MiningPlaceAsset" }
         updatedAt: { type: string }
+    CreateMiningInvestmentInput:
+      type: object
+      required: [symbol, amount]
+      properties:
+        symbol: { type: string, enum: [GOLD, XLE, OIL, AAPL, TSLA, NVDA, MSFT, AMZN] }
+        amount: { type: number, exclusiveMinimum: 0 }
+    UpdateMiningInvestmentInput:
+      type: object
+      properties:
+        approvedAmount: { type: number, exclusiveMinimum: 0 }
+        currentValue: { type: number, minimum: 0 }
+        adminNote: { type: string, maxLength: 1000 }
+    MiningInvestment:
+      type: object
+      required: [id, symbol, assetName, category, requestedAmount, entryPrice, currentValue, gainLoss, status, adminNote, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        symbol: { type: string }
+        assetName: { type: string }
+        category: { type: string, enum: [gold, energy, stock, oil] }
+        requestedAmount: { type: number }
+        approvedAmount: { type: [number, "null"] }
+        units: { type: [number, "null"] }
+        entryPrice: { type: number }
+        currentValue: { type: number }
+        gainLoss: { type: number }
+        status: { type: string, enum: [pending, active, rejected] }
+        adminNote: { type: string }
+        createdAt: { type: string }
+        reviewedAt: { type: [string, "null"] }
+        updatedAt: { type: string }
+    MiningInvestmentList:
+      type: object
+      required: [investments, availableUsdc]
+      properties:
+        investments:
+          type: array
+          items: { $ref: "#/components/schemas/MiningInvestment" }
+        availableUsdc: { type: number }
+    AdminMiningInvestment:
+      allOf:
+        - { $ref: "#/components/schemas/MiningInvestment" }
+        - type: object
+          required: [clerkUserId, displayName, email]
+          properties:
+            clerkUserId: { type: string }
+            displayName: { type: string }
+            email: { type: string }
     Profile:
       type: object
       required: [id, name, email, initials, verificationStatus, twoFactorEnabled]
@@ -1161,12 +1297,13 @@ components:
         executedAt: { type: string }
     AdminStats:
       type: object
-      required: [totalUsers, pendingDeposits, pendingWithdrawals, pendingKyc, totalTransactions]
+      required: [totalUsers, pendingDeposits, pendingWithdrawals, pendingKyc, pendingInvestments, totalTransactions]
       properties:
         totalUsers: { type: number }
         pendingDeposits: { type: number }
         pendingWithdrawals: { type: number }
         pendingKyc: { type: number }
+        pendingInvestments: { type: number }
         totalTransactions: { type: number }
     AdminUser:
       type: object

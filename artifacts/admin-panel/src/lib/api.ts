@@ -33,7 +33,8 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   }
 
   if (!res.ok) {
-    throw new Error(`API Error: ${res.statusText}`);
+    const body = await res.json().catch(() => null) as { error?: string } | null;
+    throw new Error(body?.error || `API Error: ${res.statusText}`);
   }
 
   return res.json();
@@ -45,8 +46,55 @@ export interface AdminStats {
   pendingDeposits: number;
   pendingWithdrawals: number;
   pendingKyc: number;
+  pendingInvestments: number;
   totalTransactions: number;
 }
+
+export interface MiningInvestment {
+  id: string;
+  clerkUserId: string;
+  displayName: string;
+  email: string;
+  symbol: string;
+  assetName: string;
+  requestedAmount: number;
+  approvedAmount: number | null;
+  units: number | null;
+  entryPrice: number;
+  currentValue: number;
+  gainLoss: number;
+  status: 'pending' | 'active' | 'rejected';
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useAdminMiningInvestments() {
+  return useQuery<MiningInvestment[]>({
+    queryKey: ['admin', 'mining-investments'],
+    queryFn: () => apiClient('/mining-investments'),
+    refetchInterval: 5000,
+  });
+}
+
+function useMiningInvestmentMutation(action: 'approve' | 'reject' | 'update') {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: Record<string, unknown> }) =>
+      apiClient(action === 'update' ? `/mining-investments/${id}` : `/mining-investments/${id}/${action}`, {
+        method: action === 'update' ? 'PATCH' : 'POST',
+        body: JSON.stringify(data ?? {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'mining-investments'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+    },
+  });
+}
+
+export function useApproveMiningInvestment() { return useMiningInvestmentMutation('approve'); }
+export function useRejectMiningInvestment() { return useMiningInvestmentMutation('reject'); }
+export function useUpdateMiningInvestment() { return useMiningInvestmentMutation('update'); }
 
 export interface User {
   id: string;

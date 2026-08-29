@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MiningPlaceAssetCategory = typeof MiningPlaceAssetCategory[keyof typeof MiningPlaceAssetCategory];
+export type MiningInvestmentCategory = typeof MiningInvestmentCategory[keyof typeof MiningInvestmentCategory];
 
 
-export const MiningPlaceAssetCategory = {
+export const MiningInvestmentCategory = {
   gold: 'gold',
   energy: 'energy',
   stock: 'stock',

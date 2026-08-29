@@ -137,6 +137,24 @@ export const transactionsTable = pgTable("wallet_transactions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const miningInvestmentsTable = pgTable("mining_investments", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  assetName: text("asset_name").notNull(),
+  category: text("category").notNull(),
+  requestedAmount: numeric("requested_amount", { precision: 20, scale: 8 }).notNull(),
+  approvedAmount: numeric("approved_amount", { precision: 20, scale: 8 }),
+  units: numeric("units", { precision: 30, scale: 12 }),
+  entryPrice: numeric("entry_price", { precision: 20, scale: 8 }).notNull(),
+  currentValue: numeric("current_value", { precision: 20, scale: 8 }).notNull().default("0"),
+  status: text("status").notNull().default("pending"),
+  adminNote: text("admin_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertWalletProfileSchema = createInsertSchema(walletProfilesTable).omit({
   id: true,
   createdAt: true,
@@ -154,15 +172,23 @@ export const insertTransactionSchema = createInsertSchema(transactionsTable).omi
   id: true,
   createdAt: true,
 });
+export const insertMiningInvestmentSchema = createInsertSchema(miningInvestmentsTable).omit({
+  id: true,
+  createdAt: true,
+  reviewedAt: true,
+  updatedAt: true,
+});
 
 export type WalletProfile = typeof walletProfilesTable.$inferSelect;
 export type Holding = typeof holdingsTable.$inferSelect;
 export type Activity = typeof activitiesTable.$inferSelect;
 export type KycSubmission = typeof kycSubmissionsTable.$inferSelect;
 export type Transaction = typeof transactionsTable.$inferSelect;
+export type MiningInvestment = typeof miningInvestmentsTable.$inferSelect;
 export type Passkey = typeof passkeysTable.$inferSelect;
 export type InsertWalletProfile = z.infer<typeof insertWalletProfileSchema>;
 export type InsertHolding = z.infer<typeof insertHoldingSchema>;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 export type InsertKycSubmission = z.infer<typeof insertKycSubmissionSchema>;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type InsertMiningInvestment = z.infer<typeof insertMiningInvestmentSchema>;
