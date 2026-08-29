@@ -32,10 +32,12 @@ description: Instant crypto swap route, Frankfurter FX rates, multi-currency bal
 - Dashboard fetches FX rates via `useGetFxRates`; `cx(usdValue)` multiplies by `fxRate` before passing to `money()`.
 
 ## Market auto-refresh
-- `useGetMarketSummary`: `refetchInterval: 30_000` (30 s).
-- `useGetMarketDetail`: `refetchInterval: 15_000` (15 s).
+- `useGetMarketSummary` and `useGetMarketDetail`: `refetchInterval: 3_000` (3 s).
+- CoinGecko remains the primary quote provider; missing or failed quotes are filled from Binance's public 24-hour ticker feed before legacy fallback values are considered.
 - Portfolio/activity: `refetchInterval: 60_000`.
 - FX rates: `refetchInterval: 5 * 60_000`, `staleTime: 5 * 60_000`.
+
+**Why:** CoinGecko returned 400/429 responses from the running API despite being reachable publicly, so a second live source prevents the Market UI from appearing frozen during provider-specific failures or throttling.
 
 ## OpenAPI/codegen
 - Added `/markets/fx-rates` GET → `FxRates` schema.

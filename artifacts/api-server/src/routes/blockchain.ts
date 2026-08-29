@@ -236,15 +236,72 @@ if (MARKET_API_KEY) {
   marketHeaders["x-cg-demo-api-key"] = MARKET_API_KEY;
 }
 
+type MarketQuote = {
+  usd?: number;
+  usd_24h_change?: number;
+  usd_market_cap?: number;
+  usd_24h_vol?: number;
+};
+
+type BinanceTicker = {
+  symbol?: string;
+  lastPrice?: string;
+  priceChangePercent?: string;
+  quoteVolume?: string;
+};
+
+const binanceSymbols: Record<string, string> = {
+  bitcoin: "BTCUSDT",
+  ethereum: "ETHUSDT",
+  binancecoin: "BNBUSDT",
+  "usd-coin": "USDCUSDT",
+  dai: "DAIUSDT",
+  "first-digital-usd": "FDUSDUSDT",
+};
+
+function isValidMarketQuote(quote: MarketQuote | undefined) {
+  return Number.isFinite(quote?.usd) && (quote?.usd ?? 0) > 0;
+}
+
+async function fetchBinanceMarketData(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+) {
+  const symbols = Object.values(binanceSymbols);
+  const endpoint = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
+
+  try {
+    const response = await fetch(endpoint, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      req.log.warn({ status: response.status }, "Alternate market provider returned a non-success status");
+      return {} as Record<string, MarketQuote>;
+    }
+
+    const tickers = (await response.json()) as BinanceTicker[];
+    return tickers.reduce<Record<string, MarketQuote>>((quotes, ticker) => {
+      const marketId = Object.entries(binanceSymbols).find(([, symbol]) => symbol === ticker.symbol)?.[0];
+      const price = Number(ticker.lastPrice);
+      if (marketId && Number.isFinite(price) && price > 0) {
+        quotes[marketId] = {
+          usd: price,
+          usd_24h_change: Number(ticker.priceChangePercent),
+          usd_24h_vol: Number(ticker.quoteVolume),
+        };
+      }
+      return quotes;
+    }, {});
+  } catch (error) {
+    req.log.warn({ err: error }, "Alternate market provider could not be reached");
+    return {} as Record<string, MarketQuote>;
+  }
+}
+
 async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]) {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
   const endpoint = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
-  let liveData: Record<string, {
-    usd?: number;
-    usd_24h_change?: number;
-    usd_market_cap?: number;
-    usd_24h_vol?: number;
-  }> = {};
+  let liveData: Record<string, MarketQuote> = {};
 
   try {
     const response = await fetch(endpoint, {
@@ -257,7 +314,17 @@ async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[
       req.log.warn({ status: response.status }, "Market provider returned a non-success status");
     }
   } catch (error) {
-    req.log.warn({ err: error }, "Market provider could not be reached; using cached quotes");
+    req.log.warn({ err: error }, "Market provider could not be reached; trying alternate quotes");
+  }
+
+  const missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
+  if (missingIds) {
+    const alternateData = await fetchBinanceMarketData(req);
+    for (const definition of marketDefinitions) {
+      if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(alternateData[definition.id])) {
+        liveData[definition.id] = alternateData[definition.id];
+      }
+    }
   }
 
   return marketDefinitions.map((definition) => {
