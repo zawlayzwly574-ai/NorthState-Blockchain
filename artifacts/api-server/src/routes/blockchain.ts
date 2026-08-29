@@ -32,6 +32,7 @@ import {
   GetMarketDetailParams,
   GetMarketDetailResponse,
   GetMarketSummaryResponse,
+  GetMiningPlaceResponse,
   GetPortfolioResponse,
   GetProfileResponse,
   GetReferralResponse,
@@ -47,6 +48,30 @@ type MarketDefinition = {
   id: string;
   color: string;
   rank: number;
+};
+
+type MiningPlaceDefinition = {
+  symbol: string;
+  name: string;
+  category: "gold" | "energy" | "stock" | "oil" | "real_estate";
+  yahooSymbol: string;
+  unit: string;
+  fallbackPrice: number;
+  fallbackChange: number;
+  color: string;
+};
+
+type MiningPlaceAsset = {
+  symbol: string;
+  name: string;
+  category: MiningPlaceDefinition["category"];
+  price: number;
+  change24h: number;
+  currency: string;
+  unit: string;
+  status: "live" | "stale" | "fallback";
+  updatedAt: string;
+  color: string;
 };
 
 const marketDefinitions: MarketDefinition[] = [
@@ -78,6 +103,23 @@ const seedChanges: Record<string, number> = {
   dai: -0.03,
   "first-digital-usd": 0.04,
 };
+
+const miningPlaceDefinitions: MiningPlaceDefinition[] = [
+  { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", fallbackPrice: 2348.4, fallbackChange: 0.42, color: "#d6ad3b" },
+  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", fallbackPrice: 91.72, fallbackChange: 0.68, color: "#4dbb8a" },
+  { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", fallbackPrice: 78.34, fallbackChange: -0.31, color: "#9d7b52" },
+  { symbol: "VNQ", name: "Real Estate", category: "real_estate", yahooSymbol: "VNQ", unit: "share", fallbackPrice: 88.26, fallbackChange: 0.24, color: "#7b9bb8" },
+  { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", fallbackPrice: 229.35, fallbackChange: 0.87, color: "#b8c1cc" },
+  { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", fallbackPrice: 348.68, fallbackChange: -1.14, color: "#d86464" },
+  { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", fallbackPrice: 181.22, fallbackChange: 1.92, color: "#76b900" },
+  { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", fallbackPrice: 506.69, fallbackChange: 0.51, color: "#4a9fe3" },
+  { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", fallbackPrice: 231.62, fallbackChange: -0.22, color: "#e8a43a" },
+];
+
+let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
+let miningPlaceRefreshPromise: Promise<{ assets: MiningPlaceAsset[]; ts: number }> | null = null;
+const MINING_PLACE_TTL = 30_000;
+const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 
 function getUserId(req: Request) {
   return getAuth(req).userId!;
@@ -348,6 +390,104 @@ router.get("/markets", async (req, res) => {
   res.json(data);
 });
 
+router.get("/mining-place", async (req, res) => {
+  const now = Date.now();
+  if (miningPlaceCache && now - miningPlaceCache.ts < MINING_PLACE_TTL) {
+    res.json(GetMiningPlaceResponse.parse({
+      assets: miningPlaceCache.assets,
+      updatedAt: new Date(miningPlaceCache.ts).toISOString(),
+    }));
+    return;
+  }
+
+  if (!miningPlaceRefreshPromise) {
+    const previousAssets = new Map(miningPlaceCache?.assets.map((asset) => [asset.symbol, asset]));
+    miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset> => {
+    try {
+      const response = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(definition.yahooSymbol)}?range=1d&interval=5m`,
+        {
+          headers: { accept: "application/json", "user-agent": "Mozilla/5.0 NorthStateBlockchain/1.0" },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Quote provider returned ${response.status}`);
+      }
+      const payload = (await response.json()) as {
+        chart?: {
+          result?: Array<{
+            meta?: {
+              currency?: string;
+              regularMarketPrice?: number;
+              chartPreviousClose?: number;
+              previousClose?: number;
+              regularMarketTime?: number;
+            };
+          }>;
+        };
+      };
+      const meta = payload.chart?.result?.[0]?.meta;
+      const price = Number(meta?.regularMarketPrice);
+      const previousClose = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+      if (!Number.isFinite(price) || price <= 0) {
+        throw new Error("Quote provider did not return a valid price");
+      }
+      const change24h = Number.isFinite(previousClose) && previousClose > 0
+        ? ((price - previousClose) / previousClose) * 100
+        : definition.fallbackChange;
+      return {
+        symbol: definition.symbol,
+        name: definition.name,
+        category: definition.category,
+        price,
+        change24h,
+        currency: meta?.currency ?? "USD",
+        unit: definition.unit,
+        status: "live",
+        updatedAt: new Date((meta?.regularMarketTime ?? Math.floor(now / 1000)) * 1000).toISOString(),
+        color: definition.color,
+      };
+    } catch (error) {
+      req.log.warn({ err: error, symbol: definition.symbol }, "Mining Place quote provider could not be reached");
+      const previous = previousAssets.get(definition.symbol);
+      const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;
+      if (
+        previous
+        && previous.status !== "fallback"
+        && Number.isFinite(previousTimestamp)
+        && now - previousTimestamp <= MINING_PLACE_MAX_STALE_AGE
+      ) {
+        return { ...previous, status: "stale" };
+      }
+      return {
+        symbol: definition.symbol,
+        name: definition.name,
+        category: definition.category,
+        price: definition.fallbackPrice,
+        change24h: definition.fallbackChange,
+        currency: "USD",
+        unit: definition.unit,
+        status: "fallback",
+        updatedAt: new Date(now).toISOString(),
+        color: definition.color,
+      };
+    }
+    })).then((assets) => {
+      miningPlaceCache = { assets, ts: Date.now() };
+      return miningPlaceCache;
+    }).finally(() => {
+      miningPlaceRefreshPromise = null;
+    });
+  }
+
+  const refreshed = await miningPlaceRefreshPromise;
+  res.json(GetMiningPlaceResponse.parse({
+    assets: refreshed.assets,
+    updatedAt: new Date(refreshed.ts).toISOString(),
+  }));
+});
+
 // ─── FX rates (Frankfurter / ECB, free, no key needed) ───────────────────────
 let fxCache: { rates: Record<string, number>; ts: number } | null = null;
 const FX_TTL = 5 * 60_000; // 5 min
@@ -548,6 +688,18 @@ router.post("/referral", async (req, res) => {
 
 router.post("/kyc", async (req, res) => {
   const body = SubmitKycBody.parse(req.body);
+  const encodedDocument = body.documentImageBase64.slice("data:image/jpeg;base64,".length);
+  const normalizedDocument = encodedDocument.replace(/=+$/, "");
+  const documentBytes = Buffer.from(encodedDocument, "base64");
+  const normalizedDecodedDocument = documentBytes.toString("base64").replace(/=+$/, "");
+  const isJpeg = documentBytes.length >= 64
+    && documentBytes[0] === 0xff
+    && documentBytes[1] === 0xd8
+    && documentBytes[2] === 0xff;
+  if (!isJpeg || normalizedDecodedDocument !== normalizedDocument) {
+    res.status(400).json({ error: "A valid combined JPEG document image is required." });
+    return;
+  }
   const userId = getUserId(req);
   await ensureSeededUser(userId);
   const [submission] = await db.insert(kycSubmissionsTable).values({
@@ -558,7 +710,7 @@ router.post("/kyc", async (req, res) => {
     occupation: body.occupation,
     ssn: "",
     documentType: body.documentType,
-    documentImageBase64: body.documentImageBase64 ?? null,
+    documentImageBase64: body.documentImageBase64,
     status: "pending",
   }).returning();
   await db.update(walletProfilesTable)

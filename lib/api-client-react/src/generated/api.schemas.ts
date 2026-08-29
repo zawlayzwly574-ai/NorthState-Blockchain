@@ -30,6 +30,44 @@ export interface MarketDetail {
   chart: ChartPoint[];
 }
 
+export type MiningPlaceAssetCategory = typeof MiningPlaceAssetCategory[keyof typeof MiningPlaceAssetCategory];
+
+
+export const MiningPlaceAssetCategory = {
+  gold: 'gold',
+  energy: 'energy',
+  stock: 'stock',
+  oil: 'oil',
+  real_estate: 'real_estate',
+} as const;
+
+export type MiningPlaceAssetStatus = typeof MiningPlaceAssetStatus[keyof typeof MiningPlaceAssetStatus];
+
+
+export const MiningPlaceAssetStatus = {
+  live: 'live',
+  stale: 'stale',
+  fallback: 'fallback',
+} as const;
+
+export interface MiningPlaceAsset {
+  symbol: string;
+  name: string;
+  category: MiningPlaceAssetCategory;
+  price: number;
+  change24h: number;
+  currency: string;
+  unit: string;
+  status: MiningPlaceAssetStatus;
+  updatedAt: string;
+  color: string;
+}
+
+export interface MiningPlaceSummary {
+  assets: MiningPlaceAsset[];
+  updatedAt: string;
+}
+
 export type ProfileVerificationStatus = typeof ProfileVerificationStatus[keyof typeof ProfileVerificationStatus];
 
 
@@ -401,7 +439,12 @@ export interface KycInput {
   /** @minLength 1 */
   occupation: string;
   documentType: KycInputDocumentType;
-  documentImageBase64?: string;
+  /**
+     * @minLength 100
+     * @maxLength 1850000
+     * @pattern ^data:image/jpeg;base64,
+     */
+  documentImageBase64: string;
 }
 
 export type KycStatusStatus = typeof KycStatusStatus[keyof typeof KycStatusStatus];

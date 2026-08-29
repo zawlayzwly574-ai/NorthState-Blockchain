@@ -39,6 +39,12 @@ description: Instant crypto swap route, Frankfurter FX rates, multi-currency bal
 
 **Why:** CoinGecko returned 400/429 responses from the running API despite being reachable publicly, so a second live source prevents the Market UI from appearing frozen during provider-specific failures or throttling.
 
+## Mining Place quotes
+- Real-world benchmark quotes are deliberately isolated from the crypto market feed and never mutate holdings, transactions, or account data.
+- Public-provider refreshes must be single-flight. Preserve a recent successful quote as explicitly stale during outages, then expire to an explicit fallback rather than retaining stale data forever.
+
+**Why:** The quote provider can throttle concurrent batches. Sharing one refresh protects reliability, while visible stale/fallback states keep degraded data honest.
+
 ## OpenAPI/codegen
 - Added `/markets/fx-rates` GET → `FxRates` schema.
 - Added `/transactions/swap` POST → `SwapInput` / `SwapResult` schemas.

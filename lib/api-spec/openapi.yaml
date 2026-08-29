@@ -57,6 +57,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FxRates"
+  /mining-place:
+    get:
+      operationId: getMiningPlace
+      tags: [markets]
+      summary: Get real-world asset benchmark quotes
+      description: Returns cached public quotes for commodities, sectors, real estate, and major stocks.
+      responses:
+        "200":
+          description: Mining Place benchmark quotes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MiningPlaceSummary"
   /markets/{symbol}:
     get:
       operationId: getMarketDetail
@@ -735,6 +748,28 @@ components:
         chart:
           type: array
           items: { $ref: "#/components/schemas/ChartPoint" }
+    MiningPlaceAsset:
+      type: object
+      required: [symbol, name, category, price, change24h, currency, unit, status, updatedAt, color]
+      properties:
+        symbol: { type: string }
+        name: { type: string }
+        category: { type: string, enum: [gold, energy, stock, oil, real_estate] }
+        price: { type: number }
+        change24h: { type: number }
+        currency: { type: string }
+        unit: { type: string }
+        status: { type: string, enum: [live, stale, fallback] }
+        updatedAt: { type: string }
+        color: { type: string }
+    MiningPlaceSummary:
+      type: object
+      required: [assets, updatedAt]
+      properties:
+        assets:
+          type: array
+          items: { $ref: "#/components/schemas/MiningPlaceAsset" }
+        updatedAt: { type: string }
     Profile:
       type: object
       required: [id, name, email, initials, verificationStatus, twoFactorEnabled]
@@ -1056,14 +1091,18 @@ components:
             - $ref: "#/components/schemas/AdminKyc"
     KycInput:
       type: object
-      required: [fullName, country, city, occupation, documentType]
+      required: [fullName, country, city, occupation, documentType, documentImageBase64]
       properties:
         fullName: { type: string, minLength: 2 }
         country: { type: string, minLength: 2 }
         city: { type: string, minLength: 1 }
         occupation: { type: string, minLength: 1 }
         documentType: { type: string, enum: [passport, drivers_license, national_id] }
-        documentImageBase64: { type: string }
+        documentImageBase64:
+          type: string
+          minLength: 100
+          maxLength: 1850000
+          pattern: "^data:image/jpeg;base64,"
     KycStatus:
       type: object
       required: [status, submittedAt]

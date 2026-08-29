@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import {
   getGetActivityQueryKey, getGetFxRatesQueryKey, getGetMarketDetailQueryKey, getGetMarketSummaryQueryKey, getGetPortfolioQueryKey,
-  getGetProfileQueryKey, getGetReferralQueryKey,
+  getGetProfileQueryKey, getGetReferralQueryKey, getGetMiningPlaceQueryKey,
   useCreateDeposit, useCreateReferralShare, useCreateSend, useCreateSwap, useCreateWithdrawal,
   useGetActivity, useGetFxRates, useGetMarketDetail, useGetMarketSummary, useGetNotifications, useGetPortfolio, useGetProfile,
   useGetReferral, useSubmitKyc, useUpdateProfile,
@@ -21,7 +21,9 @@ import {
   useListPasskeys, useBeginPasskeyRegistration, useFinishPasskeyRegistration, useDeletePasskey,
   useSendSmsOtp, useVerifySmsOtp,
   useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
+  useGetMiningPlace,
 } from '@workspace/api-client-react';
+import type { MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -144,7 +146,7 @@ function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: 
 }
 
 function PublicNav() {
-  return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
+  return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
 }
 
 function Home() {
@@ -339,7 +341,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     setLastSeen(ts);
     localStorage.setItem('notif-last-seen', ts);
   };
-  const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
+  const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
   const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
   const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
@@ -1719,6 +1721,7 @@ function Settings() {
   const [docFrontFileName, setDocFrontFileName] = useState('');
   const [docBackFileName, setDocBackFileName] = useState('');
   const [docUploadError, setDocUploadError] = useState('');
+  const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
   const profileData = profile.data;
   const referralData = referral.data;
@@ -1738,16 +1741,27 @@ function Settings() {
       const img = new Image();
       img.onerror = () => reject(new Error('The selected image could not be decoded.'));
       img.onload = () => {
-        const MAX = 1200;
+        const MAX = 1000;
         let { width, height } = img;
+        if (!width || !height) {
+          reject(new Error('The selected image has invalid dimensions.'));
+          return;
+        }
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
           else { width = Math.round((width * MAX) / height); height = MAX; }
         }
         const canvas = document.createElement('canvas');
         canvas.width = width; canvas.height = height;
-        canvas.getContext('2d')?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
+        const context = canvas.getContext('2d');
+        if (!context) {
+          reject(new Error('The selected image could not be prepared.'));
+          return;
+        }
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.74));
       };
       img.src = raw;
     };
@@ -1759,8 +1773,12 @@ function Settings() {
     if (!file) return;
     e.target.value = '';
     setDocUploadError('');
-    if (!file.type.startsWith('image/')) {
-      setDocUploadError('Please upload an image file for both sides of your ID.');
+    setKycSubmitError('');
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const supportedExtension = extension != null && ['jfif', 'jpg', 'jpeg', 'png'].includes(extension);
+    const supportedMime = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png'].includes(file.type.toLowerCase());
+    if (!supportedExtension && !supportedMime) {
+      setDocUploadError('Please upload a .jfif, .jpg, .jpeg, or .png image.');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
@@ -1803,7 +1821,17 @@ function Settings() {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
       context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      let quality = 0.74;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length > 1_600_000 && quality > 0.42) {
+        quality -= 0.08;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      if (result.length > 1_850_000) {
+        reject(new Error('The combined ID images are too large.'));
+        return;
+      }
+      resolve(result);
     };
     frontImage.onerror = onError; backImage.onerror = onError;
     frontImage.onload = onLoad; backImage.onload = onLoad;
@@ -1818,33 +1846,34 @@ function Settings() {
       return;
     }
     setDocUploadError('');
+    setKycSubmitError('');
     setDocComposing(true);
-    let combinedDocument: string;
     try {
       // Keep the existing single-image API/database contract backward-compatible
       // by storing both required sides in one reviewable composite image.
-      combinedDocument = await composeDocumentImages(docFrontPreview, docBackPreview);
-    } catch {
-      setDocUploadError('We could not prepare both ID images. Please upload them again.');
+      const combinedDocument = await composeDocumentImages(docFrontPreview, docBackPreview);
+      const result = await kyc.mutateAsync({
+        data: {
+          fullName: String(form.get('fullName')).trim(),
+          country: String(form.get('country')).trim(),
+          city: String(form.get('city')).trim(),
+          occupation: String(form.get('occupation')).trim(),
+          documentType: String(form.get('documentType')) as 'passport' | 'drivers_license' | 'national_id',
+          documentImageBase64: combinedDocument,
+        }
+      });
+      qc.setQueryData(getGetProfileQueryKey(), (old: typeof profileData) => old ? { ...old, verificationStatus: result.status } : old);
+      showFeedback('Verification submitted — awaiting admin review.');
+    } catch (error) {
+      const apiError = error as { status?: number; data?: { error?: string } };
+      if (apiError.status === 413) {
+        setKycSubmitError('The ID images are still too large. Please choose smaller images and try again.');
+      } else {
+        setKycSubmitError(apiError.data?.error || 'We could not submit your details. Check your connection and try again.');
+      }
+    } finally {
       setDocComposing(false);
-      return;
     }
-    setDocComposing(false);
-    kyc.mutate({
-      data: {
-        fullName: String(form.get('fullName')),
-        country: String(form.get('country')),
-        city: String(form.get('city')),
-        occupation: String(form.get('occupation')),
-        documentType: String(form.get('documentType')) as 'passport' | 'drivers_license' | 'national_id',
-        documentImageBase64: combinedDocument,
-      }
-    }, {
-      onSuccess: (result) => {
-        qc.setQueryData(getGetProfileQueryKey(), (old: typeof profileData) => old ? { ...old, verificationStatus: result.status } : old);
-        showFeedback('Verification submitted — awaiting admin review.');
-      }
-    });
   };
 
   const copyReferral = () => {
@@ -2014,7 +2043,7 @@ function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JPG or PNG — max 5 MB each.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG — max 5 MB each.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
@@ -2029,7 +2058,7 @@ function Settings() {
                               <p className="truncate text-sm font-semibold">{fileName || `Choose ${side} image`}</p>
                               <p className="text-xs text-muted-foreground">Image only</p>
                             </div>
-                            <input id={id} type="file" accept="image/*" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
+                            <input id={id} type="file" accept=".jfif,.jpg,.jpeg,.png,image/jpeg,image/png" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
                           </label>
                           {preview && (
                             <div className="overflow-hidden rounded-xl border border-border">
@@ -2045,9 +2074,9 @@ function Settings() {
                   <Button type="submit" className="mt-2 sm:w-fit" disabled={kyc.isPending || docComposing} data-testid="button-submit-kyc">
                     {kyc.isPending || docComposing ? 'Preparing…' : 'Submit for review'} <ArrowUpRight size={16} />
                   </Button>
-                  {kyc.isError && (
+                  {kycSubmitError && (
                     <p className="text-sm font-semibold text-destructive" data-testid="status-kyc-error">
-                      We could not submit your details. Please try again.
+                      {kycSubmitError}
                     </p>
                   )}
                 </form>
@@ -2102,7 +2131,115 @@ function Settings() {
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { const [location] = useLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
 function TradingRoute() { return <Shell><TradingPage /></Shell>; }
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={Dashboard} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/activity" component={ActivityPage} /><Route path="/trading" component={TradingRoute} /><Route path="/settings" component={Settings} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+const categoryLabels: Record<string, string> = {
+  gold: 'Gold & Precious Metals',
+  energy: 'Energy & Power',
+  stock: 'Major Equities',
+  oil: 'Oil & Gas',
+  real_estate: 'Real Estate'
+};
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === 'live') return <span className="inline-flex items-center gap-1.5 rounded-md bg-[#2db87a]/15 px-2 py-0.5 text-[10px] font-bold text-[#2db87a] uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-[#2db87a] animate-pulse" />Live</span>;
+  if (status === 'stale') return <span className="inline-flex items-center gap-1.5 rounded-md bg-[#f6ad3c]/15 px-2 py-0.5 text-[10px] font-bold text-[#f6ad3c] uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-[#f6ad3c]" />Stale</span>;
+  return <span className="inline-flex items-center gap-1.5 rounded-md bg-destructive/15 px-2 py-0.5 text-[10px] font-bold text-destructive uppercase tracking-widest"><span className="h-1.5 w-1.5 rounded-full bg-destructive" />Fallback</span>;
+}
+
+function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
+  return (
+    <div className="surface flex flex-col justify-between rounded-2xl p-5 hover:bg-secondary/45 transition duration-300" data-testid={`card-mining-${asset.symbol}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-inner bg-background/50 border border-border" style={{ borderColor: `${asset.color}40` }}>
+             <span className="text-sm font-extrabold" style={{ color: asset.color }}>{asset.symbol.slice(0, 3)}</span>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-foreground">{asset.name}</p>
+            <p className="font-mono-ui text-xs text-muted-foreground">{asset.symbol}</p>
+          </div>
+        </div>
+        <StatusBadge status={asset.status} />
+      </div>
+      <div className="mt-8 flex items-end justify-between">
+        <div>
+          <p className="font-mono-ui text-2xl font-extrabold tracking-tight text-foreground">
+            {new Intl.NumberFormat('en-US', { style: 'currency', currency: asset.currency }).format(asset.price)}
+          </p>
+          {asset.unit && <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Per {asset.unit}</p>}
+        </div>
+        <p className={`font-mono-ui text-sm font-bold ${asset.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>
+          {pct(asset.change24h)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MiningPlace() {
+  const { data, isLoading, isError, refetch } = useGetMiningPlace({
+    query: {
+      queryKey: getGetMiningPlaceQueryKey(),
+      refetchInterval: 10_000,
+      placeholderData: (prev) => prev
+    }
+  });
+
+  const assetsByCategory = useMemo(() => {
+    if (!data?.assets) return {};
+    const grouped: Record<string, MiningPlaceAsset[]> = {};
+    for (const asset of data.assets) {
+      if (!grouped[asset.category]) grouped[asset.category] = [];
+      grouped[asset.category].push(asset);
+    }
+    return grouped;
+  }, [data]);
+
+  const categories = Object.keys(assetsByCategory).sort();
+
+  return (
+    <Shell>
+      <div className="relative mb-10 overflow-hidden rounded-3xl border border-primary/20 bg-[#171209] p-8 sm:p-12 shadow-xl">
+        <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-[80px]" />
+        <div className="relative z-10">
+          <p className="eyebrow flex items-center gap-2"><Landmark size={14} /> Mining Place</p>
+          <h1 className="mt-4 text-3xl font-extrabold tracking-[-.04em] text-foreground sm:text-4xl">Real-World Benchmarks</h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            A grounded perspective on the physical economy. Monitor live quotes across commodities, energy, major equities, and real estate.
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <LoadingState lines={7} />
+      ) : isError ? (
+        <ErrorState retry={() => refetch()} />
+      ) : !data || data.assets.length === 0 ? (
+        <EmptyState title="No assets available" detail="Real-world benchmarks are currently offline." />
+      ) : (
+        <div className="animate-rise grid gap-10">
+          <div className="flex items-center justify-between border-b border-border/60 pb-4">
+             <h2 className="text-sm font-bold text-foreground">Market Feeds</h2>
+             <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+               <RefreshCw size={12} className="text-primary" /> Updated {new Date(data.updatedAt).toLocaleTimeString()}
+             </span>
+          </div>
+          {categories.map(category => (
+            <section key={category}>
+              <h3 className="mb-5 text-xs font-extrabold uppercase tracking-widest text-muted-foreground">{categoryLabels[category] || category}</h3>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {assetsByCategory[category].map(asset => (
+                  <AssetCard key={asset.symbol} asset={asset} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </Shell>
+  );
+}
+
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={Dashboard} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place" component={MiningPlace} /><Route path="/activity" component={ActivityPage} /><Route path="/trading" component={TradingRoute} /><Route path="/settings" component={Settings} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);

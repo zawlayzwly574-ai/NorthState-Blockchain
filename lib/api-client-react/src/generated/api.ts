@@ -40,6 +40,7 @@ import type {
   KycStatus,
   MarketAsset,
   MarketDetail,
+  MiningPlaceSummary,
   Notification,
   PasskeyBeginInput,
   PasskeyBeginResult,
@@ -319,6 +320,84 @@ export function useGetFxRates<TData = Awaited<ReturnType<typeof getFxRates>>, TE
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetFxRatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetMiningPlaceUrl = () => {
+
+
+
+
+  return `/api/mining-place`
+}
+
+/**
+ * Returns cached public quotes for commodities, sectors, real estate, and major stocks.
+ * @summary Get real-world asset benchmark quotes
+ */
+export const getMiningPlace = async ( options?: Parameters<typeof customFetch>[1]): Promise<MiningPlaceSummary> => {
+
+  return customFetch<MiningPlaceSummary>(getGetMiningPlaceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMiningPlaceQueryKey = () => {
+    return [
+    `/api/mining-place`
+    ] as const;
+    }
+
+
+export const getGetMiningPlaceQueryOptions = <TData = Awaited<ReturnType<typeof getMiningPlace>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMiningPlace>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMiningPlaceQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMiningPlace>>> = ({ signal }) => getMiningPlace({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMiningPlace>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMiningPlaceQueryResult = NonNullable<Awaited<ReturnType<typeof getMiningPlace>>>
+export type GetMiningPlaceQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get real-world asset benchmark quotes
+ */
+
+export function useGetMiningPlace<TData = Awaited<ReturnType<typeof getMiningPlace>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMiningPlace>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMiningPlaceQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
