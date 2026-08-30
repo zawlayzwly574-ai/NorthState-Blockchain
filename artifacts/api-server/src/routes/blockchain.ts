@@ -275,6 +275,10 @@ function asNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
 
+function emailPrefix(email: string) {
+  return email.trim().split("@")[0] || "Unknown user";
+}
+
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
@@ -1652,6 +1656,8 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         .from(holdingsTable)
         .where(eq(holdingsTable.clerkUserId, profile.clerkUserId));
       const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
+      const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
+      const email = clerkInfo.email || profile.email;
       let accountStatus: AccountOperationalStatus | "deleted" = "active";
       try {
         accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
@@ -1662,8 +1668,8 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       return {
         id: String(profile.id),
         clerkUserId: profile.clerkUserId,
-        displayName: profile.displayName,
-        email: profile.email,
+        displayName: clerkInfo.name || emailPrefix(email),
+        email,
         verificationStatus: profile.verificationStatus,
         referralCode: profile.referralCode,
         totalHoldings,
