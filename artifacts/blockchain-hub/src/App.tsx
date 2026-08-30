@@ -1745,6 +1745,7 @@ function ActivityPage() {
 
 function Settings() {
   const { signOut } = useClerk();
+  const { user } = useUser();
   const qc = useQueryClient();
   const profile = useGetProfile();
   const referral = useGetReferral();
@@ -1990,7 +1991,7 @@ function Settings() {
                 : (
                   <>
                     <div className="mt-7 grid gap-4 sm:grid-cols-2">
-                      <Stat label="Account ID" value={profileData?.id ?? '—'} />
+                      <Stat label="Account ID" value={user?.id ?? '—'} />
                       <Stat label="Verification status" value={verStatus ?? 'unverified'} accent={verStatus === 'verified'} />
                       <Stat label="Email" value={profileData?.email ?? '—'} />
                       <Stat label="Referral code" value={profileData?.initials ? `NORTHSTATE-${profileData.id?.slice(-6).toUpperCase()}` : '—'} />
