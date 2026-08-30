@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -16,6 +16,7 @@ import {
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
 } from '@workspace/api-client-react';
+import type { Trade } from '@workspace/api-client-react';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -215,6 +216,125 @@ function TimeframeSheet({
   );
 }
 
+function formatTradeTimestamp(timestamp: string | null | undefined) {
+  if (!timestamp) return '—';
+  return new Date(timestamp).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function formatTradePrice(price: number | null | undefined) {
+  if (price === null || price === undefined || !Number.isFinite(price)) return '—';
+  return price.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 8,
+  });
+}
+
+function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => void }) {
+  const result = trade.result ?? (trade.status === 'completed' ? 'pending' : trade.status);
+  const direction = trade.direction === 'long' ? 'Buy Long' : 'Sell Short';
+  const netProfitLoss = trade.payout ?? (
+    result === 'win'
+      ? trade.amount * trade.payoutRate
+      : result === 'loss'
+        ? -trade.amount
+        : null
+  );
+  const resultLabel = result.charAt(0).toUpperCase() + result.slice(1);
+  const resultTone = result === 'win'
+    ? 'text-green-400'
+    : result === 'loss'
+      ? 'text-red-400'
+      : 'text-muted-foreground';
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        className="fixed inset-x-4 top-1/2 z-50 max-h-[calc(100dvh-2rem)] -translate-y-1/2 overflow-y-auto rounded-3xl border border-border bg-[hsl(222_10%_8%)] p-5 shadow-2xl sm:left-1/2 sm:right-auto sm:w-[min(28rem,calc(100vw-2rem))] sm:-translate-x-1/2"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trade-detail-title"
+      >
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trade Details</p>
+            <h2 id="trade-detail-title" className="mt-1 text-xl font-extrabold tracking-tight">
+              {trade.asset}/USD
+            </h2>
+            <p className={`mt-1 text-sm font-bold ${trade.direction === 'long' ? 'text-green-400' : 'text-red-400'}`}>
+              {direction}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary/70 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            aria-label="Close trade details"
+            data-testid="button-close-trade-details"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-1 rounded-2xl bg-secondary/25 p-3">
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Entry Time (Started)</span>
+            <time className="text-right text-xs font-bold" dateTime={trade.createdAt}>
+              {formatTradeTimestamp(trade.createdAt)}
+            </time>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Expiry / Closed Time</span>
+            <time className="text-right text-xs font-bold" dateTime={trade.settledAt ?? trade.expiresAt}>
+              {formatTradeTimestamp(trade.settledAt ?? trade.expiresAt)}
+            </time>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Invested Amount</span>
+            <span className="font-mono text-sm font-bold">${trade.amount.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Payout Rate</span>
+            <span className="font-mono text-sm font-bold">{(trade.payoutRate * 100).toFixed(0)}%</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Open Price</span>
+            <span className="font-mono text-sm font-bold">${formatTradePrice(trade.entryPrice)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Close Price</span>
+            <span className="font-mono text-sm font-bold">
+              {trade.exitPrice === null || trade.exitPrice === undefined ? '—' : `$${formatTradePrice(trade.exitPrice)}`}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-4 px-1 py-3">
+            <span className="text-xs text-muted-foreground">Status</span>
+            <span className={`rounded-full bg-secondary px-2.5 py-1 text-[10px] font-extrabold uppercase ${resultTone}`}>
+              {resultLabel}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-2xl border border-border/60 bg-secondary/25 px-4 py-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Net Profit / Loss</span>
+          <span className={`font-mono text-lg font-extrabold ${resultTone}`}>
+            {netProfitLoss === null
+              ? '—'
+              : `${netProfitLoss >= 0 ? '+' : '-'}$${Math.abs(netProfitLoss).toFixed(2)}`}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main Trading Page ────────────────────────────────────────────────────────
 
 export function TradingPage() {
@@ -222,6 +342,7 @@ export function TradingPage() {
   const [amount, setAmount] = useState('100');
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
+  const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
@@ -238,6 +359,9 @@ export function TradingPage() {
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
+  const selectedTrade = selectedTradeId === null
+    ? null
+    : trades.find(trade => trade.id === selectedTradeId) ?? null;
   const assetActiveTrade = activeTrades.find(t => t.asset === asset);
   const entryPrice = assetActiveTrade ? Number(assetActiveTrade.entryPrice) : undefined;
 
@@ -537,9 +661,13 @@ export function TradingPage() {
           </h3>
           <div className="space-y-1.5">
             {history.map(trade => (
-              <div
+              <button
+                type="button"
                 key={trade.id}
-                className="flex items-center justify-between rounded-xl bg-secondary/20 px-3 py-2"
+                onClick={() => setSelectedTradeId(trade.id)}
+                className="flex w-full items-center justify-between rounded-xl bg-secondary/20 px-3 py-2 text-left transition hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`View details for ${trade.asset} ${trade.direction === 'long' ? 'buy long' : 'sell short'} trade`}
+                data-testid={`button-trade-history-${trade.id}`}
               >
                 <div className="flex items-center gap-2">
                   <span
@@ -575,7 +703,7 @@ export function TradingPage() {
                     {trade.result}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -587,6 +715,12 @@ export function TradingPage() {
           value={timeframeSecs}
           onChange={setTimeframeSecs}
           onClose={() => setShowPicker(false)}
+        />
+      )}
+      {selectedTrade && (
+        <TradeDetailModal
+          trade={selectedTrade}
+          onClose={() => setSelectedTradeId(null)}
         />
       )}
     </div>
