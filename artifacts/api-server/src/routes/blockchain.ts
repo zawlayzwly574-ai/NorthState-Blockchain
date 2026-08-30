@@ -210,18 +210,65 @@ function getUserId(req: Request) {
   return getAuth(req).userId!;
 }
 
+type AccountOperationalStatus = "active" | "suspended" | "frozen";
+const accountStatusKey = "accountStatus";
+const accountStatusCache = new Map<string, { status: AccountOperationalStatus; expiresAt: number }>();
+const ACCOUNT_STATUS_CACHE_TTL = 15_000;
+
+async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
+  if (userId === "demo_user") return "active";
+  const cached = accountStatusCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.status;
+  const user = await clerkClient.users.getUser(userId);
+  const status = user.privateMetadata?.[accountStatusKey];
+  const normalized = status === "suspended" || status === "frozen" ? status : "active";
+  accountStatusCache.set(userId, { status: normalized, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
+  return normalized;
+}
+
+async function setAccountOperationalStatus(userId: string, status: AccountOperationalStatus) {
+  const user = await clerkClient.users.getUser(userId);
+  const privateMetadata = {
+    ...(user.privateMetadata as Record<string, unknown>),
+    [accountStatusKey]: status,
+  };
+  await clerkClient.users.updateUserMetadata(userId, { privateMetadata });
+  accountStatusCache.set(userId, { status, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
+}
+
+function isFrozenOperation(req: Request) {
+  const protectedPaths = ["/portfolio", "/mining-investments", "/transactions", "/trading"];
+  return protectedPaths.some((path) => req.path === path || req.path.startsWith(`${path}/`));
+}
+
 function requireMember(req: Request, res: Response, next: NextFunction) {
   if (req.path.startsWith("/admin")) {
     next();
     return;
   }
 
-  if (!getAuth(req).userId) {
+  const userId = getAuth(req).userId;
+  if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  next();
+  void getAccountOperationalStatus(userId)
+    .then((status) => {
+      if (status === "suspended" || (status === "frozen" && isFrozenOperation(req))) {
+        res.status(403).json({
+          error: status === "suspended"
+            ? "This account is suspended."
+            : "This account is frozen and cannot perform this operation.",
+          accountStatus: status,
+        });
+        return;
+      }
+      next();
+    })
+    .catch(() => {
+      res.status(503).json({ error: "Unable to verify account status. Please try again." });
+    });
 }
 
 function asNumber(value: string | number | null | undefined) {
@@ -1605,6 +1652,13 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         .from(holdingsTable)
         .where(eq(holdingsTable.clerkUserId, profile.clerkUserId));
       const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
+      let accountStatus: AccountOperationalStatus | "deleted" = "active";
+      try {
+        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
+      } catch (error: unknown) {
+        if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
+        else throw error;
+      }
       return {
         id: String(profile.id),
         clerkUserId: profile.clerkUserId,
@@ -1614,10 +1668,53 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         referralCode: profile.referralCode,
         totalHoldings,
         createdAt: profile.createdAt.toISOString(),
+        accountStatus,
       };
     }),
   );
   res.json(result);
+});
+
+router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
+  const userId = String(req.params.userId);
+  const status = req.body?.status;
+  if (status !== "active" && status !== "suspended" && status !== "frozen") {
+    res.status(400).json({ error: "Account status must be active, suspended, or frozen." });
+    return;
+  }
+  if (userId === "demo_user") {
+    res.status(400).json({ error: "The demo account cannot be changed." });
+    return;
+  }
+  try {
+    await setAccountOperationalStatus(userId, status);
+    res.json({ userId, accountStatus: status });
+  } catch (error: unknown) {
+    if ((error as { status?: number })?.status === 404) {
+      res.status(404).json({ error: "User account not found." });
+      return;
+    }
+    res.status(500).json({ error: "Unable to update account status." });
+  }
+});
+
+router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
+  const userId = String(req.params.userId);
+  if (userId === "demo_user") {
+    res.status(400).json({ error: "The demo account cannot be deleted." });
+    return;
+  }
+  try {
+    await clerkClient.users.deleteUser(userId);
+    accountStatusCache.delete(userId);
+    res.json({ deleted: true, userId });
+  } catch (error: unknown) {
+    if ((error as { status?: number })?.status === 404) {
+      res.status(404).json({ error: "User account not found." });
+      return;
+    }
+    res.status(500).json({ error: "Unable to delete user account." });
+  }
 });
 
 router.get("/admin/users/:userId", requireAdmin, async (req, res) => {

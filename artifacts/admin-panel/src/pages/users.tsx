@@ -1,8 +1,14 @@
 import { useState } from 'react';
-import { useAdminUsers, useAdminUserDetail } from '@/lib/api';
+import {
+  useAdminUsers,
+  useAdminUserDetail,
+  useUpdateAdminUserStatus,
+  useDeleteAdminUser,
+} from '@/lib/api';
 import {
   Search, ShieldAlert, ShieldCheck, Shield, Loader2,
   X, ArrowUpRight, ArrowDownLeft, Coins, FileCheck, TrendingUp, User,
+  Ban, Snowflake, Trash2, Unlock,
 } from 'lucide-react';
 import {
   Dialog,
@@ -33,6 +39,22 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
+function AccountStatusBadge({ status }: { status: UserStatus }) {
+  const cls: Record<UserStatus, string> = {
+    active: 'bg-emerald-500/15 text-emerald-400',
+    suspended: 'bg-rose-500/15 text-rose-400',
+    frozen: 'bg-sky-500/15 text-sky-400',
+    deleted: 'bg-muted/20 text-muted-foreground',
+  };
+  return (
+    <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${cls[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+type UserStatus = 'active' | 'suspended' | 'frozen' | 'deleted';
 
 function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => void }) {
   const { data, isLoading, isError } = useAdminUserDetail(userId);
@@ -234,13 +256,37 @@ function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => 
 
 export default function Users() {
   const { data: users, isLoading } = useAdminUsers();
+  const updateStatus = useUpdateAdminUserStatus();
+  const deleteUser = useDeleteAdminUser();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const filtered = users?.filter(u =>
     u.displayName.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleStatusChange = (
+    event: React.MouseEvent,
+    userId: string,
+    status: 'active' | 'suspended' | 'frozen',
+  ) => {
+    event.stopPropagation();
+    setActionError(null);
+    updateStatus.mutate({ userId, status }, {
+      onError: (error) => setActionError(error instanceof Error ? error.message : 'Unable to update account status.'),
+    });
+  };
+
+  const handleDelete = (event: React.MouseEvent, userId: string, displayName: string) => {
+    event.stopPropagation();
+    if (!window.confirm(`Permanently delete ${displayName}'s account? Existing wallet and transaction records will be preserved.`)) return;
+    setActionError(null);
+    deleteUser.mutate(userId, {
+      onError: (error) => setActionError(error instanceof Error ? error.message : 'Unable to delete user account.'),
+    });
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -262,6 +308,11 @@ export default function Users() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        {actionError && (
+          <div className="border-b border-rose-500/20 bg-rose-500/10 px-5 py-3 text-sm text-rose-300" role="alert">
+            {actionError}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="text-xs text-muted-foreground bg-muted/20 uppercase font-mono">
@@ -270,7 +321,7 @@ export default function Users() {
                 <th className="px-5 py-4 font-medium">Status</th>
                 <th className="px-5 py-4 font-medium">Portfolio</th>
                 <th className="px-5 py-4 font-medium">Joined</th>
-                <th className="px-5 py-4 font-medium w-10"></th>
+                <th className="px-5 py-4 font-medium min-w-[280px]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -302,6 +353,7 @@ export default function Users() {
                         <div>
                           <div className="font-medium text-foreground">{user.displayName}</div>
                           <div className="text-xs text-muted-foreground font-mono">{user.email}</div>
+                          <div className="mt-1 text-[10px] text-muted-foreground/70 font-mono">ID · {user.id}</div>
                         </div>
                       </div>
                     </td>
@@ -317,6 +369,7 @@ export default function Users() {
                         <span className="text-xs font-mono uppercase tracking-wider">
                           {user.verificationStatus}
                         </span>
+                        <AccountStatusBadge status={user.accountStatus} />
                       </div>
                     </td>
                     <td className="px-5 py-4">
@@ -327,8 +380,47 @@ export default function Users() {
                     <td className="px-5 py-4 text-xs font-mono text-muted-foreground">
                       {new Date(user.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="px-5 py-4">
-                      <ArrowUpRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    <td className="px-5 py-4" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          onClick={(event) => handleStatusChange(
+                            event,
+                            user.clerkUserId,
+                            user.accountStatus === 'suspended' ? 'active' : 'suspended',
+                          )}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-rose-500/25 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={user.accountStatus === 'suspended' ? 'Restore access' : 'Block / suspend user'}
+                        >
+                          {user.accountStatus === 'suspended' ? <Unlock className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+                          {user.accountStatus === 'suspended' ? 'Unblock' : 'Suspend'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          onClick={(event) => handleStatusChange(
+                            event,
+                            user.clerkUserId,
+                            user.accountStatus === 'frozen' ? 'active' : 'frozen',
+                          )}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-sky-500/25 px-2.5 py-1.5 text-[11px] font-semibold text-sky-300 transition hover:bg-sky-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={user.accountStatus === 'frozen' ? 'Unfreeze account' : 'Freeze transactions and portfolio'}
+                        >
+                          <Snowflake className="h-3.5 w-3.5" />
+                          {user.accountStatus === 'frozen' ? 'Unfreeze' : 'Freeze'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          onClick={(event) => handleDelete(event, user.clerkUserId, user.displayName)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Permanently delete user account"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

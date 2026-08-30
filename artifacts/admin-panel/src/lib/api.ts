@@ -105,6 +105,7 @@ export interface User {
   referralCode: string | null;
   totalHoldings: number;
   createdAt: string;
+  accountStatus: 'active' | 'suspended' | 'frozen' | 'deleted';
 }
 
 export interface Transaction {
@@ -178,6 +179,34 @@ export function useAdminUserDetail(userId: string) {
     queryKey: ['admin', 'users', userId],
     queryFn: () => apiClient(`/users/${userId}`),
     enabled: !!userId,
+  });
+}
+
+export function useUpdateAdminUserStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, status }: {
+      userId: string;
+      status: 'active' | 'suspended' | 'frozen';
+    }) => apiClient(`/users/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', variables.userId] });
+    },
+  });
+}
+
+export function useDeleteAdminUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => apiClient(`/users/${userId}`, { method: 'DELETE' }),
+    onSuccess: (_data, userId) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.removeQueries({ queryKey: ['admin', 'users', userId] });
+    },
   });
 }
 
