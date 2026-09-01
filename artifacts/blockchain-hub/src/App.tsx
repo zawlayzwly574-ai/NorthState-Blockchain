@@ -1520,7 +1520,7 @@ function Dashboard() {
   const [currency, setCurrency] = useState('USD');
   const [notice, setNotice] = useState('');
 
-  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 60_000, placeholderData: (prev) => prev } });
+  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000, placeholderData: (prev) => prev } });
   const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), refetchInterval: 60_000, placeholderData: (prev) => prev } });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 

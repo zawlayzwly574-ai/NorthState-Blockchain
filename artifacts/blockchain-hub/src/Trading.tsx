@@ -1,5 +1,5 @@
 // ─── Trading & Futures Module ─────────────────────────────────────────────────
-// Fully isolated — does not touch any existing wallet or KYC logic.
+// Trades settle against the same USDT wallet balance shown on Overview.
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import {
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
+  getGetPortfolioQueryKey,
 } from '@workspace/api-client-react';
 import type { Trade } from '@workspace/api-client-react';
 
@@ -368,8 +369,10 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(account?.balance ?? 10000);
-  const insufficient = tradeAmt > balance;
+  const balance = Number(account?.balance ?? 0);
+  const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
+  const availableToTrade = Math.max(0, balance - reservedBalance);
+  const insufficient = tradeAmt > availableToTrade;
   const winRate = account?.totalTrades
     ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
     : null;
@@ -386,6 +389,7 @@ export function TradingPage() {
       await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
       qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
     } catch {
       // error is surfaced via disabled state
     } finally {
@@ -399,6 +403,8 @@ export function TradingPage() {
     const nowActive = activeTrades.map(t => t.id);
     const justCompleted = prevActive.current.filter(id => !nowActive.includes(id));
     if (justCompleted.length > 0) {
+      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
       const settled = trades.filter(t => justCompleted.includes(t.id));
       const wins = settled.filter(t => t.result === 'win');
       if (wins.length > 0) {
@@ -508,7 +514,7 @@ export function TradingPage() {
           <div className="mb-1 flex items-center justify-between">
             <label className="text-xs font-bold text-muted-foreground">Trade Amount (USD)</label>
             <span className="text-[11px] text-muted-foreground">
-              Balance: <span className="font-mono font-bold">${balance.toFixed(0)}</span>
+              Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
             </span>
           </div>
           <div className="flex items-center gap-2">

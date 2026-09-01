@@ -6,4 +6,5 @@
 - [SMS OTP verification](sms-otp.md) — Twilio-backed phone verification; OTP store pattern, DB columns, codegen flow, trial-account caveat.
 - [Mining investment settlement](mining-investment-settlement.md) — pending requests reserve USDC logically; only admin approval atomically debits holdings and activates the position.
 - [User operational controls](user-operational-controls.md) — suspend/freeze state lives in Clerk private metadata; account deletion removes Clerk access while preserving local financial records.
-- [Admin balance adjustments](admin-balance-adjustments.md) — admin-only USDC credits/debits are atomic, exact-decimal, audited, and cannot consume pending Mining Place reservations.
+- [Admin balance adjustments](admin-balance-adjustments.md) — admin-only USDT-denominated canonical balance credits/debits are atomic, audited, and respect active trade reservations.
+- [Canonical trading balance](canonical-trading-balance.md) — Overview and Trading read one account balance; active stakes reserve funds, then losses debit and wins credit earnings atomically.

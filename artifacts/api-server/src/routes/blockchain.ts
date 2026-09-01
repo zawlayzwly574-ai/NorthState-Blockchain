@@ -839,17 +839,16 @@ router.get("/notifications", async (req, res) => {
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
+  await autoSettleExpiredTrades(userId);
+  const account = await getOrCreateTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-  const value = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
-  const dayChange = holdings.reduce(
-    (total, holding) => total + asNumber(holding.value) * (asNumber(holding.change24h) / 100),
-    0,
-  );
+  const value = asNumber(account.balance);
+  const dayChange = 0;
   res.json(GetPortfolioResponse.parse({
     totalValue: value,
     dayChange,
     dayChangePercent: value ? (dayChange / value) * 100 : 0,
-    cashBalance: 2480.36,
+    cashBalance: value,
     holdings: holdings.map((holding) => ({
       symbol: holding.symbol,
       name: holding.name,
@@ -1722,54 +1721,40 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
   }
 
   const result = await db.transaction(async (tx) => {
-    // The advisory lock also serializes credits when a user does not yet have a USDT row.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:USDT`}))`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:TRADING_BALANCE`}))`);
+    await tx.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
     await tx.execute(sql`
-      select id from ${holdingsTable}
-      where ${holdingsTable.clerkUserId} = ${userId}
-        and ${holdingsTable.symbol} = 'USDT'
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${userId}
       for update
     `);
-    const [holding] = await tx
+    const [account] = await tx
       .select()
-      .from(holdingsTable)
-      .where(and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDT")))
+      .from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, userId))
       .limit(1);
-    if (direction === "debit" && !holding) {
+    const balanceUpdate = direction === "credit"
+      ? sql`${tradingAccountsTable.balance} + ${amountString}`
+      : sql`${tradingAccountsTable.balance} - ${amountString}`;
+    const debitAvailability = sql`${tradingAccountsTable.balance} - coalesce((
+      select sum(${tradesTable.amount})
+      from ${tradesTable}
+      where ${tradesTable.clerkUserId} = ${userId}
+        and ${tradesTable.status} = 'active'
+    ), 0) >= ${amountString}`;
+    const [updatedAccount] = await tx
+      .update(tradingAccountsTable)
+      .set({ balance: balanceUpdate, updatedAt: new Date() })
+      .where(direction === "debit"
+        ? and(eq(tradingAccountsTable.id, account.id), debitAvailability)
+        : eq(tradingAccountsTable.id, account.id))
+      .returning();
+    if (!updatedAccount) {
       return { error: "Insufficient available USDT." };
     }
 
-    let updatedHolding;
-    if (holding) {
-      const amountUpdate = direction === "credit"
-        ? sql`${holdingsTable.amount} + ${amountString}`
-        : sql`${holdingsTable.amount} - ${amountString}`;
-      const debitAvailability = sql`${holdingsTable.amount} >= ${amountString}`;
-      [updatedHolding] = await tx
-        .update(holdingsTable)
-        .set({ amount: amountUpdate, value: amountUpdate })
-        .where(direction === "debit"
-          ? and(eq(holdingsTable.id, holding.id), debitAvailability)
-          : eq(holdingsTable.id, holding.id))
-        .returning();
-      if (!updatedHolding) {
-        return { error: "Insufficient available USDT." };
-      }
-    } else {
-      [updatedHolding] = await tx.insert(holdingsTable).values({
-        clerkUserId: userId,
-        symbol: "USDT",
-        name: "Tether",
-        amount: amountString,
-        value: amountString,
-        allocation: "0",
-        change24h: "0",
-        color: "#26A17B",
-      }).returning();
-    }
-
-    const beforeBalance = holding?.amount ?? "0";
-    const afterBalance = updatedHolding.amount;
+    const beforeBalance = account.balance;
+    const afterBalance = updatedAccount.balance;
     const [transaction] = await tx.insert(transactionsTable).values({
       clerkUserId: userId,
       type: direction === "credit" ? "deposit" : "withdrawal",
@@ -1787,7 +1772,7 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
       status: "completed",
       transactionId: transaction.id,
     });
-    return { holding: updatedHolding };
+    return { account: updatedAccount };
   });
 
   if ("error" in result) {
@@ -1799,7 +1784,7 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     asset: "USDT",
     direction,
     amount: amountString,
-    balance: asNumber(result.holding.amount),
+    balance: asNumber(result.account.balance),
   });
 });
 
@@ -1993,26 +1978,12 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
       });
     }
 
-    // Credit the same amount into the user's trading account
-    const [existingTrading] = await db
-      .select()
-      .from(tradingAccountsTable)
-      .where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId))
-      .limit(1);
-    if (existingTrading) {
-      await db
-        .update(tradingAccountsTable)
-        .set({
-          balance: String(asNumber(existingTrading.balance) + depositAmount),
-          updatedAt: new Date(),
-        })
-        .where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
-    } else {
-      await db.insert(tradingAccountsTable).values({
-        clerkUserId: tx.clerkUserId,
-        balance: String(depositAmount),
-      });
-    }
+    // Credit the canonical account balance without a read-modify-write race.
+    await db.insert(tradingAccountsTable).values({ clerkUserId: tx.clerkUserId }).onConflictDoNothing();
+    await db.update(tradingAccountsTable).set({
+      balance: sql`${tradingAccountsTable.balance} + ${tx.amount}`,
+      updatedAt: new Date(),
+    }).where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
   }
 
   // For approved withdrawals: debit holdings
@@ -2137,7 +2108,9 @@ async function getOrCreateTradingAccount(userId: string) {
   let [acct] = await db.select().from(tradingAccountsTable)
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
-    [acct] = await db.insert(tradingAccountsTable).values({ clerkUserId: userId }).returning();
+    await db.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
+    [acct] = await db.select().from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   }
   return acct;
 }
@@ -2154,16 +2127,28 @@ function mapTrade(t: typeof tradesTable.$inferSelect) {
   };
 }
 
-async function autoSettleExpiredTrades(userId: string) {
-  const active = await db.select().from(tradesTable)
-    .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
-  const now = new Date();
-  for (const trade of active) {
-    if (trade.expiresAt > now) continue;
+async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss") {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`
+      select id from ${tradesTable}
+      where ${tradesTable.id} = ${tradeId}
+      for update
+    `);
+    const [trade] = await tx.select().from(tradesTable).where(eq(tradesTable.id, tradeId)).limit(1);
+    if (!trade || trade.status !== "active") {
+      return { trade, settled: false, error: null };
+    }
+
+    const now = new Date();
     const entry = Number(trade.entryPrice);
     let outcome: "win" | "loss";
     let exitPrice: number;
-    if (trade.adminOverride) {
+    if (forcedOutcome) {
+      outcome = forcedOutcome;
+      exitPrice = outcome === "win"
+        ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
+        : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
+    } else if (trade.adminOverride) {
       outcome = trade.adminOverride as "win" | "loss";
       exitPrice = outcome === "win"
         ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
@@ -2173,28 +2158,68 @@ async function autoSettleExpiredTrades(userId: string) {
       const priceRose = exitPrice > entry;
       outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
     }
-    const payout = outcome === "win"
-      ? Number(trade.amount) * Number(trade.payoutRate)
-      : -Number(trade.amount);
-    await db.update(tradesTable).set({
-      status: "completed", result: outcome,
-      exitPrice: String(exitPrice), payout: String(payout), settledAt: now,
-    }).where(eq(tradesTable.id, trade.id));
-    const acct = await getOrCreateTradingAccount(userId);
-    const delta = outcome === "win" ? Number(trade.amount) * (1 + Number(trade.payoutRate)) : 0;
-    await db.update(tradingAccountsTable).set({
-      balance: String(Number(acct.balance) + delta),
-      wins: outcome === "win" ? acct.wins + 1 : acct.wins,
-      losses: outcome === "loss" ? acct.losses + 1 : acct.losses,
+
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
+    await tx.insert(tradingAccountsTable).values({ clerkUserId: trade.clerkUserId }).onConflictDoNothing();
+    await tx.execute(sql`
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${trade.clerkUserId}
+      for update
+    `);
+    const [account] = await tx.select().from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
+    const balanceUpdate = outcome === "win"
+      ? sql`${tradingAccountsTable.balance} + (${trade.amount}::numeric * ${trade.payoutRate}::numeric)`
+      : sql`${tradingAccountsTable.balance} - ${trade.amount}`;
+    const [updatedAccount] = await tx.update(tradingAccountsTable).set({
+      balance: balanceUpdate,
+      wins: outcome === "win" ? sql`${tradingAccountsTable.wins} + 1` : tradingAccountsTable.wins,
+      losses: outcome === "loss" ? sql`${tradingAccountsTable.losses} + 1` : tradingAccountsTable.losses,
       updatedAt: now,
-    }).where(eq(tradingAccountsTable.clerkUserId, userId));
+    }).where(outcome === "loss"
+      ? and(eq(tradingAccountsTable.id, account.id), sql`${tradingAccountsTable.balance} >= ${trade.amount}`)
+      : eq(tradingAccountsTable.id, account.id))
+      .returning();
+    if (!updatedAccount) {
+      return { trade, settled: false, error: "Insufficient USDT balance to settle this loss." };
+    }
+
+    const payoutUpdate = outcome === "win"
+      ? sql`${tradesTable.amount} * ${tradesTable.payoutRate}`
+      : sql`-${tradesTable.amount}`;
+    const [settledTrade] = await tx.update(tradesTable).set({
+      status: "completed",
+      result: outcome,
+      adminOverride: forcedOutcome ?? trade.adminOverride,
+      exitPrice: String(exitPrice),
+      payout: payoutUpdate,
+      settledAt: now,
+    }).where(and(eq(tradesTable.id, trade.id), eq(tradesTable.status, "active"))).returning();
+    if (!settledTrade) {
+      throw new Error("Trade settlement claim was lost.");
+    }
+
+    return { trade: settledTrade, settled: true, error: null, balance: updatedAccount.balance };
+  });
+}
+
+async function autoSettleExpiredTrades(userId: string) {
+  const active = await db.select().from(tradesTable)
+    .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
+  const now = new Date();
+  for (const trade of active) {
+    if (trade.expiresAt <= now) {
+      await settleActiveTrade(trade.id);
+    }
   }
 }
 
 router.get("/trading/account", async (req, res) => {
   const userId = getUserId(req);
+  await ensureSeededUser(userId);
+  await autoSettleExpiredTrades(userId);
   const acct = await getOrCreateTradingAccount(userId);
-  res.json({ balance: Number(acct.balance), totalTrades: acct.totalTrades, wins: acct.wins, losses: acct.losses });
+  res.json({ balance: asNumber(acct.balance), totalTrades: acct.totalTrades, wins: acct.wins, losses: acct.losses });
 });
 
 router.get("/trading/trades", async (req, res) => {
@@ -2217,11 +2242,10 @@ router.post("/trading/trades", async (req, res) => {
   if (!["long", "short"].includes(direction)) {
     res.status(400).json({ error: "Invalid direction." }); return;
   }
-  if (amount <= 0) { res.status(400).json({ error: "Amount must be positive." }); return; }
-  const acct = await getOrCreateTradingAccount(userId);
-  if (Number(acct.balance) < amount) {
-    res.status(400).json({ error: "Insufficient balance." }); return;
-  }
+  const amountString = normalizeStablecoinAmount(String(amount));
+  if (!amountString) { res.status(400).json({ error: "Amount must be a positive value with up to 8 decimal places." }); return; }
+  await ensureSeededUser(userId);
+  await getOrCreateTradingAccount(userId);
   let entryPrice: number;
   try {
     const assets = await fetchMarketAssets(req);
@@ -2232,16 +2256,49 @@ router.post("/trading/trades", async (req, res) => {
   }
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
-  const [trade] = await db.insert(tradesTable).values({
-    clerkUserId: userId, asset: asset.toUpperCase(), direction,
-    amount: String(amount), timeframeSecs, entryPrice: String(entryPrice),
-    expiresAt, payoutRate: "0.85",
-  }).returning();
-  const newBalance = Number(acct.balance) - amount;
-  await db.update(tradingAccountsTable).set({
-    balance: String(newBalance), totalTrades: acct.totalTrades + 1, updatedAt: now,
-  }).where(eq(tradingAccountsTable.clerkUserId, userId));
-  res.json({ tradeId: trade.id, balance: newBalance, entryPrice, expiresAt: trade.expiresAt.toISOString() });
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:TRADING_BALANCE`}))`);
+    await tx.execute(sql`
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${userId}
+      for update
+    `);
+    const [availableAccount] = await tx.select().from(tradingAccountsTable).where(and(
+      eq(tradingAccountsTable.clerkUserId, userId),
+      sql`${tradingAccountsTable.balance} - coalesce((
+        select sum(${tradesTable.amount})
+        from ${tradesTable}
+        where ${tradesTable.clerkUserId} = ${userId}
+          and ${tradesTable.status} = 'active'
+      ), 0) >= ${amountString}`,
+    )).limit(1);
+    if (!availableAccount) return null;
+    const [trade] = await tx.insert(tradesTable).values({
+      clerkUserId: userId,
+      asset: asset.toUpperCase(),
+      direction,
+      amount: amountString,
+      timeframeSecs,
+      entryPrice: String(entryPrice),
+      expiresAt,
+      payoutRate: "0.85",
+    }).returning();
+    await tx.update(tradingAccountsTable).set({
+      totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
+      updatedAt: now,
+    }).where(eq(tradingAccountsTable.clerkUserId, userId));
+    return { trade, balance: availableAccount.balance };
+  });
+  if (!result) {
+    res.status(400).json({ error: "Insufficient available USDT balance after active trade reservations." });
+    return;
+  }
+  res.json({
+    tradeId: result.trade.id,
+    balance: asNumber(result.balance),
+    entryPrice,
+    expiresAt: result.trade.expiresAt.toISOString(),
+  });
 });
 
 router.get("/admin/trading/trades", requireAdmin, async (_req, res) => {
@@ -2281,24 +2338,11 @@ router.patch("/admin/trading/trades/:id/outcome", requireAdmin, async (req, res)
   if (!trade) { res.status(404).json({ error: "Trade not found." }); return; }
   const now = new Date();
   if (trade.status === "active") {
-    const entry = Number(trade.entryPrice);
-    const rate = Number(trade.payoutRate);
-    const exitPrice = outcome === "win"
-      ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
-      : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
-    const payout = outcome === "win" ? Number(trade.amount) * rate : -Number(trade.amount);
-    await db.update(tradesTable).set({
-      status: "completed", result: outcome, adminOverride: outcome,
-      exitPrice: String(exitPrice), payout: String(payout), settledAt: now,
-    }).where(eq(tradesTable.id, tradeId));
-    const acct = await getOrCreateTradingAccount(trade.clerkUserId);
-    const delta = outcome === "win" ? Number(trade.amount) * (1 + rate) : 0;
-    await db.update(tradingAccountsTable).set({
-      balance: String(Number(acct.balance) + delta),
-      wins: outcome === "win" ? acct.wins + 1 : acct.wins,
-      losses: outcome === "loss" ? acct.losses + 1 : acct.losses,
-      updatedAt: now,
-    }).where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId));
+    const settlement = await settleActiveTrade(tradeId, outcome as "win" | "loss");
+    if (!settlement.settled) {
+      res.status(409).json({ error: settlement.error ?? "Trade is no longer active." });
+      return;
+    }
   } else {
     await db.update(tradesTable).set({ adminOverride: outcome }).where(eq(tradesTable.id, tradeId));
   }

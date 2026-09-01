@@ -539,7 +539,7 @@ export default function Users() {
               />
             </label>
             <p className="text-xs text-muted-foreground">
-              Deductions cannot exceed the user’s available USDT balance.
+              Deductions cannot exceed the user’s available USDT after active trade reservations.
             </p>
             {balanceError && (
               <p className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300" role="alert">
