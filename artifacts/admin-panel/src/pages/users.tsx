@@ -4,11 +4,12 @@ import {
   useAdminUserDetail,
   useUpdateAdminUserStatus,
   useDeleteAdminUser,
+  useAdjustAdminUserBalance,
 } from '@/lib/api';
 import {
   Search, ShieldAlert, ShieldCheck, Shield, Loader2,
   X, ArrowUpRight, ArrowDownLeft, Coins, FileCheck, TrendingUp, User,
-  Ban, Snowflake, Trash2, Unlock,
+  Ban, Snowflake, Trash2, Unlock, Wallet,
 } from 'lucide-react';
 import {
   Dialog,
@@ -258,9 +259,15 @@ export default function Users() {
   const { data: users, isLoading } = useAdminUsers();
   const updateStatus = useUpdateAdminUserStatus();
   const deleteUser = useDeleteAdminUser();
+  const adjustBalance = useAdjustAdminUserBalance();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [balanceUser, setBalanceUser] = useState<{ clerkUserId: string; displayName: string } | null>(null);
+  const [balanceDirection, setBalanceDirection] = useState<'credit' | 'debit'>('credit');
+  const [balanceAmount, setBalanceAmount] = useState('');
+  const [balanceReason, setBalanceReason] = useState('');
+  const [balanceError, setBalanceError] = useState<string | null>(null);
 
   const filtered = users?.filter(u =>
     u.displayName.toLowerCase().includes(search.toLowerCase()) ||
@@ -285,6 +292,36 @@ export default function Users() {
     setActionError(null);
     deleteUser.mutate(userId, {
       onError: (error) => setActionError(error instanceof Error ? error.message : 'Unable to delete user account.'),
+    });
+  };
+
+  const resetBalanceDialog = () => {
+    setBalanceUser(null);
+    setBalanceAmount('');
+    setBalanceReason('');
+    setBalanceDirection('credit');
+    setBalanceError(null);
+  };
+
+  const closeBalanceDialog = () => {
+    if (adjustBalance.isPending) return;
+    resetBalanceDialog();
+  };
+
+  const handleBalanceSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!balanceUser || !balanceAmount || !balanceReason.trim()) return;
+    const action = balanceDirection === 'credit' ? 'add to' : 'deduct from';
+    if (!window.confirm(`Confirm ${action} ${balanceAmount} USDC ${balanceDirection === 'credit' ? 'for' : 'from'} ${balanceUser.displayName}'s wallet balance?`)) return;
+    setBalanceError(null);
+    adjustBalance.mutate({
+      userId: balanceUser.clerkUserId,
+      direction: balanceDirection,
+      amount: balanceAmount,
+      reason: balanceReason.trim(),
+    }, {
+      onSuccess: resetBalanceDialog,
+      onError: (error) => setBalanceError(error instanceof Error ? error.message : 'Unable to adjust user balance.'),
     });
   };
 
@@ -384,7 +421,7 @@ export default function Users() {
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending || adjustBalance.isPending}
                           onClick={(event) => handleStatusChange(
                             event,
                             user.clerkUserId,
@@ -398,7 +435,7 @@ export default function Users() {
                         </button>
                         <button
                           type="button"
-                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending || adjustBalance.isPending}
                           onClick={(event) => handleStatusChange(
                             event,
                             user.clerkUserId,
@@ -412,13 +449,27 @@ export default function Users() {
                         </button>
                         <button
                           type="button"
-                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending}
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending || adjustBalance.isPending}
                           onClick={(event) => handleDelete(event, user.clerkUserId, user.displayName)}
                           className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground transition hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
                           title="Permanently delete user account"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                           Delete
+                        </button>
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || updateStatus.isPending || deleteUser.isPending || adjustBalance.isPending}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setBalanceError(null);
+                            setBalanceUser({ clerkUserId: user.clerkUserId, displayName: user.displayName });
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+                          title="Add or deduct USDC wallet balance"
+                        >
+                          <Wallet className="h-3.5 w-3.5" />
+                          Adjust Balance
                         </button>
                       </div>
                     </td>
@@ -429,6 +480,83 @@ export default function Users() {
           </table>
         </div>
       </div>
+
+      <Dialog open={!!balanceUser} onOpenChange={(open) => { if (!open) closeBalanceDialog(); }}>
+        <DialogContent className="max-w-md bg-card border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-mono">
+              <Wallet className="h-5 w-5 text-primary" />
+              Adjust USDC Balance
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleBalanceSubmit} className="space-y-5">
+            <p className="text-sm text-muted-foreground">
+              Adjusting the wallet balance for <span className="font-semibold text-foreground">{balanceUser?.displayName}</span>.
+              This does not change authentication, sessions, or other account operations.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['credit', 'debit'] as const).map((direction) => (
+                <button
+                  key={direction}
+                  type="button"
+                  onClick={() => setBalanceDirection(direction)}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold capitalize transition ${
+                    balanceDirection === direction
+                      ? direction === 'credit'
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                        : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+                      : 'border-border text-muted-foreground hover:bg-muted/20'
+                  }`}
+                >
+                  {direction === 'credit' ? 'Add balance' : 'Deduct balance'}
+                </button>
+              ))}
+            </div>
+            <label className="block text-sm font-medium">
+              Amount (USDC)
+              <input
+                type="number"
+                min="0.00000001"
+                max="1000000000"
+                step="0.00000001"
+                required
+                value={balanceAmount}
+                onChange={(event) => setBalanceAmount(event.target.value)}
+                placeholder="0.00"
+                className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2.5 font-mono text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Adjustment reason
+              <textarea
+                required
+                minLength={3}
+                maxLength={200}
+                value={balanceReason}
+                onChange={(event) => setBalanceReason(event.target.value)}
+                placeholder="Enter the reason for this balance adjustment"
+                className="mt-2 min-h-20 w-full resize-y rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Deductions cannot exceed the user’s available USDC after pending Mining Place reservations.
+            </p>
+            {balanceError && (
+              <p className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300" role="alert">
+                {balanceError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={closeBalanceDialog} disabled={adjustBalance.isPending} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted/20 disabled:opacity-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={adjustBalance.isPending || !balanceAmount || balanceReason.trim().length < 3} className={`rounded-lg px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${balanceDirection === 'credit' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'}`}>
+                {adjustBalance.isPending ? 'Applying…' : balanceDirection === 'credit' ? 'Add USDC' : 'Deduct USDC'}
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {selectedUserId && (
         <UserDetailDrawer

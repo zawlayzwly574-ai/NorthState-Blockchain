@@ -275,6 +275,17 @@ function asNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
 
+function normalizeUsdcAmount(rawAmount: string) {
+  const match = /^(?:0|[1-9]\d*)(?:\.(\d{1,8}))?$/.exec(rawAmount);
+  if (!match) return null;
+  const [wholePart] = rawAmount.split(".");
+  const fractionalPart = (match[1] ?? "").padEnd(8, "0");
+  const scale = 100_000_000n;
+  const units = BigInt(wholePart) * scale + BigInt(fractionalPart || "0");
+  if (units <= 0n || units > 1_000_000_000n * scale) return null;
+  return `${units / scale}.${(units % scale).toString().padStart(8, "0")}`;
+}
+
 function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
@@ -1679,6 +1690,122 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
     }),
   );
   res.json(result);
+});
+
+router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req, res) => {
+  const userId = String(req.params.userId);
+  const direction = req.body?.direction;
+  const rawAmount = String(req.body?.amount ?? "").trim();
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  if (direction !== "credit" && direction !== "debit") {
+    res.status(400).json({ error: "Balance adjustment direction must be credit or debit." });
+    return;
+  }
+  const amountString = normalizeUsdcAmount(rawAmount);
+  if (!amountString) {
+    res.status(400).json({ error: "Balance adjustment must be between 0 and 1,000,000,000 USDC." });
+    return;
+  }
+  if (reason.length < 3 || reason.length > 200) {
+    res.status(400).json({ error: "A balance adjustment reason between 3 and 200 characters is required." });
+    return;
+  }
+
+  const [profile] = await db
+    .select({ clerkUserId: walletProfilesTable.clerkUserId })
+    .from(walletProfilesTable)
+    .where(eq(walletProfilesTable.clerkUserId, userId))
+    .limit(1);
+  if (!profile) {
+    res.status(404).json({ error: "User not found." });
+    return;
+  }
+
+  const result = await db.transaction(async (tx) => {
+    // The advisory lock also serializes credits when a user does not yet have a USDC row.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:USDC`}))`);
+    await tx.execute(sql`
+      select id from ${holdingsTable}
+      where ${holdingsTable.clerkUserId} = ${userId}
+        and ${holdingsTable.symbol} = 'USDC'
+      for update
+    `);
+    const [holding] = await tx
+      .select()
+      .from(holdingsTable)
+      .where(and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDC")))
+      .limit(1);
+    if (direction === "debit" && !holding) {
+      return { error: "Insufficient available USDC." };
+    }
+
+    let updatedHolding;
+    if (holding) {
+      const amountUpdate = direction === "credit"
+        ? sql`${holdingsTable.amount} + ${amountString}`
+        : sql`${holdingsTable.amount} - ${amountString}`;
+      const debitAvailability = sql`${holdingsTable.amount} - coalesce((
+        select sum(coalesce(${miningInvestmentsTable.approvedAmount}, ${miningInvestmentsTable.requestedAmount}))
+        from ${miningInvestmentsTable}
+        where ${miningInvestmentsTable.clerkUserId} = ${userId}
+          and ${miningInvestmentsTable.status} = 'pending'
+      ), 0) >= ${amountString}`;
+      [updatedHolding] = await tx
+        .update(holdingsTable)
+        .set({ amount: amountUpdate, value: amountUpdate })
+        .where(direction === "debit"
+          ? and(eq(holdingsTable.id, holding.id), debitAvailability)
+          : eq(holdingsTable.id, holding.id))
+        .returning();
+      if (!updatedHolding) {
+        return { error: "Insufficient available USDC. Pending Mining Place funds may be reserved." };
+      }
+    } else {
+      [updatedHolding] = await tx.insert(holdingsTable).values({
+        clerkUserId: userId,
+        symbol: "USDC",
+        name: "USD Coin",
+        amount: amountString,
+        value: amountString,
+        allocation: "0",
+        change24h: "0",
+        color: "#2775CA",
+      }).returning();
+    }
+
+    const beforeBalance = holding?.amount ?? "0";
+    const afterBalance = updatedHolding.amount;
+    const [transaction] = await tx.insert(transactionsTable).values({
+      clerkUserId: userId,
+      type: direction === "credit" ? "deposit" : "withdrawal",
+      asset: "USDC",
+      amount: amountString,
+      destination: `Admin balance adjustment (${direction}; ${beforeBalance} -> ${afterBalance} USDC): ${reason}`,
+      status: "completed",
+    }).returning();
+    await tx.insert(activitiesTable).values({
+      clerkUserId: userId,
+      type: direction === "credit" ? "deposit" : "withdrawal",
+      asset: "USDC",
+      amount: amountString,
+      value: amountString,
+      status: "completed",
+      transactionId: transaction.id,
+    });
+    return { holding: updatedHolding };
+  });
+
+  if ("error" in result) {
+    res.status(409).json({ error: result.error });
+    return;
+  }
+  res.json({
+    userId,
+    asset: "USDC",
+    direction,
+    amount: amountString,
+    balance: asNumber(result.holding.amount),
+  });
 });
 
 router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {

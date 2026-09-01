@@ -210,6 +210,25 @@ export function useDeleteAdminUser() {
   });
 }
 
+export function useAdjustAdminUserBalance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, direction, amount, reason }: {
+      userId: string;
+      direction: 'credit' | 'debit';
+      amount: string;
+      reason: string;
+    }) => apiClient(`/users/${userId}/balance-adjustment`, {
+      method: 'POST',
+      body: JSON.stringify({ direction, amount, reason }),
+    }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', variables.userId] });
+    },
+  });
+}
+
 export function useAdminTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['admin', 'transactions'],
