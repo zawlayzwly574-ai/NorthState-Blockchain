@@ -275,7 +275,7 @@ function asNumber(value: string | number | null | undefined) {
   return Number(value ?? 0);
 }
 
-function normalizeUsdcAmount(rawAmount: string) {
+function normalizeStablecoinAmount(rawAmount: string) {
   const match = /^(?:0|[1-9]\d*)(?:\.(\d{1,8}))?$/.exec(rawAmount);
   if (!match) return null;
   const [wholePart] = rawAmount.split(".");
@@ -1701,9 +1701,9 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     res.status(400).json({ error: "Balance adjustment direction must be credit or debit." });
     return;
   }
-  const amountString = normalizeUsdcAmount(rawAmount);
+  const amountString = normalizeStablecoinAmount(rawAmount);
   if (!amountString) {
-    res.status(400).json({ error: "Balance adjustment must be between 0 and 1,000,000,000 USDC." });
+    res.status(400).json({ error: "Balance adjustment must be between 0 and 1,000,000,000 USDT." });
     return;
   }
   if (reason.length < 3 || reason.length > 200) {
@@ -1722,21 +1722,21 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
   }
 
   const result = await db.transaction(async (tx) => {
-    // The advisory lock also serializes credits when a user does not yet have a USDC row.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:USDC`}))`);
+    // The advisory lock also serializes credits when a user does not yet have a USDT row.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:USDT`}))`);
     await tx.execute(sql`
       select id from ${holdingsTable}
       where ${holdingsTable.clerkUserId} = ${userId}
-        and ${holdingsTable.symbol} = 'USDC'
+        and ${holdingsTable.symbol} = 'USDT'
       for update
     `);
     const [holding] = await tx
       .select()
       .from(holdingsTable)
-      .where(and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDC")))
+      .where(and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, "USDT")))
       .limit(1);
     if (direction === "debit" && !holding) {
-      return { error: "Insufficient available USDC." };
+      return { error: "Insufficient available USDT." };
     }
 
     let updatedHolding;
@@ -1744,12 +1744,7 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
       const amountUpdate = direction === "credit"
         ? sql`${holdingsTable.amount} + ${amountString}`
         : sql`${holdingsTable.amount} - ${amountString}`;
-      const debitAvailability = sql`${holdingsTable.amount} - coalesce((
-        select sum(coalesce(${miningInvestmentsTable.approvedAmount}, ${miningInvestmentsTable.requestedAmount}))
-        from ${miningInvestmentsTable}
-        where ${miningInvestmentsTable.clerkUserId} = ${userId}
-          and ${miningInvestmentsTable.status} = 'pending'
-      ), 0) >= ${amountString}`;
+      const debitAvailability = sql`${holdingsTable.amount} >= ${amountString}`;
       [updatedHolding] = await tx
         .update(holdingsTable)
         .set({ amount: amountUpdate, value: amountUpdate })
@@ -1758,18 +1753,18 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
           : eq(holdingsTable.id, holding.id))
         .returning();
       if (!updatedHolding) {
-        return { error: "Insufficient available USDC. Pending Mining Place funds may be reserved." };
+        return { error: "Insufficient available USDT." };
       }
     } else {
       [updatedHolding] = await tx.insert(holdingsTable).values({
         clerkUserId: userId,
-        symbol: "USDC",
-        name: "USD Coin",
+        symbol: "USDT",
+        name: "Tether",
         amount: amountString,
         value: amountString,
         allocation: "0",
         change24h: "0",
-        color: "#2775CA",
+        color: "#26A17B",
       }).returning();
     }
 
@@ -1778,15 +1773,15 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     const [transaction] = await tx.insert(transactionsTable).values({
       clerkUserId: userId,
       type: direction === "credit" ? "deposit" : "withdrawal",
-      asset: "USDC",
+      asset: "USDT",
       amount: amountString,
-      destination: `Admin balance adjustment (${direction}; ${beforeBalance} -> ${afterBalance} USDC): ${reason}`,
+      destination: `Admin balance adjustment (${direction}; ${beforeBalance} -> ${afterBalance} USDT): ${reason}`,
       status: "completed",
     }).returning();
     await tx.insert(activitiesTable).values({
       clerkUserId: userId,
       type: direction === "credit" ? "deposit" : "withdrawal",
-      asset: "USDC",
+      asset: "USDT",
       amount: amountString,
       value: amountString,
       status: "completed",
@@ -1801,7 +1796,7 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
   }
   res.json({
     userId,
-    asset: "USDC",
+    asset: "USDT",
     direction,
     amount: amountString,
     balance: asNumber(result.holding.amount),

@@ -312,7 +312,7 @@ export default function Users() {
     event.preventDefault();
     if (!balanceUser || !balanceAmount || !balanceReason.trim()) return;
     const action = balanceDirection === 'credit' ? 'add to' : 'deduct from';
-    if (!window.confirm(`Confirm ${action} ${balanceAmount} USDC ${balanceDirection === 'credit' ? 'for' : 'from'} ${balanceUser.displayName}'s wallet balance?`)) return;
+    if (!window.confirm(`Confirm ${action} ${balanceAmount} USDT ${balanceDirection === 'credit' ? 'for' : 'from'} ${balanceUser.displayName}'s wallet balance?`)) return;
     setBalanceError(null);
     adjustBalance.mutate({
       userId: balanceUser.clerkUserId,
@@ -466,7 +466,7 @@ export default function Users() {
                             setBalanceUser({ clerkUserId: user.clerkUserId, displayName: user.displayName });
                           }}
                           className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Add or deduct USDC wallet balance"
+                          title="Add or deduct USDT wallet balance"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                           Adjust Balance
@@ -486,7 +486,7 @@ export default function Users() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-mono">
               <Wallet className="h-5 w-5 text-primary" />
-              Adjust USDC Balance
+              Adjust USDT Balance
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleBalanceSubmit} className="space-y-5">
@@ -513,7 +513,7 @@ export default function Users() {
               ))}
             </div>
             <label className="block text-sm font-medium">
-              Amount (USDC)
+              Amount (USDT)
               <input
                 type="number"
                 min="0.00000001"
@@ -539,7 +539,7 @@ export default function Users() {
               />
             </label>
             <p className="text-xs text-muted-foreground">
-              Deductions cannot exceed the user’s available USDC after pending Mining Place reservations.
+              Deductions cannot exceed the user’s available USDT balance.
             </p>
             {balanceError && (
               <p className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300" role="alert">
@@ -551,7 +551,7 @@ export default function Users() {
                 Cancel
               </button>
               <button type="submit" disabled={adjustBalance.isPending || !balanceAmount || balanceReason.trim().length < 3} className={`rounded-lg px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 ${balanceDirection === 'credit' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'}`}>
-                {adjustBalance.isPending ? 'Applying…' : balanceDirection === 'credit' ? 'Add USDC' : 'Deduct USDC'}
+                {adjustBalance.isPending ? 'Applying…' : balanceDirection === 'credit' ? 'Add USDT' : 'Deduct USDT'}
               </button>
             </div>
           </form>
