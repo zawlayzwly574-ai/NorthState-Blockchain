@@ -1556,16 +1556,11 @@ function Dashboard() {
                     <p className="text-sm font-semibold text-muted-foreground">Total balance</p>
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <p className="font-mono-ui text-4xl font-medium tracking-[-.06em] sm:text-5xl" data-testid="text-total-balance">
-                        {money(cx(data.totalValue), currency)}
+                        {money(data.totalValue, 'USD')}
                       </p>
-                      <label className="relative">
-                        <select value={currency} onChange={(event) => setCurrency(event.target.value)}
-                          className="appearance-none rounded-lg border border-primary/25 bg-primary/10 py-1.5 pl-2.5 pr-7 font-mono-ui text-xs font-medium text-primary outline-none"
-                          aria-label="Balance currency" data-testid="select-balance-currency">
-                          {currencies.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                        <ChevronDown size={12} className="pointer-events-none absolute right-2 top-2.5 text-primary" />
-                      </label>
+                      <span className="rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1.5 font-mono-ui text-xs font-medium text-primary">
+                        USD
+                      </span>
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-sm">
                       <span className={`font-bold ${data.dayChange >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>
@@ -1593,6 +1588,14 @@ function Dashboard() {
                     <p className="mt-2 font-mono-ui text-3xl font-medium tracking-[-.05em]" data-testid="text-cash-balance">
                       {money(cx(data.cashBalance), currency)}
                     </p>
+                    <label className="relative mt-3 inline-block">
+                      <select value={currency} onChange={(event) => setCurrency(event.target.value)}
+                        className="appearance-none rounded-lg border border-border bg-background/60 py-1.5 pl-2.5 pr-7 font-mono-ui text-xs font-medium text-muted-foreground outline-none"
+                        aria-label="Cash and holdings display currency" data-testid="select-balance-currency">
+                        {currencies.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                      <ChevronDown size={12} className="pointer-events-none absolute right-2 top-2.5 text-muted-foreground" />
+                    </label>
                   </div>
                   <div className="grid h-11 w-11 place-items-center rounded-xl bg-accent/12 text-accent"><Landmark size={20} /></div>
                 </div>

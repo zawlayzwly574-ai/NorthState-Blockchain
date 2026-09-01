@@ -3,8 +3,8 @@ name: Canonical trading balance
 description: Shared balance source and atomic settlement rules for Overview and Trading.
 ---
 
-Overview Total Balance and Trading Balance must read the same account balance column. Placing a trade leaves that balance unchanged while active trade amounts are treated as reservations. At settlement, a loss subtracts the trade amount and a win adds only `amount × payoutRate`.
+Overview Total Balance and Trading Balance must use the same portfolio query value and render it in USD. The Overview currency selector applies only to cash and holding details, never the canonical Total Balance. Placing a trade leaves that balance unchanged while active trade amounts are treated as reservations. At settlement, a loss subtracts the trade amount and a win adds only `amount × payoutRate`.
 
-**Why:** Duplicated wallet/trading balances drifted, and deducting stakes at placement obscured whether losses were applied when the result settled.
+**Why:** Separate queries, refresh timing, or currency conversion can make two views appear different even when the database column matches. Deducting stakes at placement also obscured whether losses were applied when the result settled.
 
-**How to apply:** Serialize placement, admin adjustment, and settlement with the same per-user lock. Lock the trade and account row during settlement; update the balance, result, payout, and win/loss counters in one transaction. Preserve existing holdings, histories, and profiles.
+**How to apply:** Use the portfolio query as the display source on both pages and format both canonical balances as USD. Serialize placement, admin adjustment, and settlement with the same per-user lock. Preserve existing holdings, histories, and profiles.

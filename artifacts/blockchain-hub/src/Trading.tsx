@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 import {
   useGetTradingAccount,
+  useGetPortfolio,
   useGetTrades,
   usePlaceTrade,
   useGetMarketSummary,
@@ -350,6 +351,7 @@ export function TradingPage() {
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
   const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
+  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
     query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
@@ -369,7 +371,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(account?.balance ?? 0);
+  const balance = Number(portfolio?.totalValue ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
