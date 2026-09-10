@@ -5,47 +5,49 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const rawPort = process.env.PORT;
+const replitDevPlugins =
+  process.env.NODE_ENV !== 'production' && process.env.REPL_ID !== undefined
+    ? [
+        await import('@replit/vite-plugin-cartographer').then((m) =>
+          m.cartographer({
+            root: path.resolve(import.meta.dirname, '..'),
+          }),
+        ),
+        await import('@replit/vite-plugin-dev-banner').then((m) =>
+          m.devBanner(),
+        ),
+      ]
+    : [];
 
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
+export default defineConfig(({ command }) => {
+  const rawPort = process.env.PORT;
+  const port = rawPort ? Number(rawPort) : 5173;
 
-const port = Number(rawPort);
+  if (command === 'serve' && !rawPort) {
+    throw new Error(
+      'PORT environment variable is required but was not provided.',
+    );
+  }
 
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+  if (Number.isNaN(port) || port <= 0) {
+    throw new Error(`Invalid PORT value: "${rawPort}"`);
+  }
 
-const basePath = process.env.BASE_PATH;
+  const basePath = process.env.BASE_PATH ?? '/';
 
-if (!basePath) {
-  throw new Error(
-    'BASE_PATH environment variable is required but was not provided.',
-  );
-}
+  if (command === 'serve' && !process.env.BASE_PATH) {
+    throw new Error(
+      'BASE_PATH environment variable is required but was not provided.',
+    );
+  }
 
-export default defineConfig({
+  return {
   base: basePath,
   plugins: [
     react(),
     tailwindcss({ optimize: false }),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== 'production' &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import('@replit/vite-plugin-cartographer').then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, '..'),
-            }),
-          ),
-          await import('@replit/vite-plugin-dev-banner').then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
+    ...replitDevPlugins,
   ],
   resolve: {
     alias: {
@@ -78,4 +80,5 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts: true,
   },
+  };
 });
