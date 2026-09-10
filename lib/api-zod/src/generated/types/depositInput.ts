@@ -8,7 +8,7 @@
 
 export interface DepositInput {
   asset: string;
-  /** @minimum 0 */
+  /** @exclusiveMinimum 0 */
   amount: number;
   /** @minLength 4 */
   txHash: string;

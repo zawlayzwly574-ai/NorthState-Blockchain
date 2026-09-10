@@ -322,6 +322,10 @@ export const GetPortfolioResponse = zod.object({
   "dayChange": zod.number(),
   "dayChangePercent": zod.number(),
   "cashBalance": zod.number(),
+  "history": zod.array(zod.object({
+  "time": zod.string(),
+  "value": zod.number()
+})),
   "holdings": zod.array(zod.object({
   "symbol": zod.string(),
   "name": zod.string(),
@@ -432,7 +436,7 @@ export const CreateSwapResponse = zod.object({
 /**
  * @summary Submit a deposit proof
  */
-export const createDepositBodyAmountMin = 0;
+export const createDepositBodyAmountExclusiveMin = 0;
 
 export const createDepositBodyTxHashMin = 4;
 
@@ -440,7 +444,7 @@ export const createDepositBodyTxHashMin = 4;
 
 export const CreateDepositBody = zod.object({
   "asset": zod.string(),
-  "amount": zod.number().min(createDepositBodyAmountMin),
+  "amount": zod.number().gt(createDepositBodyAmountExclusiveMin),
   "txHash": zod.string().min(createDepositBodyTxHashMin),
   "proofPath": zod.string().nullish()
 })

@@ -378,11 +378,17 @@ export interface Holding {
   color: string;
 }
 
+export type PortfolioHistoryItem = {
+  time: string;
+  value: number;
+};
+
 export interface Portfolio {
   totalValue: number;
   dayChange: number;
   dayChangePercent: number;
   cashBalance: number;
+  history: PortfolioHistoryItem[];
   holdings: Holding[];
 }
 
@@ -542,7 +548,7 @@ export interface KycStatus {
 
 export interface DepositInput {
   asset: string;
-  /** @minimum 0 */
+  /** @exclusiveMinimum 0 */
   amount: number;
   /** @minLength 4 */
   txHash: string;

@@ -290,6 +290,77 @@ function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
 
+const DEFAULT_PORTFOLIO_BALANCE = "24680.42000000";
+const portfolioSeededUsers = new Set<string>();
+const defaultPortfolioHoldings = [
+  { symbol: "BTC", name: "Bitcoin", amount: "0.1842", value: "11600.12", allocation: "47.00", change24h: "2.84", color: "#F7931A" },
+  { symbol: "ETH", name: "Ethereum", amount: "1.842", value: "5756.44", allocation: "23.32", change24h: "1.61", color: "#627EEA" },
+  { symbol: "USDC", name: "USD Coin", amount: "1835.2", value: "1835.20", allocation: "7.44", change24h: "0.01", color: "#2775CA" },
+  { symbol: "BNB", name: "BNB", amount: "1.22", value: "710.21", allocation: "2.88", change24h: "-0.44", color: "#F3BA2F" },
+  { symbol: "USDT", name: "Tether", amount: "320.5", value: "320.50", allocation: "1.30", change24h: "0.02", color: "#26A17B" },
+] as const;
+
+const defaultPortfolioActivities = [
+  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 44 },
+  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "completed", ageMs: 1000 * 60 * 60 * 4 },
+  { type: "buy", asset: "ETH", amount: "0.18", value: "562.46", status: "completed", ageMs: 1000 * 60 * 60 * 22 },
+] as const;
+
+async function ensureDefaultPortfolio(userId: string) {
+  if (portfolioSeededUsers.has(userId)) return;
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
+
+    const [existingHoldings, existingActivities, existingAccount, existingTransactions, existingTrades] = await Promise.all([
+      tx.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
+      tx.select({ count: count() }).from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
+      tx.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
+      tx.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.clerkUserId, userId)),
+      tx.select({ count: count() }).from(tradesTable).where(eq(tradesTable.clerkUserId, userId)),
+    ]);
+
+    const existingSymbols = new Set(existingHoldings.map((holding) => holding.symbol));
+    const missingHoldings = defaultPortfolioHoldings.filter((holding) => !existingSymbols.has(holding.symbol));
+    if (missingHoldings.length > 0) {
+      await tx.insert(holdingsTable).values(
+        missingHoldings.map((holding) => ({ clerkUserId: userId, ...holding })),
+      );
+    }
+
+    if (Number(existingActivities[0]?.count ?? 0) === 0) {
+      await tx.insert(activitiesTable).values(
+        defaultPortfolioActivities.map(({ ageMs, ...activity }) => ({
+          clerkUserId: userId,
+          ...activity,
+          createdAt: new Date(Date.now() - ageMs),
+        })),
+      );
+    }
+
+    if (!existingAccount[0]) {
+      await tx.insert(tradingAccountsTable).values({
+        clerkUserId: userId,
+        balance: DEFAULT_PORTFOLIO_BALANCE,
+      }).onConflictDoNothing();
+    } else if (
+      asNumber(existingAccount[0].balance) === 0
+      && (
+        missingHoldings.length > 0
+        || (
+          Number(existingTransactions[0]?.count ?? 0) === 0
+          && Number(existingTrades[0]?.count ?? 0) === 0
+        )
+      )
+    ) {
+      await tx.update(tradingAccountsTable)
+        .set({ balance: DEFAULT_PORTFOLIO_BALANCE, updatedAt: new Date() })
+        .where(eq(tradingAccountsTable.clerkUserId, userId));
+    }
+  });
+  portfolioSeededUsers.add(userId);
+}
+
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
@@ -318,10 +389,12 @@ async function ensureSeededUser(userId: string) {
         if (name && existing.displayName === "North State Blockchain Member") update.displayName = name;
         if (Object.keys(update).length) {
           await db.update(walletProfilesTable).set(update).where(eq(walletProfilesTable.clerkUserId, userId));
+          await ensureDefaultPortfolio(userId);
           return { ...existing, ...update };
         }
       }
     }
+    await ensureDefaultPortfolio(userId);
     return existing;
   }
 
@@ -358,62 +431,13 @@ async function ensureSeededUser(userId: string) {
       .from(walletProfilesTable)
       .where(eq(walletProfilesTable.clerkUserId, userId))
       .limit(1);
-    if (fetched) return fetched;
+    if (fetched) {
+      await ensureDefaultPortfolio(userId);
+      return fetched;
+    }
   }
 
-  // Only seed demo user with sample holdings and activities; real users start at $0
-  if (isDemoUser) {
-    const seededHoldings = [
-      ["BTC", "Bitcoin", "0.1842", "11600.12", "54.50", "2.84", "#F7931A"],
-      ["ETH", "Ethereum", "1.842", "5756.44", "27.04", "1.61", "#627EEA"],
-      ["USDC", "USD Coin", "1835.2", "1835.20", "8.62", "0.01", "#2775CA"],
-      ["BNB", "BNB", "1.22", "710.21", "3.34", "-0.44", "#F3BA2F"],
-      ["USDT", "Tether", "320.5", "320.50", "1.50", "0.02", "#26A17B"],
-    ] as const;
-
-    await db.insert(holdingsTable).values(
-      seededHoldings.map(([symbol, name, amount, value, allocation, change24h, color]) => ({
-        clerkUserId: userId,
-        symbol,
-        name,
-        amount,
-        value,
-        allocation,
-        change24h,
-        color,
-      })),
-    );
-
-    await db.insert(activitiesTable).values([
-      {
-        clerkUserId: userId,
-        type: "buy",
-        asset: "BTC",
-        amount: "0.042",
-        value: "2645.48",
-        status: "completed",
-        createdAt: new Date(Date.now() - 1000 * 60 * 44),
-      },
-      {
-        clerkUserId: userId,
-        type: "deposit",
-        asset: "USDC",
-        amount: "850",
-        value: "850",
-        status: "completed",
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4),
-      },
-      {
-        clerkUserId: userId,
-        type: "withdrawal",
-        asset: "ETH",
-        amount: "0.18",
-        value: "562.46",
-        status: "pending",
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 22),
-      },
-    ]);
-  }
+  await ensureDefaultPortfolio(userId);
 
   return profile;
 }
@@ -843,12 +867,21 @@ router.get("/portfolio", async (req, res) => {
   const account = await getOrCreateTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
   const value = asNumber(account.balance);
-  const dayChange = 0;
+  const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
+  const dayChange = holdings.reduce(
+    (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
+    0,
+  );
+  const historyMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
   res.json(GetPortfolioResponse.parse({
     totalValue: value,
     dayChange,
     dayChangePercent: value ? (dayChange / value) * 100 : 0,
-    cashBalance: value,
+    cashBalance: Math.max(0, value - holdingsValue),
+    history: historyMultipliers.map((multiplier, index) => ({
+      time: `${String(index * 2).padStart(2, "0")}:00`,
+      value: Number((value * multiplier).toFixed(2)),
+    })),
     holdings: holdings.map((holding) => ({
       symbol: holding.symbol,
       name: holding.name,
@@ -1176,36 +1209,39 @@ router.post("/kyc", async (req, res) => {
 });
 
 async function createTransaction(
-  req: Parameters<Parameters<IRouter["post"]>[1]>[0],
+  req: Request,
   type: "deposit" | "send" | "withdrawal",
-) {
-  const userId = getUserId(req);
-  await ensureSeededUser(userId);
-  const body = req.body as {
+  body: {
     asset: string;
     amount: number;
     destination?: string;
     txHash?: string;
     proofPath?: string | null;
-  };
-  const [transaction] = await db.insert(transactionsTable).values({
-    clerkUserId: userId,
-    type,
-    asset: body.asset,
-    amount: String(body.amount),
-    destination: body.destination ?? null,
-    txHash: body.txHash ?? null,
-    proofPath: body.proofPath ?? null,
-    status: "pending",
-  }).returning();
-  await db.insert(activitiesTable).values({
-    clerkUserId: userId,
-    type,
-    asset: body.asset,
-    amount: String(body.amount),
-    value: String(body.amount),
-    status: "pending",
-    transactionId: transaction.id,
+  },
+) {
+  const userId = getUserId(req);
+  await ensureSeededUser(userId);
+  const transaction = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(transactionsTable).values({
+      clerkUserId: userId,
+      type,
+      asset: body.asset,
+      amount: String(body.amount),
+      destination: body.destination ?? null,
+      txHash: body.txHash?.trim() || null,
+      proofPath: body.proofPath?.trim() || null,
+      status: "pending",
+    }).returning();
+    await tx.insert(activitiesTable).values({
+      clerkUserId: userId,
+      type,
+      asset: body.asset,
+      amount: String(body.amount),
+      value: String(body.amount),
+      status: "pending",
+      transactionId: created.id,
+    });
+    return created;
   });
   return {
     id: String(transaction.id),
@@ -1219,19 +1255,19 @@ async function createTransaction(
 
 router.post("/transactions/deposit", async (req, res) => {
   const body = CreateDepositBody.parse(req.body);
-  const data = await createTransaction({ ...req, body } as typeof req, "deposit");
+  const data = await createTransaction(req, "deposit", body);
   res.status(201).json(CreateDepositResponse.parse(data));
 });
 
 router.post("/transactions/send", async (req, res) => {
   const body = CreateSendBody.parse(req.body);
-  const data = await createTransaction({ ...req, body } as typeof req, "send");
+  const data = await createTransaction(req, "send", body);
   res.status(201).json(CreateSendResponse.parse(data));
 });
 
 router.post("/transactions/withdraw", async (req, res) => {
   const body = CreateWithdrawalBody.parse(req.body);
-  const data = await createTransaction({ ...req, body } as typeof req, "withdrawal");
+  const data = await createTransaction(req, "withdrawal", body);
   res.status(201).json(CreateWithdrawalResponse.parse(data));
 });
 

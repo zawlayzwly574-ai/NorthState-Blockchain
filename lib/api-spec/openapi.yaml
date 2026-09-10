@@ -1149,12 +1149,20 @@ components:
         color: { type: string }
     Portfolio:
       type: object
-      required: [totalValue, dayChange, dayChangePercent, cashBalance, holdings]
+      required: [totalValue, dayChange, dayChangePercent, cashBalance, history, holdings]
       properties:
         totalValue: { type: number }
         dayChange: { type: number }
         dayChangePercent: { type: number }
         cashBalance: { type: number }
+        history:
+          type: array
+          items:
+            type: object
+            required: [time, value]
+            properties:
+              time: { type: string }
+              value: { type: number }
         holdings:
           type: array
           items: { $ref: "#/components/schemas/Holding" }
@@ -1250,7 +1258,7 @@ components:
       required: [asset, amount, txHash]
       properties:
         asset: { type: string }
-        amount: { type: number, minimum: 0 }
+        amount: { type: number, exclusiveMinimum: 0 }
         txHash: { type: string, minLength: 4 }
         proofPath: { type: ["string", "null"] }
     TransferInput:

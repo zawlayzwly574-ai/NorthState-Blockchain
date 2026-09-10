@@ -1,14 +1,16 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clerkMiddleware, getAuth, getUser, select } = vi.hoisted(() => {
+const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
   const select = vi.fn();
+  const transaction = vi.fn();
 
   return {
     getUser,
     select,
+    transaction,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
       request: { headers: { cookie?: string } },
@@ -41,6 +43,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
     db: {
       ...actual.db,
       select,
+      transaction,
     },
   };
 });
@@ -100,6 +103,8 @@ describe("member route authentication", () => {
         }),
       }),
     });
+    transaction.mockReset();
+    transaction.mockResolvedValue(undefined);
   });
 
   it("accepts a restored Clerk session and reaches the member handler", async () => {
@@ -114,6 +119,67 @@ describe("member route authentication", () => {
       email: "alex@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Clerk authentication when submitting deposit proof", async () => {
+    const insertedValues: Array<Record<string, unknown>> = [];
+    transaction.mockImplementation(async (callback: (tx: {
+      insert: () => {
+        values: (values: Record<string, unknown>) => Promise<void> | {
+          returning: () => Promise<Array<Record<string, unknown>>>;
+        };
+      };
+    }) => Promise<unknown>) => {
+      let insertCount = 0;
+      return callback({
+        insert: () => ({
+          values: (values) => {
+            insertedValues.push(values);
+            insertCount += 1;
+            if (insertCount === 1) {
+              return {
+                returning: async () => [{
+                  id: 42,
+                  asset: values.asset,
+                  amount: values.amount,
+                  status: "pending",
+                  createdAt: new Date("2026-09-10T00:00:00.000Z"),
+                }],
+              };
+            }
+            return Promise.resolve();
+          },
+        }),
+      });
+    });
+
+    const response = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=restored",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "BTC",
+        amount: 0.01,
+        txHash: "proof-hash-1234",
+        proofPath: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      id: "42",
+      type: "deposit",
+      asset: "BTC",
+      amount: 0.01,
+      status: "pending",
+    });
+    expect(insertedValues[0]).toMatchObject({
+      clerkUserId: "user_restored",
+      txHash: "proof-hash-1234",
+      proofPath: null,
+    });
   });
 
   it("returns one 401 without invoking member data access when authentication is missing", async () => {

@@ -6,11 +6,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { Holding } from './holding';
+import type { PortfolioHistoryItem } from './portfolioHistoryItem';
 
 export interface Portfolio {
   totalValue: number;
   dayChange: number;
   dayChangePercent: number;
   cashBalance: number;
+  history: PortfolioHistoryItem[];
   holdings: Holding[];
 }

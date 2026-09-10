@@ -53,6 +53,7 @@ export * from './passkeyItem';
 export * from './placeTradeInput';
 export * from './placeTradeResult';
 export * from './portfolio';
+export * from './portfolioHistoryItem';
 export * from './profile';
 export * from './profileUpdateResult';
 export * from './profileVerificationStatus';

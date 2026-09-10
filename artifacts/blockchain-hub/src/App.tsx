@@ -1369,13 +1369,14 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
   );
 }
 
-function WalletDialogs({ onDone }: { onDone: () => void }) {
+function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const [mode, setMode] = useState<'deposit' | 'send' | 'withdraw' | 'convert' | null>(null);
   const [asset, setAsset] = useState('BTC');
   const [toAsset, setToAsset] = useState('ETH');
   const [copied, setCopied] = useState(false);
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
+  const [depositError, setDepositError] = useState('');
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1385,13 +1386,23 @@ function WalletDialogs({ onDone }: { onDone: () => void }) {
 
   const address = asset === 'BTC' ? '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' : '0x45fa3421948a8a0372e0a172ab9a3725f785a1d2';
 
-  const close = () => { setMode(null); setCopied(false); setSwapDone(null); setSwapError(''); };
+  const close = () => { setMode(null); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); };
 
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setDepositError('');
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }); qc.invalidateQueries({ queryKey: getGetActivityQueryKey() }); close(); onDone(); },
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
+        close();
+        onDone('Deposit proof submitted successfully and is awaiting admin approval.');
+      },
+      onError: (error) => {
+        const apiError = error as { data?: { error?: string } };
+        setDepositError(apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
+      },
     });
   };
 
@@ -1448,12 +1459,12 @@ function WalletDialogs({ onDone }: { onDone: () => void }) {
               </div>
               {copied && <p className="mt-2 text-xs font-bold text-primary" data-testid="status-address-copied">Address copied</p>}
             </div>
-            <Field label={`Amount (${asset})`} name="amount" type="number" min="0" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
+            <Field label={`Amount (${asset})`} name="amount" type="number" min="0.00000001" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
             <Field label="Transaction hash" name="txHash" type="text" placeholder="Paste the on-chain transaction hash" required data-testid="input-deposit-txhash" />
             <Button type="submit" className="w-full" disabled={deposit.isPending} data-testid="button-submit-deposit">
               {deposit.isPending ? 'Submitting deposit...' : 'Submit deposit proof'} <ArrowUpRight size={16} />
             </Button>
-            {deposit.isError && <p className="text-sm font-semibold text-destructive" data-testid="status-deposit-error">Deposit could not be submitted. Try again.</p>}
+            {depositError && <p className="text-sm font-semibold text-destructive" data-testid="status-deposit-error">{depositError}</p>}
           </form>
         </Modal>
       )}
@@ -1543,7 +1554,7 @@ export function Dashboard() {
   return (
     <Shell>
       <PageHeader eyebrow="Overview" title="Your portfolio" detail="A grounded view of everything you hold."
-        action={<WalletDialogs onDone={() => { setNotice('Request submitted successfully'); setTimeout(() => setNotice(''), 3000); }} />}
+        action={<WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
       />
       {notice && (
         <div className="mb-5 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-bold text-primary animate-rise" data-testid="status-wallet-success">
@@ -1582,7 +1593,7 @@ export function Dashboard() {
                   </div>
                   <span className="hidden rounded-xl border border-border bg-background/35 p-3 text-primary sm:block"><Wallet size={21} /></span>
                 </div>
-                <div className="mt-8 h-32"><HeroChart /></div>
+                <div className="mt-8 h-32"><Chart points={data.history} /></div>
                 <div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground">
                   <span>09:00</span><span>12:00</span><span>15:00</span><span>NOW</span>
                 </div>
