@@ -9,9 +9,11 @@ North State Blockchain is a digital-asset wallet and market dashboard with a sep
 - `pnpm --filter @workspace/admin-panel run dev` — run the North State Blockchain Admin panel
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
+- `pnpm run test:api-auth` — auth validation, including a real member profile query against the isolated database in `TEST_DATABASE_URL`
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Validation also requires `TEST_DATABASE_URL`, which must point to a separate disposable Postgres database and must not equal `DATABASE_URL`.
 - Clerk auth is workspace-managed: its server and client keys are provisioned as secrets and must never be hardcoded.
 - Optional `CORS_ALLOWED_ORIGINS`: comma-separated origins for intentional cross-origin browser clients; the API otherwise accepts browser requests only from its own origin.
 
