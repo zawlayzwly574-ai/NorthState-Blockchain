@@ -448,6 +448,77 @@ async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name
   }
 }
 
+const CLERK_USER_SYNC_TTL_MS = 60_000;
+let clerkUserSyncCompletedAt = 0;
+let clerkUserSyncInFlight: Promise<number> | null = null;
+
+function clerkUserIdentity(user: Awaited<ReturnType<typeof clerkClient.users.getUser>>) {
+  const primaryEmail = user.emailAddresses.find(
+    (email) => email.id === user.primaryEmailAddressId,
+  )?.emailAddress;
+  const email = primaryEmail ?? user.emailAddresses[0]?.emailAddress ?? "";
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  return {
+    email: email || `${user.id}@clerk-user.invalid`,
+    displayName: name || emailPrefix(email) || "North State Blockchain Member",
+  };
+}
+
+async function syncClerkUsersToWalletProfiles(force = false): Promise<number> {
+  if (!force && Date.now() - clerkUserSyncCompletedAt < CLERK_USER_SYNC_TTL_MS) {
+    return 0;
+  }
+  if (clerkUserSyncInFlight) return clerkUserSyncInFlight;
+
+  clerkUserSyncInFlight = (async () => {
+    const users: Awaited<ReturnType<typeof clerkClient.users.getUserList>>["data"] = [];
+    const limit = 100;
+    let offset = 0;
+    let totalCount = 0;
+
+    do {
+      const page = await clerkClient.users.getUserList({ limit, offset });
+      users.push(...page.data);
+      totalCount = page.totalCount;
+      offset += page.data.length;
+    } while (offset < totalCount);
+
+    await db.transaction(async (tx) => {
+      for (const user of users) {
+        const identity = clerkUserIdentity(user);
+        await tx
+          .insert(walletProfilesTable)
+          .values({
+            clerkUserId: user.id,
+            displayName: identity.displayName,
+            email: identity.email,
+            referralCode: `NORTHSTAR-${user.id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()}`,
+            verificationStatus: "unverified",
+            referralInvitedCount: 0,
+            referralReward: "0.00",
+            createdAt: new Date(user.createdAt),
+          })
+          .onConflictDoUpdate({
+            target: walletProfilesTable.clerkUserId,
+            set: {
+              displayName: identity.displayName,
+              email: identity.email,
+            },
+          });
+      }
+    });
+
+    clerkUserSyncCompletedAt = Date.now();
+    return users.length;
+  })();
+
+  try {
+    return await clerkUserSyncInFlight;
+  } finally {
+    clerkUserSyncInFlight = null;
+  }
+}
+
 async function ensureSeededUser(userId: string) {
   const [existing] = await db
     .select()
@@ -1749,6 +1820,7 @@ function requireAdmin(
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 
 router.get("/admin/stats", requireAdmin, async (_req, res) => {
+  await syncClerkUsersToWalletProfiles();
   const [[{ totalUsers }], [{ pendingDeposits }], [{ pendingWithdrawals }], [{ pendingKyc }], [{ pendingInvestments }], [{ totalTransactions }]] =
     await Promise.all([
       db.select({ totalUsers: count() }).from(walletProfilesTable),
@@ -1776,6 +1848,7 @@ router.get("/admin/stats", requireAdmin, async (_req, res) => {
 // ─── Admin: users ────────────────────────────────────────────────────────────
 
 router.get("/admin/users", requireAdmin, async (_req, res) => {
+  await syncClerkUsersToWalletProfiles();
   const profiles = await db
     .select()
     .from(walletProfilesTable)
