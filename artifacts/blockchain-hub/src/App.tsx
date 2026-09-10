@@ -2195,6 +2195,22 @@ export function Settings() {
 }
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { const [location] = useLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
+export function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      setLocation(`/sign-in?redirect_url=${encodeURIComponent(location)}`, { replace: true });
+    }
+  }, [isLoaded, isSignedIn, location, setLocation]);
+
+  if (!isLoaded || !isSignedIn) {
+    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
+  }
+
+  return children;
+}
 function TradingRoute() { return <Shell><TradingPage /></Shell>; }
 const categoryLabels: Record<string, string> = {
   gold: 'Gold & Precious Metals',
@@ -2455,7 +2471,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={Dashboard} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={MiningPlaceDetail} /><Route path="/mining-place" component={MiningPlace} /><Route path="/activity" component={ActivityPage} /><Route path="/trading" component={TradingRoute} /><Route path="/settings" component={Settings} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);

@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import React, { type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Router } from "wouter";
+import { Route, Router, Switch } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 
 const authState = vi.hoisted(() => ({
@@ -20,7 +20,7 @@ vi.mock("@clerk/react", async () => {
   };
 });
 
-import { ActivityPage, Dashboard, Settings } from "./App";
+import { ActivityPage, Dashboard, ProtectedRoute, Settings } from "./App";
 
 const protectedPaths = [
   "/api/portfolio",
@@ -51,6 +51,10 @@ function renderRoute(ui: ReactElement, path: string) {
       <Router hook={hook}>{ui}</Router>
     </QueryClientProvider>,
   );
+}
+
+function GuardedTestPage({ name }: { name: string }) {
+  return <ProtectedRoute><div>{name} account content</div></ProtectedRoute>;
 }
 
 describe("authenticated portfolio routes", () => {
@@ -112,5 +116,56 @@ describe("authenticated portfolio routes", () => {
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     );
     expect(protectedCalls).toHaveLength(0);
+  });
+
+  it.each([
+    ["Overview", "/dashboard"],
+    ["Activity", "/activity"],
+    ["Trading", "/trading"],
+    ["Mining Place", "/mining-place"],
+    ["Settings", "/settings"],
+  ])("redirects signed-out visitors from %s to sign in without flashing account content", async (name, path) => {
+    const memory = memoryLocation({ path, record: true });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    });
+
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <Router hook={memory.hook}>
+          <Switch>
+            <Route path="/sign-in"><div>Sign in page</div></Route>
+            <Route><GuardedTestPage name={name} /></Route>
+          </Switch>
+        </Router>
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByTestId("protected-route-loading")).toBeInTheDocument();
+    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) =>
+      protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
+    )).toBe(false);
+
+    authState.isLoaded = true;
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <Router hook={memory.hook}>
+          <Switch>
+            <Route path="/sign-in"><div>Sign in page</div></Route>
+            <Route><GuardedTestPage name={name} /></Route>
+          </Switch>
+        </Router>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(memory.history?.at(-1)).toBe(`/sign-in?redirect_url=${encodeURIComponent(path)}`);
+    });
+    expect(screen.getByText("Sign in page")).toBeInTheDocument();
+    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) =>
+      protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
+    )).toBe(false);
   });
 });
