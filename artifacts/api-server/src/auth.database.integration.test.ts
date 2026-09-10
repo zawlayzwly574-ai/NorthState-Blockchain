@@ -16,27 +16,36 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
 }
 process.env.DATABASE_URL = testDatabaseUrl;
 
-const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
+const { authenticatedUserId, firstTimeUserId, overlappingUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const authenticatedUserId = `database_test_${crypto.randomUUID()}`;
   const firstTimeUserId = `database_new_${crypto.randomUUID()}`;
+  const overlappingUserId = `database_overlap_${crypto.randomUUID()}`;
   const getUser = vi.fn(async (userId: string) => ({
     privateMetadata: {},
     emailAddresses: [
       {
         emailAddress:
-          userId === firstTimeUserId
-            ? "first-time-database-test@example.invalid"
-            : "database-test@example.invalid",
+          userId === overlappingUserId
+            ? "overlap-database-test@example.invalid"
+            : userId === firstTimeUserId
+              ? "first-time-database-test@example.invalid"
+              : "database-test@example.invalid",
       },
     ],
-    firstName: userId === firstTimeUserId ? "First-time" : "Database",
+    firstName:
+      userId === overlappingUserId
+        ? "Overlap"
+        : userId === firstTimeUserId
+          ? "First-time"
+          : "Database",
     lastName: "Member",
   }));
 
   return {
     authenticatedUserId,
     firstTimeUserId,
+    overlappingUserId,
     getUser,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
@@ -45,11 +54,13 @@ const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser 
       next: () => void,
     ) => {
       authByRequest.set(request, {
-        userId: request.headers.cookie?.includes("__session=database-first-time")
-          ? firstTimeUserId
-          : request.headers.cookie?.includes("__session=database-restored")
-            ? authenticatedUserId
-            : null,
+        userId: request.headers.cookie?.includes("__session=database-overlap")
+          ? overlappingUserId
+          : request.headers.cookie?.includes("__session=database-first-time")
+            ? firstTimeUserId
+            : request.headers.cookie?.includes("__session=database-restored")
+              ? authenticatedUserId
+              : null,
       });
       next();
     },
@@ -81,6 +92,7 @@ vi.mock("./middlewares/clerkProxyMiddleware", () => ({
 describe("database-backed member authentication", () => {
   const clerkUserId = authenticatedUserId;
   const newClerkUserId = firstTimeUserId;
+  const overlapClerkUserId = overlappingUserId;
   const referralCode = `DB-AUTH-${randomUUID()}`;
   let server: Server;
   let baseUrl: string;
@@ -90,6 +102,7 @@ describe("database-backed member authentication", () => {
     ({ pool } = await import("@workspace/db"));
     await removeTestMember();
     await removeFirstTimeMember();
+    await removeOverlapMember();
     await pool.query(
       `insert into wallet_profiles
         (clerk_user_id, display_name, email, verification_status, referral_code)
@@ -123,12 +136,14 @@ describe("database-backed member authentication", () => {
     if (pool) {
       await removeTestMember();
       await removeFirstTimeMember();
+      await removeOverlapMember();
       await pool.end();
     }
   });
 
   afterEach(async () => {
     await removeFirstTimeMember();
+    await removeOverlapMember();
   });
 
   async function removeMember(userId: string) {
@@ -145,6 +160,10 @@ describe("database-backed member authentication", () => {
 
   async function removeFirstTimeMember() {
     await removeMember(newClerkUserId);
+  }
+
+  async function removeOverlapMember() {
+    await removeMember(overlapClerkUserId);
   }
 
   it("loads an authenticated member through the real profile query", async () => {
@@ -206,6 +225,63 @@ describe("database-backed member authentication", () => {
       {
         display_name: "Alex Morgan",
         email: "first-time-database-test@example.invalid",
+      },
+    ]);
+    expect(holdings.rows.map(({ symbol }) => symbol)).toEqual([
+      "BNB",
+      "BTC",
+      "ETH",
+      "USDC",
+      "USDT",
+    ]);
+    expect(activities.rowCount).toBe(4);
+    expect(accounts.rows).toEqual([{ balance: "24680.42000000" }]);
+  });
+
+  it("creates one starter portfolio when first-time profile requests overlap", async () => {
+    const [firstResponse, secondResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/profile`, {
+        headers: { cookie: "__session=database-overlap" },
+      }),
+      fetch(`${baseUrl}/api/profile`, {
+        headers: { cookie: "__session=database-overlap" },
+      }),
+    ]);
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+
+    const expectedProfile = {
+      name: "Alex Morgan",
+      email: "overlap-database-test@example.invalid",
+      verificationStatus: "verified",
+    };
+    expect(await firstResponse.json()).toMatchObject(expectedProfile);
+    expect(await secondResponse.json()).toMatchObject(expectedProfile);
+
+    const [profiles, holdings, activities, accounts] = await Promise.all([
+      pool.query(
+        "select display_name, email from wallet_profiles where clerk_user_id = $1",
+        [overlapClerkUserId],
+      ),
+      pool.query(
+        "select symbol from wallet_holdings where clerk_user_id = $1 order by symbol",
+        [overlapClerkUserId],
+      ),
+      pool.query(
+        "select type from wallet_activities where clerk_user_id = $1",
+        [overlapClerkUserId],
+      ),
+      pool.query(
+        "select balance from trading_accounts where clerk_user_id = $1",
+        [overlapClerkUserId],
+      ),
+    ]);
+
+    expect(profiles.rows).toEqual([
+      {
+        display_name: "Alex Morgan",
+        email: "overlap-database-test@example.invalid",
       },
     ]);
     expect(holdings.rows.map(({ symbol }) => symbol)).toEqual([
