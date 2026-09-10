@@ -384,7 +384,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(portfolio?.totalValue ?? 0);
+  const balance = Number(portfolio?.totalValue ?? account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
@@ -397,14 +397,20 @@ export function TradingPage() {
     setTimeout(() => setFlash(null), 2500);
   };
 
+  const refreshCanonicalBalance = async () => {
+    await Promise.all([
+      qc.refetchQueries({ queryKey: getGetTradingAccountQueryKey(), type: 'all' }),
+      qc.refetchQueries({ queryKey: getGetPortfolioQueryKey(), type: 'all' }),
+    ]);
+  };
+
   const handleTrade = async (direction: 'long' | 'short') => {
     if (placing || !currentPrice || insufficient) return;
     setPlacing(true);
     try {
       await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
-      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
-      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+      await refreshCanonicalBalance();
     } catch {
       // error is surfaced via disabled state
     } finally {
@@ -418,8 +424,7 @@ export function TradingPage() {
     const nowActive = activeTrades.map(t => t.id);
     const justCompleted = prevActive.current.filter(id => !nowActive.includes(id));
     if (justCompleted.length > 0) {
-      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
-      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+      void refreshCanonicalBalance();
       const settled = trades.filter(t => justCompleted.includes(t.id));
       const wins = settled.filter(t => t.result === 'win');
       if (wins.length > 0) {

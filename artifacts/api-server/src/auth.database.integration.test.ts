@@ -132,6 +132,7 @@ describe("database-backed member authentication", () => {
   });
 
   async function removeMember(userId: string) {
+    await pool.query("delete from trades where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_activities where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_holdings where clerk_user_id = $1", [userId]);
     await pool.query("delete from trading_accounts where clerk_user_id = $1", [userId]);
@@ -216,5 +217,98 @@ describe("database-backed member authentication", () => {
     ]);
     expect(activities.rowCount).toBe(4);
     expect(accounts.rows).toEqual([{ balance: "24680.42000000" }]);
+  });
+
+  it("settles a winning trade into the balance shared by Trading and Overview", async () => {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(profileResponse.status).toBe(200);
+
+    const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        asset: "BTC",
+        direction: "long",
+        amount: 100,
+        timeframeSecs: 60,
+      }),
+    });
+    expect(placementResponse.status).toBe(200);
+
+    await pool.query(
+      `update trades
+       set expires_at = now() - interval '1 second', admin_override = 'win'
+       where clerk_user_id = $1 and status = 'active'`,
+      [newClerkUserId],
+    );
+
+    const tradesResponse = await fetch(`${baseUrl}/api/trading/trades`, { headers });
+    expect(tradesResponse.status).toBe(200);
+    expect(await tradesResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "completed", result: "win", payout: 85 }),
+      ]),
+    );
+
+    const [accountResponse, portfolioResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/trading/account`, { headers }),
+      fetch(`${baseUrl}/api/portfolio`, { headers }),
+    ]);
+    expect(accountResponse.status).toBe(200);
+    expect(portfolioResponse.status).toBe(200);
+
+    const account = await accountResponse.json() as { balance: number };
+    const portfolio = await portfolioResponse.json() as { totalValue: number };
+    expect(account.balance).toBe(24765.42);
+    expect(portfolio.totalValue).toBe(24765.42);
+  });
+
+  it("settles a losing trade into the balance shared by Trading and Overview", async () => {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(profileResponse.status).toBe(200);
+
+    const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        asset: "BTC",
+        direction: "short",
+        amount: 100,
+        timeframeSecs: 60,
+      }),
+    });
+    expect(placementResponse.status).toBe(200);
+
+    await pool.query(
+      `update trades
+       set expires_at = now() - interval '1 second', admin_override = 'loss'
+       where clerk_user_id = $1 and status = 'active'`,
+      [newClerkUserId],
+    );
+
+    const tradesResponse = await fetch(`${baseUrl}/api/trading/trades`, { headers });
+    expect(tradesResponse.status).toBe(200);
+    expect(await tradesResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "completed", result: "loss", payout: -100 }),
+      ]),
+    );
+
+    const [accountResponse, portfolioResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/trading/account`, { headers }),
+      fetch(`${baseUrl}/api/portfolio`, { headers }),
+    ]);
+    const account = await accountResponse.json() as { balance: number };
+    const portfolio = await portfolioResponse.json() as { totalValue: number };
+    expect(account.balance).toBe(24580.42);
+    expect(portfolio.totalValue).toBe(24580.42);
   });
 });

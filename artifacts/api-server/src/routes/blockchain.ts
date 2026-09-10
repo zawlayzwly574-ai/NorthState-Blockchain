@@ -2299,10 +2299,13 @@ const TRADING_FALLBACK: Record<string, number> = {
 };
 
 async function getOrCreateTradingAccount(userId: string) {
+  await ensureDefaultPortfolio(userId);
   let [acct] = await db.select().from(tradingAccountsTable)
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
-    await db.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
+    await db.insert(tradingAccountsTable)
+      .values({ clerkUserId: userId, balance: DEFAULT_PORTFOLIO_BALANCE })
+      .onConflictDoNothing();
     [acct] = await db.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   }
@@ -2354,7 +2357,9 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     }
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
-    await tx.insert(tradingAccountsTable).values({ clerkUserId: trade.clerkUserId }).onConflictDoNothing();
+    await tx.insert(tradingAccountsTable)
+      .values({ clerkUserId: trade.clerkUserId, balance: DEFAULT_PORTFOLIO_BALANCE })
+      .onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}
       where ${tradingAccountsTable.clerkUserId} = ${trade.clerkUserId}
