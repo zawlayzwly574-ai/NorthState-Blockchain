@@ -1522,7 +1522,7 @@ function WalletDialogs({ onDone }: { onDone: () => void }) {
   );
 }
 
-function Dashboard() {
+export function Dashboard() {
   const [currency, setCurrency] = useState('USD');
   const [notice, setNotice] = useState('');
   const { isLoaded, isSignedIn } = useAuth();
@@ -1749,13 +1749,13 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
   return <img src={src} alt={`${name ?? symbol} logo`} width={size} height={size} className="shrink-0 rounded-full object-contain" onError={() => setErr(true)} />;
 }
 
-function ActivityPage() {
+export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
   return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : activity.isError ? <ErrorState retry={() => activity.refetch()} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
-function Settings() {
+export function Settings() {
   const { signOut } = useClerk();
   const { user, isLoaded: isUserLoaded, isSignedIn } = useUser();
   const qc = useQueryClient();
