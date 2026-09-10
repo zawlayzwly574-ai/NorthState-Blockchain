@@ -17,8 +17,15 @@ const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(()
       _response: unknown,
       next: () => void,
     ) => {
+      const session = request.headers.cookie?.match(/__session=([^;]+)/)?.[1];
       authByRequest.set(request, {
-        userId: request.headers.cookie?.includes("__session=restored") ? "user_restored" : null,
+        userId: session === "restored"
+          ? "user_restored"
+          : session === "suspended"
+            ? "user_suspended"
+            : session === "frozen"
+              ? "user_frozen"
+              : null,
       });
       next();
     },
@@ -191,6 +198,51 @@ describe("member route authentication", () => {
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Unauthorized" });
     expect(getUser).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("returns one 403 without invoking a financial handler for a suspended user", async () => {
+    getUser.mockResolvedValue({ privateMetadata: { accountStatus: "suspended" } });
+
+    const response = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=suspended",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "BTC",
+        amount: 0.01,
+        txHash: "blocked-proof-hash",
+        proofPath: null,
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "This account is suspended.",
+      accountStatus: "suspended",
+    });
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledWith("user_suspended");
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("returns one 403 without invoking member data access for a frozen user's financial request", async () => {
+    getUser.mockResolvedValue({ privateMetadata: { accountStatus: "frozen" } });
+
+    const response = await fetch(`${baseUrl}/api/portfolio`, {
+      headers: { cookie: "__session=frozen" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "This account is frozen and cannot perform this operation.",
+      accountStatus: "frozen",
+    });
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledWith("user_frozen");
     expect(select).not.toHaveBeenCalled();
   });
 });
