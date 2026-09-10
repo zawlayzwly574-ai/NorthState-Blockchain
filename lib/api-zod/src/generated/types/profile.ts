@@ -13,6 +13,7 @@ export interface Profile {
   email: string;
   initials: string;
   verificationStatus: ProfileVerificationStatus;
+  referralCode: string;
   twoFactorEnabled: boolean;
   smsPhoneNumber?: string | null;
   smsPhoneVerified?: boolean;

@@ -154,6 +154,7 @@ export const GetProfileResponse = zod.object({
   "email": zod.string(),
   "initials": zod.string(),
   "verificationStatus": zod.enum(['unverified', 'pending', 'verified', 'rejected']),
+  "referralCode": zod.string(),
   "twoFactorEnabled": zod.boolean(),
   "smsPhoneNumber": zod.string().nullish(),
   "smsPhoneVerified": zod.boolean().optional()

@@ -1784,9 +1784,14 @@ export function Settings() {
   const [docUploadError, setDocUploadError] = useState('');
   const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
+  const [editName, setEditName] = useState('');
   const profileData = profile.data;
   const referralData = referral.data;
   const verStatus = profileData?.verificationStatus;
+
+  useEffect(() => {
+    if (profileData?.name) setEditName(profileData.name);
+  }, [profileData?.name]);
 
   const showFeedback = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 3000); };
 
@@ -1948,7 +1953,6 @@ export function Settings() {
 
   const showKycForm = verStatus === 'unverified' || verStatus === 'rejected';
   const updateProfile = useUpdateProfile();
-  const [editName, setEditName] = useState(profileData?.name ?? '');
   const [nameSaved, setNameSaved] = useState(false);
   const saveDisplayName = () => {
     if (!editName.trim()) return;
@@ -2018,7 +2022,7 @@ export function Settings() {
                       <Stat label="Account ID" value={user?.id ?? '—'} />
                       <Stat label="Verification status" value={verStatus ?? 'unverified'} accent={verStatus === 'verified'} />
                       <Stat label="Email" value={profileData?.email ?? '—'} />
-                      <Stat label="Referral code" value={profileData?.initials ? `NORTHSTATE-${profileData.id?.slice(-6).toUpperCase()}` : '—'} />
+                      <Stat label="Referral code" value={profileData?.referralCode ?? '—'} />
                     </div>
                     <div className="mt-6 rounded-2xl border border-border p-5">
                       <p className="mb-3 text-sm font-bold">Display name</p>

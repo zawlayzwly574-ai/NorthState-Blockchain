@@ -5,7 +5,7 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 
 ## Key decisions
 
-- **New real users start as `unverified`** — `ensureSeededUser` only seeds holdings/activities for `demo_user`; real users get profile only with `verificationStatus: "unverified"`.
+- **Logged-in accounts start with sample verified settings** — seeded accounts use the Alex Morgan sample profile and `verificationStatus: "verified"` so all Settings tabs are populated; KYC remains available for accounts explicitly moved to another status.
 - **Enum values** — `ProfileVerificationStatus` is `unverified | pending | verified | rejected`. `rejected` was added to the OpenAPI spec and must stay there; omitting it breaks TypeScript comparisons.
 - **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `documentType`, `documentImageBase64`. SSN is not collected in the user flow; the legacy admin-visible column is stored as an empty value.
 - **Document evidence** — Keep the legacy single-image storage contract; compose the two required ID sides before submission rather than changing the database schema.

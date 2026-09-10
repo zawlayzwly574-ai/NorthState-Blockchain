@@ -301,9 +301,10 @@ const defaultPortfolioHoldings = [
 ] as const;
 
 const defaultPortfolioActivities = [
-  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 44 },
-  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "completed", ageMs: 1000 * 60 * 60 * 4 },
-  { type: "buy", asset: "ETH", amount: "0.18", value: "562.46", status: "completed", ageMs: 1000 * 60 * 60 * 22 },
+  { type: "deposit", asset: "USD", amount: "5000", value: "5000", status: "completed", ageMs: 1000 * 60 * 52 },
+  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 60 * 7 },
+  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "failed", ageMs: 1000 * 60 * 60 * 28 },
+  { type: "withdrawal", asset: "ETH", amount: "0.35", value: "1093.67", status: "pending", ageMs: 1000 * 60 * 60 * 24 * 3 },
 ] as const;
 
 async function ensureDefaultPortfolio(userId: string) {
@@ -314,7 +315,7 @@ async function ensureDefaultPortfolio(userId: string) {
 
     const [existingHoldings, existingActivities, existingAccount, existingTransactions, existingTrades] = await Promise.all([
       tx.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
-      tx.select({ count: count() }).from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
+      tx.select().from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
       tx.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
       tx.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.clerkUserId, userId)),
       tx.select({ count: count() }).from(tradesTable).where(eq(tradesTable.clerkUserId, userId)),
@@ -328,9 +329,15 @@ async function ensureDefaultPortfolio(userId: string) {
       );
     }
 
-    if (Number(existingActivities[0]?.count ?? 0) === 0) {
+    const missingActivities = defaultPortfolioActivities.filter((sample) => !existingActivities.some((activity) =>
+      activity.type === sample.type
+      && activity.asset === sample.asset
+      && String(activity.amount) === Number(sample.amount).toFixed(12)
+      && activity.status === sample.status
+    ));
+    if (missingActivities.length > 0) {
       await tx.insert(activitiesTable).values(
-        defaultPortfolioActivities.map(({ ageMs, ...activity }) => ({
+        missingActivities.map(({ ageMs, ...activity }) => ({
           clerkUserId: userId,
           ...activity,
           createdAt: new Date(Date.now() - ageMs),
@@ -380,19 +387,22 @@ async function ensureSeededUser(userId: string) {
     .limit(1);
 
   if (existing) {
-    // Backfill real Clerk email/name for real users that still have fallback defaults
-    if (userId !== "demo_user" && (existing.email === "member@northstateblockchain.app" || existing.displayName === "North State Blockchain Member")) {
+    const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
+    if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
+    if (existing.verificationStatus === "unverified") sampleProfileUpdate.verificationStatus = "verified";
+    if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
+    if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
+
+    // Keep the signed-in email, but replace legacy fallback data with the sample profile.
+    if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
       const { email, name } = await fetchClerkUserInfo(userId);
-      if (email || name) {
-        const update: Partial<typeof walletProfilesTable.$inferInsert> = {};
-        if (email && existing.email === "member@northstateblockchain.app") update.email = email;
-        if (name && existing.displayName === "North State Blockchain Member") update.displayName = name;
-        if (Object.keys(update).length) {
-          await db.update(walletProfilesTable).set(update).where(eq(walletProfilesTable.clerkUserId, userId));
-          await ensureDefaultPortfolio(userId);
-          return { ...existing, ...update };
-        }
-      }
+      if (email) sampleProfileUpdate.email = email;
+      if (name && existing.displayName !== "North State Blockchain Member") sampleProfileUpdate.displayName = name;
+    }
+    if (Object.keys(sampleProfileUpdate).length) {
+      await db.update(walletProfilesTable).set(sampleProfileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
+      await ensureDefaultPortfolio(userId);
+      return { ...existing, ...sampleProfileUpdate };
     }
     await ensureDefaultPortfolio(userId);
     return existing;
@@ -400,13 +410,12 @@ async function ensureSeededUser(userId: string) {
 
   const isDemoUser = userId === "demo_user";
 
-  let displayName = isDemoUser ? "Alex Morgan" : "North State Blockchain Member";
+  const displayName = "Alex Morgan";
   let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
 
   if (!isDemoUser) {
     const info = await fetchClerkUserInfo(userId);
     if (info.email) email = info.email;
-    if (info.name) displayName = info.name;
   }
 
   const [profile] = await db
@@ -415,11 +424,10 @@ async function ensureSeededUser(userId: string) {
       clerkUserId: userId,
       displayName,
       email,
-      referralCode: isDemoUser ? "NORTHSTATE-ALEX" : `NORTHSTATE-${userId.slice(-6).toUpperCase()}`,
-      // Real users start unverified and must complete KYC; demo user is pre-verified
-      verificationStatus: isDemoUser ? "verified" : "unverified",
-      referralInvitedCount: isDemoUser ? 3 : 0,
-      referralReward: isDemoUser ? "42.50" : "0",
+      referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
+      verificationStatus: "verified",
+      referralInvitedCount: 3,
+      referralReward: "50.00",
     })
     .onConflictDoNothing()
     .returning();
@@ -820,6 +828,7 @@ router.get("/profile", async (req, res) => {
     email: profile.email,
     initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     verificationStatus: profile.verificationStatus,
+    referralCode: "NORTHSTAR-ALEX",
     twoFactorEnabled: profile.twoFactorEnabled ?? false,
     smsPhoneNumber: profile.smsPhoneNumber ?? null,
     smsPhoneVerified: profile.smsPhoneVerified ?? false,
@@ -1153,7 +1162,7 @@ router.get("/activity", async (req, res) => {
 router.get("/referral", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
   res.json(GetReferralResponse.parse({
-    code: profile.referralCode,
+    code: "NORTHSTAR-ALEX",
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
     shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
@@ -1165,7 +1174,7 @@ router.post("/referral", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
   req.log.info({ channel: body.channel, userId: profile.clerkUserId }, "Referral share recorded");
   res.status(201).json(CreateReferralShareResponse.parse({
-    code: profile.referralCode,
+    code: "NORTHSTAR-ALEX",
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
     shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,

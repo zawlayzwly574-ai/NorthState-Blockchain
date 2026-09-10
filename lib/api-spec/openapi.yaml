@@ -908,13 +908,14 @@ components:
             email: { type: string }
     Profile:
       type: object
-      required: [id, name, email, initials, verificationStatus, twoFactorEnabled]
+      required: [id, name, email, initials, verificationStatus, referralCode, twoFactorEnabled]
       properties:
         id: { type: string }
         name: { type: string }
         email: { type: string }
         initials: { type: string }
         verificationStatus: { type: string, enum: [unverified, pending, verified, rejected] }
+        referralCode: { type: string }
         twoFactorEnabled: { type: boolean }
         smsPhoneNumber: { type: string, nullable: true }
         smsPhoneVerified: { type: boolean }
