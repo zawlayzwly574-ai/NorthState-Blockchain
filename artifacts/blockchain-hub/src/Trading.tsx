@@ -437,7 +437,7 @@ export function TradingPage() {
   }, [activeTrades.length, trades]);
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto w-full max-w-xl pb-4">
       {/* Win/Loss flash overlay */}
       {flash && (
         <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
@@ -450,21 +450,21 @@ export function TradingPage() {
       )}
 
       {/* ── Header row ── */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card px-4 py-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
-          <p className="mt-0.5 font-mono text-xl font-extrabold">
+      <div className="mb-4 flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
+        <div className="min-w-0">
+          <p className="text-xs font-extrabold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
+          <p className="mt-1 break-words font-mono text-2xl font-extrabold tracking-tight sm:text-xl">
             ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="flex gap-4">
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
-            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-4">
+          <div className="rounded-xl bg-secondary/40 px-3 py-2.5 text-left sm:bg-transparent sm:p-0 sm:text-right">
+            <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Trades</p>
+            <p className="mt-1 font-mono text-base font-extrabold">{account?.totalTrades ?? 0}</p>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>
-            <p className={`mt-0.5 font-mono font-bold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
+          <div className="rounded-xl bg-secondary/40 px-3 py-2.5 text-left sm:bg-transparent sm:p-0 sm:text-right">
+            <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Win Rate</p>
+            <p className={`mt-1 font-mono text-base font-extrabold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
               {winRate !== null ? `${winRate}%` : '—'}
             </p>
           </div>
@@ -493,7 +493,7 @@ export function TradingPage() {
             <button
               key={a}
               onClick={() => setAsset(a)}
-              className={`min-h-[44px] shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+              className={`min-h-[48px] shrink-0 rounded-xl px-3.5 py-2.5 text-sm font-extrabold transition active:scale-95 ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
                   : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
@@ -501,7 +501,7 @@ export function TradingPage() {
             >
               <span className="block">{a}</span>
               {mkt && (
-                <span className={`block font-mono text-[9px] font-normal ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
+                <span className={`block font-mono text-[10px] font-semibold ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
                   {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
                 </span>
               )}
@@ -541,32 +541,32 @@ export function TradingPage() {
       </div>
 
       {/* ── Order Panel ── */}
-      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
         {/* Amount */}
         <div className="mb-3">
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-xs font-bold text-muted-foreground">Trade Amount (USD)</label>
-            <span className="text-[11px] text-muted-foreground">
+            <label className="text-sm font-extrabold text-muted-foreground">Trade Amount (USD)</label>
+            <span className="text-xs font-semibold text-muted-foreground">
               Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
             <input
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
               min="1"
               step="1"
-              className="h-11 min-h-[44px] min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="h-14 min-h-[56px] w-full min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-4 font-mono text-lg font-extrabold outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 sm:h-12 sm:min-h-[48px] sm:text-base"
               placeholder="100"
               data-testid="input-trade-amount"
             />
-            <div className="grid shrink-0 grid-cols-2 gap-2">
+            <div className="grid w-full shrink-0 grid-cols-4 gap-2 sm:w-auto sm:grid-cols-2">
               {[25, 50, 100, 250].map(v => (
                 <button
                   key={v}
                   onClick={() => setAmount(String(v))}
-                  className={`h-11 min-h-[44px] rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                  className={`h-12 min-h-[48px] rounded-xl border px-2 text-sm font-extrabold transition hover:text-foreground sm:h-11 sm:min-h-[44px] sm:text-xs ${
                     Number(amount) === v
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground'
@@ -586,10 +586,10 @@ export function TradingPage() {
 
         {/* Timeframe */}
         <div className="mb-4">
-          <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
+          <label className="mb-1.5 block text-sm font-extrabold text-muted-foreground">Expiry Timeframe</label>
           <button
             onClick={() => setShowPicker(true)}
-            className="flex h-11 min-h-[44px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
+            className="flex h-14 min-h-[56px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-4 text-base font-extrabold transition hover:border-primary/50 sm:h-12 sm:min-h-[48px]"
             data-testid="button-timeframe-picker"
           >
             <div className="flex items-center gap-2">
@@ -601,20 +601,20 @@ export function TradingPage() {
         </div>
 
         {/* Payout summary */}
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
+        <div className="mb-4 grid grid-cols-3 items-stretch rounded-xl bg-secondary/30 px-2 py-3 text-sm sm:px-4">
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Payout</p>
-            <p className="font-mono font-bold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
+            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">Payout</p>
+            <p className="mt-1 font-mono text-base font-extrabold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Win</p>
-            <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
+            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">If Win</p>
+            <p className="mt-1 font-mono text-base font-extrabold text-green-400">+${potentialProfit}</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Loss</p>
-            <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
+            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">If Loss</p>
+            <p className="mt-1 font-mono text-base font-extrabold text-red-400">-${tradeAmt}</p>
           </div>
         </div>
 
@@ -623,22 +623,22 @@ export function TradingPage() {
           <button
             onClick={() => handleTrade('long')}
             disabled={placing || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 px-2 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
-            <span className="text-base font-extrabold tracking-tight">BUY LONG</span>
-            <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
+            <span className="text-lg font-extrabold tracking-tight">BUY LONG</span>
+            <span className="text-xs font-semibold text-green-400/70">Price will rise ↑</span>
           </button>
           <button
             onClick={() => handleTrade('short')}
             disabled={placing || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 px-2 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
-            <span className="text-base font-extrabold tracking-tight">SELL SHORT</span>
-            <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
+            <span className="text-lg font-extrabold tracking-tight">SELL SHORT</span>
+            <span className="text-xs font-semibold text-red-400/70">Price will fall ↓</span>
           </button>
         </div>
       </div>
