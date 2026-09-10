@@ -23,6 +23,8 @@ const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(()
           ? "user_restored"
           : session === "suspended"
             ? "user_suspended"
+            : session === "frozen_profile"
+              ? "user_frozen_profile"
             : session === "frozen"
               ? "user_frozen"
               : null,
@@ -227,6 +229,24 @@ describe("member route authentication", () => {
     expect(getUser).toHaveBeenCalledWith("user_suspended");
     expect(select).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows a frozen user to reach the non-financial profile handler", async () => {
+    getUser.mockResolvedValue({ privateMetadata: { accountStatus: "frozen" } });
+
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=frozen_profile" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "1",
+      name: "Alex Morgan",
+      email: "alex@example.com",
+    });
+    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledWith("user_frozen_profile");
+    expect(select).toHaveBeenCalledTimes(1);
   });
 
   it("returns one 403 without invoking member data access for a frozen user's financial request", async () => {
