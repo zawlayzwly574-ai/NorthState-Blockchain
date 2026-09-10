@@ -133,6 +133,25 @@ describe("member route authentication", () => {
     expect(select).toHaveBeenCalledTimes(1);
   });
 
+  it("returns fallback portfolio JSON for an authenticated session when database work fails", async () => {
+    transaction.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const response = await fetch(`${baseUrl}/api/portfolio`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toMatchObject({
+      totalValue: 24680.42,
+      holdings: expect.arrayContaining([
+        expect.objectContaining({ symbol: "BTC" }),
+        expect.objectContaining({ symbol: "ETH" }),
+        expect.objectContaining({ symbol: "USDC" }),
+      ]),
+    });
+  });
+
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {

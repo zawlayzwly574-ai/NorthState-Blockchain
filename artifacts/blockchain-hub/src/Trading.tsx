@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@clerk/react';
 import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
@@ -340,6 +341,8 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
 // ─── Main Trading Page ────────────────────────────────────────────────────────
 
 export function TradingPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const memberQueriesEnabled = isLoaded && isSignedIn;
   const [asset, setAsset] = useState('BTC');
   const [amount, setAmount] = useState('100');
   const [timeframeSecs, setTimeframeSecs] = useState(60);
@@ -350,10 +353,10 @@ export function TradingPage() {
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
-  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
-  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
+  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000 } });
+  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
-    query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
+    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000 },
   });
   const placeTradeHook = usePlaceTrade();
 

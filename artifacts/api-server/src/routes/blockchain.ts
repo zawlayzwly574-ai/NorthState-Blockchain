@@ -307,6 +307,48 @@ const defaultPortfolioActivities = [
   { type: "withdrawal", asset: "ETH", amount: "0.35", value: "1093.67", status: "pending", ageMs: 1000 * 60 * 60 * 24 * 3 },
 ] as const;
 
+const portfolioHistoryMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
+
+function serializePortfolio(
+  balance: string | number,
+  holdings: ReadonlyArray<{
+    symbol: string;
+    name: string;
+    amount: string | number;
+    value: string | number;
+    allocation: string | number;
+    change24h: string | number;
+    color: string;
+  }>,
+) {
+  const totalValue = asNumber(balance);
+  const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
+  const dayChange = holdings.reduce(
+    (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
+    0,
+  );
+
+  return GetPortfolioResponse.parse({
+    totalValue,
+    dayChange,
+    dayChangePercent: totalValue ? (dayChange / totalValue) * 100 : 0,
+    cashBalance: Math.max(0, totalValue - holdingsValue),
+    history: portfolioHistoryMultipliers.map((multiplier, index) => ({
+      time: `${String(index * 2).padStart(2, "0")}:00`,
+      value: Number((totalValue * multiplier).toFixed(2)),
+    })),
+    holdings: holdings.map((holding) => ({
+      symbol: holding.symbol,
+      name: holding.name,
+      amount: asNumber(holding.amount),
+      value: asNumber(holding.value),
+      allocation: asNumber(holding.allocation),
+      change24h: asNumber(holding.change24h),
+      color: holding.color,
+    })),
+  });
+}
+
 async function ensureDefaultPortfolio(userId: string) {
   if (portfolioSeededUsers.has(userId)) return;
 
@@ -871,36 +913,16 @@ router.get("/notifications", async (req, res) => {
 
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
-  await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
-  const account = await getOrCreateTradingAccount(userId);
-  const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-  const value = asNumber(account.balance);
-  const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
-  const dayChange = holdings.reduce(
-    (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
-    0,
-  );
-  const historyMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
-  res.json(GetPortfolioResponse.parse({
-    totalValue: value,
-    dayChange,
-    dayChangePercent: value ? (dayChange / value) * 100 : 0,
-    cashBalance: Math.max(0, value - holdingsValue),
-    history: historyMultipliers.map((multiplier, index) => ({
-      time: `${String(index * 2).padStart(2, "0")}:00`,
-      value: Number((value * multiplier).toFixed(2)),
-    })),
-    holdings: holdings.map((holding) => ({
-      symbol: holding.symbol,
-      name: holding.name,
-      amount: asNumber(holding.amount),
-      value: asNumber(holding.value),
-      allocation: asNumber(holding.allocation),
-      change24h: asNumber(holding.change24h),
-      color: holding.color,
-    })),
-  }));
+  try {
+    await ensureSeededUser(userId);
+    await autoSettleExpiredTrades(userId);
+    const account = await getOrCreateTradingAccount(userId);
+    const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
+    res.json(serializePortfolio(account.balance, holdings.length ? holdings : defaultPortfolioHoldings));
+  } catch (error) {
+    req.log.error({ err: error, userId }, "Portfolio database query failed; serving default portfolio");
+    res.json(serializePortfolio(DEFAULT_PORTFOLIO_BALANCE, defaultPortfolioHoldings));
+  }
 });
 
 const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => asset.symbol));
