@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import {
   getGetActivityQueryKey, getGetFxRatesQueryKey, getGetMarketDetailQueryKey, getGetMarketSummaryQueryKey, getGetPortfolioQueryKey,
-  getGetProfileQueryKey, getGetReferralQueryKey, getGetMiningPlaceQueryKey, getGetMiningInvestmentsQueryKey,
+  getGetProfileQueryKey, getGetReferralQueryKey, getGetNotificationsQueryKey, getGetMiningPlaceQueryKey, getGetMiningInvestmentsQueryKey,
   useCreateDeposit, useCreateReferralShare, useCreateSend, useCreateSwap, useCreateWithdrawal,
   useGetActivity, useGetFxRates, useGetMarketDetail, useGetMarketSummary, useGetNotifications, useGetPortfolio, useGetProfile,
   useGetReferral, useSubmitKyc, useUpdateProfile,
@@ -332,9 +332,15 @@ function KycStatusScreen({ status }: { status: string }) {
 function Shell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
-  const { data: profile } = useGetProfile();
+  const { isLoaded, isSignedIn } = useAuth();
+  const memberQueriesEnabled = isLoaded && isSignedIn;
+  const { data: profile } = useGetProfile({
+    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled },
+  });
   const [notifOpen, setNotifOpen] = useState(false);
-  const notifs = useGetNotifications();
+  const notifs = useGetNotifications({
+    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled },
+  });
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('notif-last-seen') ?? '');
   const unreadCount = (notifs.data ?? []).filter(n => n.createdAt > lastSeen).length;
   const openNotifications = () => {
@@ -1519,9 +1525,11 @@ function WalletDialogs({ onDone }: { onDone: () => void }) {
 function Dashboard() {
   const [currency, setCurrency] = useState('USD');
   const [notice, setNotice] = useState('');
+  const { isLoaded, isSignedIn } = useAuth();
+  const memberQueriesEnabled = isLoaded && isSignedIn;
 
-  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000, placeholderData: (prev) => prev } });
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), refetchInterval: 60_000, placeholderData: (prev) => prev } });
+  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 60_000, placeholderData: (prev) => prev } });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 
   // Exchange rate: convert USD → selected currency
@@ -1742,16 +1750,18 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 }
 
 function ActivityPage() {
-  const activity = useGetActivity(); const items = activity.data ?? [];
+  const { isLoaded, isSignedIn } = useAuth();
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
   return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : activity.isError ? <ErrorState retry={() => activity.refetch()} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 function Settings() {
   const { signOut } = useClerk();
-  const { user } = useUser();
+  const { user, isLoaded: isUserLoaded, isSignedIn } = useUser();
   const qc = useQueryClient();
-  const profile = useGetProfile();
-  const referral = useGetReferral();
+  const memberQueriesEnabled = isUserLoaded && isSignedIn;
+  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled } });
+  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled } });
   const kyc = useSubmitKyc();
   const share = useCreateReferralShare();
   const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
@@ -2440,7 +2450,7 @@ function SupportChatWidget() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useGetSupportMessages({
-    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: !!isSignedIn, refetchInterval: open ? 5000 : false },
+    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn, refetchInterval: open ? 5000 : false },
   });
   const sendMut = useSendSupportMessage();
   const messages = data?.messages ?? [];
@@ -2565,6 +2575,24 @@ function SupportChatWidget() {
   );
 }
 
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const previousUserId = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    return addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (previousUserId.current !== undefined && previousUserId.current !== userId) {
+        queryClient.clear();
+      }
+      previousUserId.current = userId;
+    });
+  }, [addListener, queryClient]);
+
+  return null;
+}
+
 function ClerkApp() {
   const [, setLocation] = useLocation();
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
@@ -2592,7 +2620,7 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 function App() { return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>; }

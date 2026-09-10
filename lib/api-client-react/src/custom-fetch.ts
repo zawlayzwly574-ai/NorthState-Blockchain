@@ -360,7 +360,11 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  // Web authentication is cookie-based. Explicitly include credentials so
+  // Clerk's session cookie reaches the API even when a configured base URL
+  // makes the request cross-origin. Callers can still opt out deliberately.
+  const credentials = init.credentials ?? "include";
+  const response = await fetch(input, { ...init, credentials, method, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);
