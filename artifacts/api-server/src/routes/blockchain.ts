@@ -212,18 +212,12 @@ function getUserId(req: Request) {
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
 const accountStatusKey = "accountStatus";
-const accountStatusCache = new Map<string, { status: AccountOperationalStatus; expiresAt: number }>();
-const ACCOUNT_STATUS_CACHE_TTL = 15_000;
 
 async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
   if (userId === "demo_user") return "active";
-  const cached = accountStatusCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) return cached.status;
   const user = await clerkClient.users.getUser(userId);
   const status = user.privateMetadata?.[accountStatusKey];
-  const normalized = status === "suspended" || status === "frozen" ? status : "active";
-  accountStatusCache.set(userId, { status: normalized, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
-  return normalized;
+  return status === "suspended" || status === "frozen" ? status : "active";
 }
 
 async function setAccountOperationalStatus(userId: string, status: AccountOperationalStatus) {
@@ -233,7 +227,6 @@ async function setAccountOperationalStatus(userId: string, status: AccountOperat
     [accountStatusKey]: status,
   };
   await clerkClient.users.updateUserMetadata(userId, { privateMetadata });
-  accountStatusCache.set(userId, { status, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
 }
 
 function isFrozenOperation(req: Request) {
@@ -2013,7 +2006,6 @@ router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
   }
   try {
     await clerkClient.users.deleteUser(userId);
-    accountStatusCache.delete(userId);
     res.json({ deleted: true, userId });
   } catch (error: unknown) {
     if ((error as { status?: number })?.status === 404) {

@@ -308,7 +308,7 @@ describe("member route authentication", () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  it("enforces an admin suspension immediately after an active status was cached", async () => {
+  it("enforces an admin suspension on another API instance before invoking financial work", async () => {
     const activeResponse = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=status_change" },
     });
@@ -332,6 +332,9 @@ describe("member route authentication", () => {
       privateMetadata: { accountStatus: "suspended" },
     });
 
+    // A different API instance has no in-process cache update from the admin request.
+    // Model its next Clerk read seeing the newly persisted shared metadata.
+    getUser.mockResolvedValue({ privateMetadata: { accountStatus: "suspended" } });
     select.mockClear();
     transaction.mockClear();
 
@@ -354,7 +357,8 @@ describe("member route authentication", () => {
       error: "This account is suspended.",
       accountStatus: "suspended",
     });
-    expect(getUser).toHaveBeenCalledTimes(2);
+    expect(getUser).toHaveBeenCalledTimes(3);
+    expect(getUser).toHaveBeenLastCalledWith("user_status_change");
     expect(select).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
