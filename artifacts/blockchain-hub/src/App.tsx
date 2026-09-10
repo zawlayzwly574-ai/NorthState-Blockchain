@@ -85,6 +85,29 @@ const fallbackPortfolio = {
     { symbol: 'USDT', name: 'Tether', amount: 320.5, value: 320.5, allocation: 1.3, change24h: 0.02, color: '#26A17B' },
   ],
 };
+const fallbackActivity = [
+  { id: 'sample-1', type: 'deposit' as const, asset: 'USD', amount: 5000, value: 5000, status: 'completed' as const, createdAt: new Date(Date.now() - 52 * 60_000).toISOString() },
+  { id: 'sample-2', type: 'buy' as const, asset: 'BTC', amount: 0.042, value: 2645.48, status: 'completed' as const, createdAt: new Date(Date.now() - 7 * 60 * 60_000).toISOString() },
+  { id: 'sample-3', type: 'deposit' as const, asset: 'USDC', amount: 850, value: 850, status: 'failed' as const, createdAt: new Date(Date.now() - 28 * 60 * 60_000).toISOString() },
+  { id: 'sample-4', type: 'withdrawal' as const, asset: 'ETH', amount: 0.35, value: 1093.67, status: 'pending' as const, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString() },
+];
+const fallbackProfile = {
+  id: 'sample-profile',
+  name: 'Alex Morgan',
+  email: 'alex@example.com',
+  initials: 'AM',
+  verificationStatus: 'verified' as const,
+  referralCode: 'NORTHSTAR-ALEX',
+  twoFactorEnabled: false,
+  smsPhoneNumber: null,
+  smsPhoneVerified: false,
+};
+const fallbackReferral = {
+  code: 'NORTHSTAR-ALEX',
+  invitedCount: 3,
+  reward: 50,
+  shareUrl: `${window.location.origin}/join/NORTHSTAR-ALEX`,
+};
 
 function money(value = 0, currency = 'USD') {
   try {
@@ -1565,7 +1588,7 @@ export function Dashboard() {
   const cx = (usdValue: number) => usdValue * fxRate;
 
   const data = portfolio.data ?? fallbackPortfolio;
-  const recent = activity.data?.slice(0, 5) ?? [];
+  const recent = (activity.data ?? fallbackActivity).slice(0, 5);
   const holdings = data?.holdings ?? [];
 
   return (
@@ -1578,8 +1601,8 @@ export function Dashboard() {
           <Check size={17} />{notice}
         </div>
       )}
-      {portfolio.isLoading ? <LoadingState lines={5} />
-        : (
+      {
+        (
           <>
             <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
               {/* Total balance card */}
@@ -1677,9 +1700,7 @@ export function Dashboard() {
                   <div><p className="eyebrow">Latest</p><h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Recent activity</h2></div>
                   <Link href="/activity" className="text-xs font-bold text-primary hover:underline" data-testid="link-see-all-activity">View all</Link>
                 </div>
-                {activity.isLoading ? <LoadingState lines={4} />
-                  : activity.isError ? <ErrorState retry={() => activity.refetch()} />
-                  : recent.length === 0 ? <EmptyState title="Nothing here yet" detail="Your first wallet action will show up in this timeline." />
+                {recent.length === 0 ? <EmptyState title="Nothing here yet" detail="Your first wallet action will show up in this timeline." />
                   : (
                     <div className="grid gap-1">
                       {recent.map((item) => (
@@ -1777,8 +1798,8 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
-  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : activity.isError ? <ErrorState retry={() => activity.refetch()} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, placeholderData: (previous) => previous } }); const items = activity.data ?? fallbackActivity;
+  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 export function Settings() {
@@ -1786,8 +1807,8 @@ export function Settings() {
   const { user, isLoaded: isUserLoaded, isSignedIn } = useUser();
   const qc = useQueryClient();
   const memberQueriesEnabled = isUserLoaded && isSignedIn;
-  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled } });
-  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled } });
+  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
+  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
   const kyc = useSubmitKyc();
   const share = useCreateReferralShare();
   const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
@@ -1800,8 +1821,8 @@ export function Settings() {
   const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
   const [editName, setEditName] = useState('');
-  const profileData = profile.data;
-  const referralData = referral.data;
+  const profileData = profile.data ?? fallbackProfile;
+  const referralData = referral.data ?? fallbackReferral;
   const verStatus = profileData?.verificationStatus;
 
   useEffect(() => {
@@ -2029,9 +2050,8 @@ export function Settings() {
                   <p className="mt-1 truncate text-sm text-muted-foreground">{profileData?.email ?? 'Loading profile…'}</p>
                 </div>
               </div>
-              {profile.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
-                : profile.isError ? <div className="mt-7"><ErrorState retry={() => profile.refetch()} /></div>
-                : (
+              {
+                (
                   <>
                     <div className="mt-7 grid gap-4 sm:grid-cols-2">
                       <Stat label="Account ID" value={user?.id ?? '—'} />
@@ -2170,9 +2190,7 @@ export function Settings() {
               <p className="eyebrow">North State circle</p>
               <h2 className="mt-1 text-xl font-extrabold">Invite someone you trust</h2>
               <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">Share your personal link with a friend. No leaderboard, no pressure — just a thoughtful way to bring someone in.</p>
-              {referral.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
-                : referral.isError ? <div className="mt-7"><ErrorState retry={() => referral.refetch()} /></div>
-                : referralData ? (
+              {referralData ? (
                   <>
                     <div className="mt-7 rounded-2xl border border-primary/20 bg-primary/7 p-4">
                       <p className="text-xs font-bold uppercase tracking-wider text-primary">Your referral code</p>

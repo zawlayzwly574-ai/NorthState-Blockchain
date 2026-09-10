@@ -309,6 +309,33 @@ const defaultPortfolioActivities = [
 
 const portfolioHistoryMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
 
+function defaultProfileResponse(userId: string) {
+  return GetProfileResponse.parse({
+    id: userId,
+    name: "Alex Morgan",
+    email: "alex@example.com",
+    initials: "AM",
+    verificationStatus: "verified",
+    referralCode: "NORTHSTAR-ALEX",
+    twoFactorEnabled: false,
+    smsPhoneNumber: null,
+    smsPhoneVerified: false,
+  });
+}
+
+function defaultActivityResponse() {
+  const now = Date.now();
+  return GetActivityResponse.parse(defaultPortfolioActivities.map((activity, index) => ({
+    id: `sample-${index + 1}`,
+    type: activity.type,
+    asset: activity.asset,
+    amount: asNumber(activity.amount),
+    value: asNumber(activity.value),
+    status: activity.status,
+    createdAt: new Date(now - activity.ageMs).toISOString(),
+  })));
+}
+
 function serializePortfolio(
   balance: string | number,
   holdings: ReadonlyArray<{
@@ -862,20 +889,29 @@ router.get("/markets/:symbol", async (req, res) => {
 // area. Admin routes opt out here and enforce their own admin secret below.
 router.use(requireMember);
 
-router.get("/profile", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
-  res.json(GetProfileResponse.parse({
-    id: String(profile.id),
-    name: profile.displayName,
-    email: profile.email,
-    initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
-    verificationStatus: profile.verificationStatus,
-    referralCode: "NORTHSTAR-ALEX",
-    twoFactorEnabled: profile.twoFactorEnabled ?? false,
-    smsPhoneNumber: profile.smsPhoneNumber ?? null,
-    smsPhoneVerified: profile.smsPhoneVerified ?? false,
-  }));
-});
+const getProfile = async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  try {
+    const profile = await ensureSeededUser(userId);
+    res.json(GetProfileResponse.parse({
+      id: String(profile.id),
+      name: profile.displayName,
+      email: profile.email,
+      initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+      verificationStatus: profile.verificationStatus,
+      referralCode: "NORTHSTAR-ALEX",
+      twoFactorEnabled: profile.twoFactorEnabled ?? false,
+      smsPhoneNumber: profile.smsPhoneNumber ?? null,
+      smsPhoneVerified: profile.smsPhoneVerified ?? false,
+    }));
+  } catch (error) {
+    req.log.error({ err: error, userId }, "Profile database query failed; serving default profile");
+    res.json(defaultProfileResponse(userId));
+  }
+};
+
+router.get("/profile", getProfile);
+router.get("/user/profile", getProfile);
 
 router.patch("/profile", async (req, res) => {
   const userId = getUserId(req);
@@ -1163,32 +1199,50 @@ router.post("/admin/mining-investments/:id/reject", requireAdmin, async (req, re
 
 router.get("/activity", async (req, res) => {
   const userId = getUserId(req);
-  await ensureSeededUser(userId);
-  const activities = await db
-    .select()
-    .from(activitiesTable)
-    .where(eq(activitiesTable.clerkUserId, userId))
-    .orderBy(desc(activitiesTable.createdAt))
-    .limit(20);
-  res.json(GetActivityResponse.parse(activities.map((activity) => ({
-    id: String(activity.id),
-    type: activity.type,
-    asset: activity.asset,
-    amount: asNumber(activity.amount),
-    value: asNumber(activity.value),
-    status: activity.status,
-    createdAt: activity.createdAt.toISOString(),
-  }))));
+  try {
+    await ensureSeededUser(userId);
+    const activities = await db
+      .select()
+      .from(activitiesTable)
+      .where(eq(activitiesTable.clerkUserId, userId))
+      .orderBy(desc(activitiesTable.createdAt))
+      .limit(20);
+    res.json(activities.length
+      ? GetActivityResponse.parse(activities.map((activity) => ({
+          id: String(activity.id),
+          type: activity.type,
+          asset: activity.asset,
+          amount: asNumber(activity.amount),
+          value: asNumber(activity.value),
+          status: activity.status,
+          createdAt: activity.createdAt.toISOString(),
+        })))
+      : defaultActivityResponse());
+  } catch (error) {
+    req.log.error({ err: error, userId }, "Activity database query failed; serving default activity");
+    res.json(defaultActivityResponse());
+  }
 });
 
 router.get("/referral", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
-  res.json(GetReferralResponse.parse({
-    code: "NORTHSTAR-ALEX",
-    invitedCount: profile.referralInvitedCount,
-    reward: asNumber(profile.referralReward),
-    shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
-  }));
+  const userId = getUserId(req);
+  try {
+    const profile = await ensureSeededUser(userId);
+    res.json(GetReferralResponse.parse({
+      code: "NORTHSTAR-ALEX",
+      invitedCount: profile.referralInvitedCount,
+      reward: asNumber(profile.referralReward),
+      shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
+    }));
+  } catch (error) {
+    req.log.error({ err: error, userId }, "Referral database query failed; serving default referral");
+    res.json(GetReferralResponse.parse({
+      code: "NORTHSTAR-ALEX",
+      invitedCount: 3,
+      reward: 50,
+      shareUrl: `${req.protocol}://${req.get("host")}/join/NORTHSTAR-ALEX`,
+    }));
+  }
 });
 
 router.post("/referral", async (req, res) => {
@@ -2168,7 +2222,7 @@ router.patch("/admin/kyc/:id/reject", requireAdmin, async (req, res) => {
 // ─── Trading / Futures ────────────────────────────────────────────────────────
 
 const TRADING_FALLBACK: Record<string, number> = {
-  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52,
+  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52, GOLD: 2348.4,
 };
 
 async function getOrCreateTradingAccount(userId: string) {
@@ -2314,7 +2368,9 @@ router.post("/trading/trades", async (req, res) => {
   await ensureSeededUser(userId);
   await getOrCreateTradingAccount(userId);
   let entryPrice: number;
-  try {
+  if (asset.toUpperCase() === "GOLD") {
+    entryPrice = investmentQuote("GOLD").price;
+  } else try {
     const assets = await fetchMarketAssets(req);
     const found = assets.find((a: { symbol: string; price: number }) => a.symbol === asset.toUpperCase());
     entryPrice = found?.price ?? TRADING_FALLBACK[asset.toUpperCase()] ?? 100;

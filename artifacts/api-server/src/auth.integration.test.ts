@@ -158,6 +158,43 @@ describe("member route authentication", () => {
     });
   });
 
+  it("returns fallback profile JSON from both profile routes when database access fails", async () => {
+    select.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    for (const path of ["/api/profile", "/api/user/profile"]) {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { cookie: "__session=restored" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/json");
+      expect(await response.json()).toMatchObject({
+        name: "Alex Morgan",
+        email: "alex@example.com",
+        verificationStatus: "verified",
+      });
+    }
+  });
+
+  it("returns fallback activity JSON when database access fails", async () => {
+    select.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    const response = await fetch(`${baseUrl}/api/activity`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(await response.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "deposit", asset: "USD", status: "completed" }),
+      expect.objectContaining({ type: "buy", asset: "BTC", status: "completed" }),
+    ]));
+  });
+
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {

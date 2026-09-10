@@ -14,10 +14,14 @@ import {
   useGetTrades,
   usePlaceTrade,
   useGetMarketSummary,
+  useGetMiningPlace,
+  useGetMiningInvestments,
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
   getGetPortfolioQueryKey,
+  getGetMiningPlaceQueryKey,
+  getGetMiningInvestmentsQueryKey,
 } from '@workspace/api-client-react';
 import type { Trade } from '@workspace/api-client-react';
 
@@ -39,7 +43,7 @@ const TIMEFRAMES = [
   { label: '30D', secs: 2592000 },
 ];
 
-const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP'];
+const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
 const PAYOUT_RATE = 0.85;
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
@@ -352,16 +356,22 @@ export function TradingPage() {
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
-  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000 } });
-  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000 } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
+  const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
+  const { data: miningInvestments } = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 30_000, placeholderData: (previous) => previous } });
+  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
+  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
-    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000 },
+    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, placeholderData: (previous) => previous },
   });
   const placeTradeHook = usePlaceTrade();
 
-  const marketAsset = market.find(m => m.symbol === asset);
-  const currentPrice = marketAsset?.price ?? 0;
+  const goldQuote = miningPlace?.assets.find(item => item.symbol === 'GOLD');
+  const marketAsset = asset === 'GOLD' ? goldQuote : market.find(m => m.symbol === asset);
+  const currentPrice = marketAsset?.price ?? (asset === 'GOLD' ? 2348.4 : 0);
+  const goldInvestments = miningInvestments?.investments.filter(investment => investment.symbol === 'GOLD' && investment.status === 'active') ?? [];
+  const heldGoldUnits = goldInvestments.reduce((total, investment) => total + Number(investment.units ?? 0), 0);
+  const heldGoldValue = goldInvestments.reduce((total, investment) => total + Number(investment.currentValue ?? 0), 0);
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -472,7 +482,7 @@ export function TradingPage() {
       {/* ── Asset selector ── */}
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {TRADING_ASSETS.map(a => {
-          const mkt = market.find(m => m.symbol === a);
+          const mkt = a === 'GOLD' ? goldQuote : market.find(m => m.symbol === a);
           const chg = mkt?.change24h ?? 0;
           return (
             <button
@@ -494,6 +504,19 @@ export function TradingPage() {
           );
         })}
       </div>
+
+      {asset === 'GOLD' && (
+        <div className="mb-3 flex items-center justify-between rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Your active Gold position is available alongside other trading markets.</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
+            <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
+          </div>
+        </div>
+      )}
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">

@@ -7,4 +7,4 @@ Mining Place requests reserve the effective requested or admin-adjusted amount w
 
 **Why:** Logical reservation prevents users from submitting overlapping requests, while final atomic settlement prevents duplicate approvals or concurrent balance overspending without altering the existing transaction ledger.
 
-**How to apply:** Keep investment records isolated from wallet transaction history. Any future approval, cancellation, or redemption behavior must preserve the wallet ledger and use guarded, atomic balance updates.
+**How to apply:** Keep investment records isolated from wallet transaction history. Any future approval, cancellation, or redemption behavior must preserve the wallet ledger and use guarded, atomic balance updates. Trading may use GOLD as a quoted instrument and display active Mining Place units, but trade reservations and settlement remain against the canonical trading balance; never debit mining investments as though they were cash.
