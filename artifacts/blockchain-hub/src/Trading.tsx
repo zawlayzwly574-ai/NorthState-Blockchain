@@ -45,6 +45,7 @@ const TIMEFRAMES = [
 
 const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
 const PAYOUT_RATE = 0.85;
+const DEFAULT_MAIN_WALLET_BALANCE = 24_680.42;
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
 
@@ -384,7 +385,9 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(portfolio?.totalValue ?? account?.balance ?? 0);
+  // Overview and Trading display the same main-wallet total. Keep the seeded
+  // wallet value visible while the shared portfolio query is still loading.
+  const balance = Number(portfolio?.totalValue ?? DEFAULT_MAIN_WALLET_BALANCE);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
@@ -470,19 +473,6 @@ export function TradingPage() {
           </div>
         </div>
       </div>
-
-      {/* ── Deposit required banner (zero balance) ── */}
-      {balance === 0 && (
-        <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
-          <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
-          <div>
-            <p className="text-sm font-bold text-amber-300">No trading balance</p>
-            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* ── Asset selector ── */}
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
