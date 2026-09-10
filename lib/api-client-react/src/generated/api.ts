@@ -42,6 +42,8 @@ import type {
   KycStatus,
   MarketAsset,
   MarketDetail,
+  MiningGoldConversionInput,
+  MiningGoldConversionResult,
   MiningInvestment,
   MiningInvestmentList,
   MiningPlaceSummary,
@@ -561,6 +563,78 @@ export const useCreateMiningInvestment = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getCreateMiningInvestmentMutationOptions(options));
+    }
+
+export const getConvertMiningGoldUrl = (id: string,) => {
+
+
+
+
+  return `/api/mining-investments/${id}/convert`
+}
+
+/**
+ * @summary Convert units from an active Mining Place Gold position into a wallet asset
+ */
+export const convertMiningGold = async (id: string,
+    miningGoldConversionInput: MiningGoldConversionInput, options?: Parameters<typeof customFetch>[1]): Promise<MiningGoldConversionResult> => {
+
+  return customFetch<MiningGoldConversionResult>(getConvertMiningGoldUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(miningGoldConversionInput)
+  }
+);}
+
+
+
+
+
+export const getConvertMiningGoldMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof convertMiningGold>>, TError,{id: string;data: BodyType<MiningGoldConversionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof convertMiningGold>>, TError,{id: string;data: BodyType<MiningGoldConversionInput>}, TContext> => {
+
+const mutationKey = ['convertMiningGold'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof convertMiningGold>>, {id: string;data: BodyType<MiningGoldConversionInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  convertMiningGold(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConvertMiningGoldMutationResult = NonNullable<Awaited<ReturnType<typeof convertMiningGold>>>
+    export type ConvertMiningGoldMutationBody = BodyType<MiningGoldConversionInput>
+    export type ConvertMiningGoldMutationError = ErrorType<void>
+
+    /**
+ * @summary Convert units from an active Mining Place Gold position into a wallet asset
+ */
+export const useConvertMiningGold = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof convertMiningGold>>, TError,{id: string;data: BodyType<MiningGoldConversionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof convertMiningGold>>,
+        TError,
+        {id: string;data: BodyType<MiningGoldConversionInput>},
+        TContext
+      > => {
+      return useMutation(getConvertMiningGoldMutationOptions(options));
     }
 
 export const getGetMarketDetailUrl = (symbol: string,) => {

@@ -155,6 +155,21 @@ export const miningInvestmentsTable = pgTable("mining_investments", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const miningConversionsTable = pgTable("mining_conversions", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  miningInvestmentId: integer("mining_investment_id").notNull(),
+  sourceSymbol: text("source_symbol").notNull(),
+  sourceUnits: numeric("source_units", { precision: 30, scale: 12 }).notNull(),
+  sourcePriceUsd: numeric("source_price_usd", { precision: 20, scale: 8 }).notNull(),
+  destinationAsset: text("destination_asset").notNull(),
+  destinationAmount: numeric("destination_amount", { precision: 30, scale: 12 }).notNull(),
+  destinationPriceUsd: numeric("destination_price_usd", { precision: 20, scale: 8 }).notNull(),
+  valueUsd: numeric("value_usd", { precision: 20, scale: 8 }).notNull(),
+  transactionId: integer("transaction_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertWalletProfileSchema = createInsertSchema(walletProfilesTable).omit({
   id: true,
   createdAt: true,
@@ -178,6 +193,10 @@ export const insertMiningInvestmentSchema = createInsertSchema(miningInvestments
   reviewedAt: true,
   updatedAt: true,
 });
+export const insertMiningConversionSchema = createInsertSchema(miningConversionsTable).omit({
+  id: true,
+  createdAt: true,
+});
 
 export type WalletProfile = typeof walletProfilesTable.$inferSelect;
 export type Holding = typeof holdingsTable.$inferSelect;
@@ -185,6 +204,7 @@ export type Activity = typeof activitiesTable.$inferSelect;
 export type KycSubmission = typeof kycSubmissionsTable.$inferSelect;
 export type Transaction = typeof transactionsTable.$inferSelect;
 export type MiningInvestment = typeof miningInvestmentsTable.$inferSelect;
+export type MiningConversion = typeof miningConversionsTable.$inferSelect;
 export type Passkey = typeof passkeysTable.$inferSelect;
 export type InsertWalletProfile = z.infer<typeof insertWalletProfileSchema>;
 export type InsertHolding = z.infer<typeof insertHoldingSchema>;
@@ -192,3 +212,4 @@ export type InsertActivity = z.infer<typeof insertActivitySchema>;
 export type InsertKycSubmission = z.infer<typeof insertKycSubmissionSchema>;
 export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type InsertMiningInvestment = z.infer<typeof insertMiningInvestmentSchema>;
+export type InsertMiningConversion = z.infer<typeof insertMiningConversionSchema>;

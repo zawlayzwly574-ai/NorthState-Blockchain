@@ -8,6 +8,7 @@ import {
   activitiesTable,
   holdingsTable,
   kycSubmissionsTable,
+  miningConversionsTable,
   miningInvestmentsTable,
   passkeysTable,
   supportMessagesTable,
@@ -20,6 +21,8 @@ import {
 import {
   CreateDepositBody,
   CreateDepositResponse,
+  ConvertMiningGoldBody,
+  ConvertMiningGoldResponse,
   CreateReferralShareBody,
   CreateReferralShareResponse,
   CreateSendBody,
@@ -1045,7 +1048,10 @@ function investmentQuote(symbol: string) {
 }
 
 function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
-  const amount = asNumber(investment.approvedAmount ?? investment.requestedAmount);
+  const originalAmount = asNumber(investment.approvedAmount ?? investment.requestedAmount);
+  const remainingCostBasis = investment.units == null
+    ? originalAmount
+    : asNumber(investment.units) * asNumber(investment.entryPrice);
   const currentValue = asNumber(investment.currentValue);
   return {
     id: String(investment.id),
@@ -1057,7 +1063,7 @@ function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSel
     units: investment.units == null ? null : asNumber(investment.units),
     entryPrice: asNumber(investment.entryPrice),
     currentValue,
-    gainLoss: investment.status === "active" ? currentValue - amount : 0,
+    gainLoss: investment.status === "active" ? currentValue - remainingCostBasis : 0,
     status: investment.status,
     adminNote: investment.adminNote ?? "",
     createdAt: investment.createdAt.toISOString(),
@@ -1141,6 +1147,158 @@ router.post("/mining-investments", async (req, res) => {
   }
   const investment = result.investment;
   res.status(201).json(serializeInvestment(investment));
+});
+
+const miningConversionAssets = new Set(["BTC", "ETH", "USDT", "USDC", "DAI", "FDUSD", "BNB"]);
+
+router.post("/mining-investments/:id/convert", async (req, res) => {
+  const userId = getUserId(req);
+  const investmentId = Number(req.params.id);
+  const body = ConvertMiningGoldBody.parse(req.body);
+  if (!Number.isInteger(investmentId) || investmentId <= 0) {
+    res.status(404).json({ error: "Gold position not found." });
+    return;
+  }
+  if (!Number.isFinite(body.units) || body.units <= 0 || body.units > 1_000_000_000) {
+    res.status(400).json({ error: "Gold units must be greater than zero." });
+    return;
+  }
+  if (!miningConversionAssets.has(body.toAsset)) {
+    res.status(400).json({ error: "That destination wallet asset is not supported." });
+    return;
+  }
+
+  await ensureSeededUser(userId);
+  const [marketAssets, goldQuote] = await Promise.all([
+    fetchMarketAssets(req),
+    Promise.resolve(investmentQuote("GOLD")),
+  ]);
+  const destinationQuote = marketAssets.find((asset) => asset.symbol === body.toAsset);
+  if (!destinationQuote || goldQuote.price <= 0 || destinationQuote.price <= 0) {
+    res.status(503).json({ error: "A current conversion quote is unavailable." });
+    return;
+  }
+
+  const sourceUnits = Number(body.units.toFixed(12));
+  const valueUsd = sourceUnits * goldQuote.price;
+  const destinationAmount = valueUsd / destinationQuote.price;
+  const executedAt = new Date();
+
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      select id from ${walletProfilesTable}
+      where ${walletProfilesTable.clerkUserId} = ${userId}
+      for update
+    `);
+    const [position] = await tx.select().from(miningInvestmentsTable).where(and(
+      eq(miningInvestmentsTable.id, investmentId),
+      eq(miningInvestmentsTable.clerkUserId, userId),
+    )).limit(1);
+    if (!position) return { kind: "not_found" as const };
+    if (position.symbol !== "GOLD" || position.status !== "active") {
+      return { kind: "not_active" as const };
+    }
+
+    const previousUnits = asNumber(position.units);
+    if (previousUnits + 1e-12 < sourceUnits) return { kind: "insufficient" as const };
+    const remainingUnits = Math.max(0, previousUnits - sourceUnits);
+    const remainingValue = Math.max(0, remainingUnits * goldQuote.price);
+    const nextStatus = remainingUnits < 1e-12 ? "converted" : "active";
+    const [updatedPosition] = await tx.update(miningInvestmentsTable).set({
+      units: remainingUnits.toFixed(12),
+      currentValue: remainingValue.toFixed(8),
+      status: nextStatus,
+      updatedAt: executedAt,
+    }).where(and(
+      eq(miningInvestmentsTable.id, investmentId),
+      eq(miningInvestmentsTable.clerkUserId, userId),
+      eq(miningInvestmentsTable.status, "active"),
+      sql`${miningInvestmentsTable.units} >= ${sourceUnits}`,
+    )).returning();
+    if (!updatedPosition) return { kind: "insufficient" as const };
+
+    const [destinationHolding] = await tx.select().from(holdingsTable).where(and(
+      eq(holdingsTable.clerkUserId, userId),
+      eq(holdingsTable.symbol, body.toAsset),
+    )).limit(1);
+    if (destinationHolding) {
+      await tx.update(holdingsTable).set({
+        amount: sql`${holdingsTable.amount} + ${destinationAmount}`,
+        value: sql`${holdingsTable.value} + ${valueUsd}`,
+      }).where(eq(holdingsTable.id, destinationHolding.id));
+    } else {
+      await tx.insert(holdingsTable).values({
+        clerkUserId: userId,
+        symbol: body.toAsset,
+        name: destinationQuote.name,
+        amount: destinationAmount.toFixed(12),
+        value: valueUsd.toFixed(2),
+        allocation: "0",
+        change24h: destinationQuote.change24h.toFixed(2),
+        color: destinationQuote.color,
+      });
+    }
+
+    const [transaction] = await tx.insert(transactionsTable).values({
+      clerkUserId: userId,
+      type: "mining_conversion",
+      asset: body.toAsset,
+      amount: destinationAmount.toFixed(12),
+      destination: `Mining Place GOLD position ${investmentId}`,
+      status: "completed",
+    }).returning();
+    const [conversion] = await tx.insert(miningConversionsTable).values({
+      clerkUserId: userId,
+      miningInvestmentId: investmentId,
+      sourceSymbol: "GOLD",
+      sourceUnits: sourceUnits.toFixed(12),
+      sourcePriceUsd: goldQuote.price.toFixed(8),
+      destinationAsset: body.toAsset,
+      destinationAmount: destinationAmount.toFixed(12),
+      destinationPriceUsd: destinationQuote.price.toFixed(8),
+      valueUsd: valueUsd.toFixed(8),
+      transactionId: transaction.id,
+      createdAt: executedAt,
+    }).returning();
+    await tx.insert(activitiesTable).values({
+      clerkUserId: userId,
+      type: "mining_conversion",
+      asset: body.toAsset,
+      amount: destinationAmount.toFixed(12),
+      value: valueUsd.toFixed(2),
+      status: "completed",
+      transactionId: transaction.id,
+      createdAt: executedAt,
+    });
+    return { kind: "success" as const, conversion, remainingUnits };
+  });
+
+  if (result.kind === "not_found") {
+    res.status(404).json({ error: "Gold position not found." });
+    return;
+  }
+  if (result.kind === "not_active") {
+    res.status(409).json({ error: "Only active Mining Place Gold positions can be converted." });
+    return;
+  }
+  if (result.kind === "insufficient") {
+    res.status(409).json({ error: "This Gold position does not have enough remaining units." });
+    return;
+  }
+
+  res.json(ConvertMiningGoldResponse.parse({
+    id: String(result.conversion.id),
+    investmentId: String(investmentId),
+    fromAsset: "GOLD",
+    fromUnits: sourceUnits,
+    toAsset: body.toAsset,
+    toAmount: destinationAmount,
+    sourcePriceUsd: goldQuote.price,
+    destinationPriceUsd: destinationQuote.price,
+    valueUsd,
+    remainingUnits: result.remainingUnits,
+    executedAt: executedAt.toISOString(),
+  }));
 });
 
 router.get("/admin/mining-investments", requireAdmin, async (_req, res) => {

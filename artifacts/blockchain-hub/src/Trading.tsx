@@ -16,6 +16,7 @@ import {
   useGetMarketSummary,
   useGetMiningPlace,
   useGetMiningInvestments,
+  useConvertMiningGold,
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
@@ -354,6 +355,11 @@ export function TradingPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [goldSourceId, setGoldSourceId] = useState('');
+  const [goldUnits, setGoldUnits] = useState('');
+  const [goldDestination, setGoldDestination] = useState('USDT');
+  const [goldConversionError, setGoldConversionError] = useState('');
+  const [goldConversionDone, setGoldConversionDone] = useState('');
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
 
@@ -366,6 +372,7 @@ export function TradingPage() {
     query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, placeholderData: (previous) => previous },
   });
   const placeTradeHook = usePlaceTrade();
+  const convertGold = useConvertMiningGold();
 
   const goldQuote = miningPlace?.assets.find(item => item.symbol === 'GOLD');
   const marketAsset = asset === 'GOLD' ? goldQuote : market.find(m => m.symbol === asset);
@@ -373,6 +380,14 @@ export function TradingPage() {
   const goldInvestments = miningInvestments?.investments.filter(investment => investment.symbol === 'GOLD' && investment.status === 'active') ?? [];
   const heldGoldUnits = goldInvestments.reduce((total, investment) => total + Number(investment.units ?? 0), 0);
   const heldGoldValue = goldInvestments.reduce((total, investment) => total + Number(investment.currentValue ?? 0), 0);
+  const selectedGoldInvestment = goldInvestments.find(investment => investment.id === goldSourceId) ?? goldInvestments[0];
+
+  useEffect(() => {
+    if (!goldSourceId && goldInvestments[0]) setGoldSourceId(goldInvestments[0].id);
+    if (goldSourceId && !goldInvestments.some(investment => investment.id === goldSourceId)) {
+      setGoldSourceId(goldInvestments[0]?.id ?? '');
+    }
+  }, [goldInvestments, goldSourceId]);
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -418,6 +433,28 @@ export function TradingPage() {
       // error is surfaced via disabled state
     } finally {
       setPlacing(false);
+    }
+  };
+
+  const handleGoldConversion = async () => {
+    const units = Number(goldUnits);
+    if (!selectedGoldInvestment || !Number.isFinite(units) || units <= 0) return;
+    setGoldConversionError('');
+    setGoldConversionDone('');
+    try {
+      const result = await convertGold.mutateAsync({
+        id: selectedGoldInvestment.id,
+        data: { units, toAsset: goldDestination as 'BTC' | 'ETH' | 'USDT' | 'USDC' | 'DAI' | 'FDUSD' | 'BNB' },
+      });
+      setGoldUnits('');
+      setGoldConversionDone(`${result.fromUnits.toFixed(6)} oz converted to ${result.toAmount.toFixed(6)} ${result.toAsset}.`);
+      await Promise.all([
+        qc.refetchQueries({ queryKey: getGetMiningInvestmentsQueryKey(), type: 'all' }),
+        qc.refetchQueries({ queryKey: getGetPortfolioQueryKey(), type: 'all' }),
+      ]);
+    } catch (error) {
+      const apiError = error as { data?: { error?: string } };
+      setGoldConversionError(apiError.data?.error ?? 'Gold could not be converted. Refresh the position and try again.');
     }
   };
 
@@ -501,15 +538,48 @@ export function TradingPage() {
       </div>
 
       {asset === 'GOLD' && (
-        <div className="mb-3 flex items-center justify-between rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 px-4 py-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Your active Gold position is available alongside other trading markets.</p>
+        <div className="mb-3 rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Convert units from an active position into a wallet asset at the current server quote.</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
+              <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
+            </div>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
-            <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
-          </div>
+          {goldInvestments.length > 0 ? (
+            <div className="mt-4 grid gap-3 border-t border-[#d6ad3b]/20 pt-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-xs font-bold text-muted-foreground">
+                  Source position
+                  <select value={selectedGoldInvestment?.id ?? ''} onChange={event => setGoldSourceId(event.target.value)} className="h-11 rounded-xl border border-input bg-background px-3 text-foreground" data-testid="select-gold-source">
+                    {goldInvestments.map(investment => (
+                      <option key={investment.id} value={investment.id}>#{investment.id} · {Number(investment.units ?? 0).toFixed(6)} oz</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-xs font-bold text-muted-foreground">
+                  Destination wallet asset
+                  <select value={goldDestination} onChange={event => setGoldDestination(event.target.value)} className="h-11 rounded-xl border border-input bg-background px-3 text-foreground" data-testid="select-gold-destination">
+                    {['USDT', 'USDC', 'BTC', 'ETH', 'DAI', 'FDUSD', 'BNB'].map(symbol => <option key={symbol}>{symbol}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input type="number" min="0.000000000001" step="any" max={Number(selectedGoldInvestment?.units ?? 0)} value={goldUnits} onChange={event => setGoldUnits(event.target.value)} placeholder="Gold units (oz)" className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm" data-testid="input-gold-conversion-units" />
+                <button type="button" onClick={() => setGoldUnits(String(selectedGoldInvestment?.units ?? ''))} className="h-11 rounded-xl border border-[#d6ad3b]/30 px-3 text-xs font-bold text-[#d6ad3b]">Max</button>
+                <button type="button" onClick={handleGoldConversion} disabled={convertGold.isPending || !goldUnits || Number(goldUnits) <= 0 || Number(goldUnits) > Number(selectedGoldInvestment?.units ?? 0)} className="h-11 rounded-xl bg-[#d6ad3b] px-4 text-sm font-extrabold text-black disabled:cursor-not-allowed disabled:opacity-50" data-testid="button-convert-gold">
+                  {convertGold.isPending ? 'Converting…' : `Convert to ${goldDestination}`}
+                </button>
+              </div>
+              {goldConversionError && <p className="text-xs font-semibold text-destructive" data-testid="status-gold-conversion-error">{goldConversionError}</p>}
+              {goldConversionDone && <p className="text-xs font-semibold text-green-400" data-testid="status-gold-conversion-success">{goldConversionDone}</p>}
+            </div>
+          ) : (
+            <p className="mt-3 border-t border-[#d6ad3b]/20 pt-3 text-xs text-muted-foreground">You need an approved active Gold position before you can convert units.</p>
+          )}
         </div>
       )}
 
