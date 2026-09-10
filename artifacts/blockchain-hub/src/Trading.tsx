@@ -202,7 +202,7 @@ function TimeframeSheet({
             <button
               key={tf.secs}
               onClick={() => { onChange(tf.secs); onClose(); }}
-              className={`rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
+              className={`min-h-[44px] rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
                 value === tf.secs
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_16px_hsl(var(--primary)/.35)]'
                   : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
@@ -214,7 +214,7 @@ function TimeframeSheet({
         </div>
         <button
           onClick={onClose}
-          className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
+          className="mt-5 min-h-[44px] w-full rounded-xl py-3 text-sm text-muted-foreground transition hover:text-foreground"
         >
           Cancel
         </button>
@@ -282,7 +282,7 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
           <button
             type="button"
             onClick={onClose}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary/70 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-secondary/70 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
             aria-label="Close trade details"
             data-testid="button-close-trade-details"
           >
@@ -445,7 +445,7 @@ export function TradingPage() {
       )}
 
       {/* ── Header row ── */}
-      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
           <p className="mt-0.5 font-mono text-xl font-extrabold">
@@ -488,7 +488,7 @@ export function TradingPage() {
             <button
               key={a}
               onClick={() => setAsset(a)}
-              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+              className={`min-h-[44px] shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
                   : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
@@ -552,7 +552,7 @@ export function TradingPage() {
               onChange={e => setAmount(e.target.value)}
               min="1"
               step="1"
-              className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="h-11 min-h-[44px] min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
               placeholder="100"
               data-testid="input-trade-amount"
             />
@@ -561,7 +561,7 @@ export function TradingPage() {
                 <button
                   key={v}
                   onClick={() => setAmount(String(v))}
-                  className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                  className={`h-11 min-h-[44px] rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
                     Number(amount) === v
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground'
@@ -584,14 +584,14 @@ export function TradingPage() {
           <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
           <button
             onClick={() => setShowPicker(true)}
-            className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
+            className="flex h-11 min-h-[44px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
             data-testid="button-timeframe-picker"
           >
             <div className="flex items-center gap-2">
-              <Clock size={14} className="text-muted-foreground" />
+              <Clock size={16} className="text-muted-foreground" />
               <span>{timeframeLabel}</span>
             </div>
-            <ChevronUp size={15} className="text-muted-foreground" />
+            <ChevronUp size={16} className="text-muted-foreground" />
           </button>
         </div>
 
