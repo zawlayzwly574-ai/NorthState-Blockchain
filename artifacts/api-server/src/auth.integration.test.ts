@@ -1,16 +1,18 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(() => {
+const { clerkMiddleware, getAuth, getUser, select, transaction, updateUserMetadata } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
   const select = vi.fn();
   const transaction = vi.fn();
+  const updateUserMetadata = vi.fn();
 
   return {
     getUser,
     select,
     transaction,
+    updateUserMetadata,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
       request: { headers: { cookie?: string } },
@@ -21,6 +23,8 @@ const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(()
       authByRequest.set(request, {
         userId: session === "restored"
           ? "user_restored"
+          : session === "status_change"
+            ? "user_status_change"
           : session === "suspended"
             ? "user_suspended"
             : session === "frozen_profile"
@@ -38,7 +42,7 @@ vi.mock("@clerk/express", () => ({
   clerkClient: {
     users: {
       getUser,
-      updateUserMetadata: vi.fn(),
+      updateUserMetadata,
     },
   },
   clerkMiddleware,
@@ -107,6 +111,8 @@ describe("member route authentication", () => {
   beforeEach(() => {
     getUser.mockReset();
     getUser.mockResolvedValue({ privateMetadata: {} });
+    updateUserMetadata.mockReset();
+    updateUserMetadata.mockResolvedValue(undefined);
     select.mockReset();
     select.mockReturnValue({
       from: () => ({
@@ -246,6 +252,57 @@ describe("member route authentication", () => {
     });
     expect(getUser).toHaveBeenCalledTimes(1);
     expect(getUser).toHaveBeenCalledWith("user_suspended");
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("enforces an admin suspension immediately after an active status was cached", async () => {
+    const activeResponse = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=status_change" },
+    });
+    expect(activeResponse.status).toBe(200);
+    expect(getUser).toHaveBeenCalledTimes(1);
+
+    const adminResponse = await fetch(`${baseUrl}/api/admin/users/user_status_change/status`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        "x-admin-key": String(process.env.ADMIN_SECRET),
+      },
+      body: JSON.stringify({ status: "suspended" }),
+    });
+    expect(adminResponse.status).toBe(200);
+    expect(await adminResponse.json()).toEqual({
+      userId: "user_status_change",
+      accountStatus: "suspended",
+    });
+    expect(updateUserMetadata).toHaveBeenCalledWith("user_status_change", {
+      privateMetadata: { accountStatus: "suspended" },
+    });
+
+    select.mockClear();
+    transaction.mockClear();
+
+    const blockedResponse = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=status_change",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "BTC",
+        amount: 0.01,
+        txHash: "immediately-blocked-proof-hash",
+        proofPath: null,
+      }),
+    });
+
+    expect(blockedResponse.status).toBe(403);
+    expect(await blockedResponse.json()).toEqual({
+      error: "This account is suspended.",
+      accountStatus: "suspended",
+    });
+    expect(getUser).toHaveBeenCalledTimes(2);
     expect(select).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
