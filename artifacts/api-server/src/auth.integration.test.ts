@@ -293,6 +293,21 @@ describe("member route authentication", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("returns one 403 without invoking the profile handler for a suspended user", async () => {
+    getUser.mockResolvedValue({ privateMetadata: { accountStatus: "suspended" } });
+
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=suspended" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "This account is suspended.",
+      accountStatus: "suspended",
+    });
+    expect(select).not.toHaveBeenCalled();
+  });
+
   it("enforces an admin suspension immediately after an active status was cached", async () => {
     const activeResponse = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=status_change" },
