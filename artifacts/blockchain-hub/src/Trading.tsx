@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/react';
 import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -362,6 +363,7 @@ export function TradingPage() {
   const [goldConversionDone, setGoldConversionDone] = useState('');
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
   const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
@@ -423,14 +425,31 @@ export function TradingPage() {
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (placing || !currentPrice || insufficient) return;
+    if (placing) return;
+    if (insufficient) {
+      toast({
+        variant: 'destructive',
+        title: 'Trade not placed',
+        description: `Reduce the amount below your available $${availableToTrade.toFixed(2)} balance.`,
+      });
+      return;
+    }
     setPlacing(true);
     try {
-      await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
+      const result = await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
       await refreshCanonicalBalance();
-    } catch {
-      // error is surfaced via disabled state
+      toast({
+        title: `${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} placed`,
+        description: `${asset} trade #${result.tradeId} is active. $${tradeAmt.toFixed(2)} is reserved from your main wallet.`,
+      });
+    } catch (error) {
+      const apiError = error as { data?: { error?: string }; message?: string };
+      toast({
+        variant: 'destructive',
+        title: 'Trade could not be placed',
+        description: apiError.data?.error ?? apiError.message ?? 'Please check your wallet balance and try again.',
+      });
     } finally {
       setPlacing(false);
     }
@@ -480,7 +499,7 @@ export function TradingPage() {
     <div className="mx-auto w-full max-w-xl pb-4">
       {/* Win/Loss flash overlay */}
       {flash && (
-        <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
+        <div className={`pointer-events-none fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
           flash.type === 'win'
             ? 'bg-green-500 text-white'
             : 'bg-destructive text-white'
@@ -681,23 +700,25 @@ export function TradingPage() {
         {/* Long / Short buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
             onClick={() => handleTrade('long')}
-            disabled={placing || !currentPrice || insufficient}
-            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 px-2 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            aria-busy={placing}
+            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 px-2 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98]"
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
-            <span className="text-lg font-extrabold tracking-tight">BUY LONG</span>
+            <span className="text-lg font-extrabold tracking-tight">{placing ? 'PLACING…' : 'BUY LONG'}</span>
             <span className="text-xs font-semibold text-green-400/70">Price will rise ↑</span>
           </button>
           <button
+            type="button"
             onClick={() => handleTrade('short')}
-            disabled={placing || !currentPrice || insufficient}
-            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 px-2 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            aria-busy={placing}
+            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 px-2 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98]"
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
-            <span className="text-lg font-extrabold tracking-tight">SELL SHORT</span>
+            <span className="text-lg font-extrabold tracking-tight">{placing ? 'PLACING…' : 'SELL SHORT'}</span>
             <span className="text-xs font-semibold text-red-400/70">Price will fall ↓</span>
           </button>
         </div>
