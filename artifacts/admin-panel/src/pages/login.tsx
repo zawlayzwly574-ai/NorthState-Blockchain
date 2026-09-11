@@ -11,7 +11,13 @@ export default function Login() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!key.trim()) return;
+    if (loading) return;
+
+    const submittedKey = key.trim();
+    if (!submittedKey) {
+      setError('Enter the admin key');
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -19,17 +25,19 @@ export default function Login() {
     try {
       // Basic check via stats endpoint to verify key
       const res = await fetch('/api/admin/stats', {
-        headers: { 'X-Admin-Key': key }
+        headers: { 'X-Admin-Key': submittedKey }
       });
       
       if (res.ok) {
-        setAdminKey(key);
+        setAdminKey(submittedKey);
         setLocation('/dashboard');
-      } else {
+      } else if (res.status === 401) {
         setError('Invalid admin key');
+      } else {
+        setError('Admin service unavailable. Try again shortly.');
       }
-    } catch (err) {
-      setError('Connection failed');
+    } catch {
+      setError('Connection failed. Check the admin service and try again.');
     } finally {
       setLoading(false);
     }
@@ -50,7 +58,7 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-50" />
+          <div className="pointer-events-none absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-50" />
           
           <div className="space-y-4">
             <div>
@@ -68,7 +76,7 @@ export default function Login() {
                   onChange={(e) => setKey(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2 border border-border bg-background/50 rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono text-sm transition-all"
                   placeholder="••••••••••••"
-                  autoComplete="off"
+                  autoComplete="current-password"
                   data-testid="input-admin-key"
                 />
               </div>
@@ -82,7 +90,7 @@ export default function Login() {
 
             <button
               type="submit"
-              disabled={loading || !key.trim()}
+              aria-busy={loading}
               className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-mono uppercase tracking-wider"
               data-testid="btn-login-submit"
             >
