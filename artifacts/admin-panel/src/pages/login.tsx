@@ -23,8 +23,9 @@ export default function Login() {
     setError('');
 
     try {
-      // Basic check via stats endpoint to verify key
-      const res = await fetch('/api/admin/stats', {
+      // Authenticate against a dependency-free endpoint so temporary database
+      // or identity-provider failures cannot make a valid key look invalid.
+      const res = await fetch('/api/admin/auth-check', {
         headers: { 'X-Admin-Key': submittedKey }
       });
       

@@ -15,6 +15,7 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
   );
 }
 process.env.DATABASE_URL = testDatabaseUrl;
+process.env.ADMIN_SECRET = "test-only-admin-secret";
 
 const { authenticatedUserId, firstTimeUserId, overlappingUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
@@ -149,6 +150,7 @@ describe("database-backed member authentication", () => {
   async function removeMember(userId: string) {
     await pool.query("delete from trades where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_activities where clerk_user_id = $1", [userId]);
+    await pool.query("delete from wallet_transactions where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_holdings where clerk_user_id = $1", [userId]);
     await pool.query("delete from trading_accounts where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_profiles where clerk_user_id = $1", [userId]);
@@ -190,16 +192,35 @@ describe("database-backed member authentication", () => {
     ]);
   });
 
-  it("creates a profile and starter portfolio for a first-time authenticated member", async () => {
+  it("serves durable admin users when Clerk lookups are unavailable", async () => {
+    getUser.mockRejectedValueOnce(new Error("Clerk unavailable"));
+    getUser.mockRejectedValueOnce(new Error("Clerk unavailable"));
+
+    const response = await fetch(`${baseUrl}/api/admin/users`, {
+      headers: { "x-admin-key": String(process.env.ADMIN_SECRET) },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        clerkUserId,
+        displayName: "Database Test Member",
+        email: "database-test@example.invalid",
+        accountStatus: "unknown",
+      }),
+    ]));
+  });
+
+  it("creates a zero-balance profile for a first-time authenticated member", async () => {
     const response = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=database-first-time" },
     });
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      name: "Alex Morgan",
+      name: "First-time Member",
       email: "first-time-database-test@example.invalid",
-      verificationStatus: "verified",
+      verificationStatus: "unverified",
     });
 
     const [profiles, holdings, activities, accounts] = await Promise.all([
@@ -223,22 +244,16 @@ describe("database-backed member authentication", () => {
 
     expect(profiles.rows).toEqual([
       {
-        display_name: "Alex Morgan",
+        display_name: "First-time Member",
         email: "first-time-database-test@example.invalid",
       },
     ]);
-    expect(holdings.rows.map(({ symbol }) => symbol)).toEqual([
-      "BNB",
-      "BTC",
-      "ETH",
-      "USDC",
-      "USDT",
-    ]);
-    expect(activities.rowCount).toBe(4);
-    expect(accounts.rows).toEqual([{ balance: "24680.42000000" }]);
+    expect(holdings.rows).toEqual([]);
+    expect(activities.rowCount).toBe(0);
+    expect(accounts.rows).toEqual([{ balance: "0.00000000" }]);
   });
 
-  it("creates one starter portfolio when first-time profile requests overlap", async () => {
+  it("creates one zero-balance account when first-time profile requests overlap", async () => {
     const [firstResponse, secondResponse] = await Promise.all([
       fetch(`${baseUrl}/api/profile`, {
         headers: { cookie: "__session=database-overlap" },
@@ -252,9 +267,9 @@ describe("database-backed member authentication", () => {
     expect(secondResponse.status).toBe(200);
 
     const expectedProfile = {
-      name: "Alex Morgan",
+      name: "Overlap Member",
       email: "overlap-database-test@example.invalid",
-      verificationStatus: "verified",
+      verificationStatus: "unverified",
     };
     expect(await firstResponse.json()).toMatchObject(expectedProfile);
     expect(await secondResponse.json()).toMatchObject(expectedProfile);
@@ -280,19 +295,111 @@ describe("database-backed member authentication", () => {
 
     expect(profiles.rows).toEqual([
       {
-        display_name: "Alex Morgan",
+        display_name: "Overlap Member",
         email: "overlap-database-test@example.invalid",
       },
     ]);
-    expect(holdings.rows.map(({ symbol }) => symbol)).toEqual([
-      "BNB",
-      "BTC",
-      "ETH",
-      "USDC",
-      "USDT",
+    expect(holdings.rows).toEqual([]);
+    expect(activities.rowCount).toBe(0);
+    expect(accounts.rows).toEqual([{ balance: "0.00000000" }]);
+  });
+
+  it("credits an approved deposit exactly once", async () => {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(profileResponse.status).toBe(200);
+
+    const inserted = await pool.query(
+      `insert into wallet_transactions
+        (clerk_user_id, type, asset, amount, status)
+       values ($1, 'deposit', 'USDT', '125.00000000', 'pending')
+       returning id`,
+      [newClerkUserId],
+    );
+    const transactionId = inserted.rows[0].id;
+    await pool.query(
+      `insert into wallet_activities
+        (clerk_user_id, transaction_id, type, asset, amount, value, status)
+       values ($1, $2, 'deposit', 'USDT', '125.00000000', '125.00000000', 'pending')`,
+      [newClerkUserId, transactionId],
+    );
+
+    const adminHeaders = { "x-admin-key": String(process.env.ADMIN_SECRET) };
+    const firstApproval = await fetch(
+      `${baseUrl}/api/admin/transactions/${transactionId}/approve`,
+      { method: "PATCH", headers: adminHeaders },
+    );
+    const secondApproval = await fetch(
+      `${baseUrl}/api/admin/transactions/${transactionId}/approve`,
+      { method: "PATCH", headers: adminHeaders },
+    );
+
+    expect(firstApproval.status).toBe(200);
+    expect(secondApproval.status).toBe(409);
+
+    const [account, holding, transaction] = await Promise.all([
+      pool.query("select balance from trading_accounts where clerk_user_id = $1", [newClerkUserId]),
+      pool.query(
+        "select amount, value from wallet_holdings where clerk_user_id = $1 and symbol = 'USDT'",
+        [newClerkUserId],
+      ),
+      pool.query("select status from wallet_transactions where id = $1", [transactionId]),
     ]);
-    expect(activities.rowCount).toBe(4);
-    expect(accounts.rows).toEqual([{ balance: "24680.42000000" }]);
+    expect(account.rows).toEqual([{ balance: "125.00000000" }]);
+    expect(holding.rows).toEqual([{ amount: "125.000000000000", value: "125.00" }]);
+    expect(transaction.rows).toEqual([{ status: "completed" }]);
+  });
+
+  it("keeps approval and rejection consistent when they race", async () => {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    expect((await fetch(`${baseUrl}/api/profile`, { headers })).status).toBe(200);
+
+    const inserted = await pool.query(
+      `insert into wallet_transactions
+        (clerk_user_id, type, asset, amount, status)
+       values ($1, 'deposit', 'USDT', '75.00000000', 'pending')
+       returning id`,
+      [newClerkUserId],
+    );
+    const transactionId = inserted.rows[0].id;
+    await pool.query(
+      `insert into wallet_activities
+        (clerk_user_id, transaction_id, type, asset, amount, value, status)
+       values ($1, $2, 'deposit', 'USDT', '75.00000000', '75.00000000', 'pending')`,
+      [newClerkUserId, transactionId],
+    );
+
+    const adminHeaders = { "x-admin-key": String(process.env.ADMIN_SECRET) };
+    const [approval, rejection] = await Promise.all([
+      fetch(`${baseUrl}/api/admin/transactions/${transactionId}/approve`, {
+        method: "PATCH",
+        headers: adminHeaders,
+      }),
+      fetch(`${baseUrl}/api/admin/transactions/${transactionId}/reject`, {
+        method: "PATCH",
+        headers: adminHeaders,
+      }),
+    ]);
+    expect([approval.status, rejection.status].sort()).toEqual([200, 409]);
+
+    const [transaction, activity, account] = await Promise.all([
+      pool.query("select status from wallet_transactions where id = $1", [transactionId]),
+      pool.query("select status from wallet_activities where transaction_id = $1", [transactionId]),
+      pool.query("select balance from trading_accounts where clerk_user_id = $1", [newClerkUserId]),
+    ]);
+    expect(activity.rows[0].status).toBe(transaction.rows[0].status);
+    if (transaction.rows[0].status === "completed") {
+      expect(account.rows).toEqual([{ balance: "75.00000000" }]);
+    } else {
+      expect(transaction.rows[0].status).toBe("failed");
+      expect(account.rows).toEqual([]);
+    }
   });
 
   it("settles a winning trade into the balance shared by Trading and Overview", async () => {
@@ -302,6 +409,12 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await pool.query(
+      `insert into trading_accounts (clerk_user_id, balance)
+       values ($1, '24680.42000000')
+       on conflict (clerk_user_id) do update set balance = excluded.balance`,
+      [newClerkUserId],
+    );
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
       method: "POST",
@@ -350,6 +463,12 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await pool.query(
+      `insert into trading_accounts (clerk_user_id, balance)
+       values ($1, '24680.42000000')
+       on conflict (clerk_user_id) do update set balance = excluded.balance`,
+      [newClerkUserId],
+    );
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
       method: "POST",

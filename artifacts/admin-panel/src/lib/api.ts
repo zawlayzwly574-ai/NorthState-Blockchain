@@ -1,15 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+const ADMIN_KEY_STORAGE_KEY = 'admin_key';
+
 export function getAdminKey() {
-  return sessionStorage.getItem('admin_key');
+  const persistedKey = localStorage.getItem(ADMIN_KEY_STORAGE_KEY);
+  if (persistedKey) return persistedKey;
+
+  // Preserve an authenticated tab from older releases while migrating the
+  // session to storage that survives browser restarts.
+  const legacyKey = sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY);
+  if (legacyKey) {
+    localStorage.setItem(ADMIN_KEY_STORAGE_KEY, legacyKey);
+    sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+  }
+  return legacyKey;
 }
 
 export function setAdminKey(key: string) {
-  sessionStorage.setItem('admin_key', key);
+  localStorage.setItem(ADMIN_KEY_STORAGE_KEY, key);
+  sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
 }
 
 export function clearAdminKey() {
-  sessionStorage.removeItem('admin_key');
+  localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+  sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || '';
   window.location.href = `${base}/login`;
 }
@@ -105,7 +119,7 @@ export interface User {
   referralCode: string | null;
   totalHoldings: number;
   createdAt: string;
-  accountStatus: 'active' | 'suspended' | 'frozen' | 'deleted';
+  accountStatus: 'active' | 'suspended' | 'frozen' | 'deleted' | 'unknown';
 }
 
 export interface Transaction {

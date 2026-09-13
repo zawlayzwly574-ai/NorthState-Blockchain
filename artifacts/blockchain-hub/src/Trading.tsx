@@ -47,7 +47,7 @@ const TIMEFRAMES = [
 
 const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
 const PAYOUT_RATE = 0.85;
-const DEFAULT_MAIN_WALLET_BALANCE = 24_680.42;
+const DEFAULT_MAIN_WALLET_BALANCE = 0;
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
 
@@ -356,6 +356,7 @@ export function TradingPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
+  const placingRef = useRef(false);
   const [goldSourceId, setGoldSourceId] = useState('');
   const [goldUnits, setGoldUnits] = useState('');
   const [goldDestination, setGoldDestination] = useState('USDT');
@@ -402,8 +403,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  // Overview and Trading display the same main-wallet total. Keep the seeded
-  // wallet value visible while the shared portfolio query is still loading.
+  // Overview and Trading display the same canonical main-wallet total.
   const balance = Number(portfolio?.totalValue ?? DEFAULT_MAIN_WALLET_BALANCE);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
@@ -425,7 +425,7 @@ export function TradingPage() {
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (placing) return;
+    if (placingRef.current) return;
     if (insufficient) {
       toast({
         variant: 'destructive',
@@ -434,15 +434,15 @@ export function TradingPage() {
       });
       return;
     }
+    placingRef.current = true;
     setPlacing(true);
     try {
       const result = await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
-      await refetchTrades();
-      await refreshCanonicalBalance();
       toast({
         title: `${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} placed`,
         description: `${asset} trade #${result.tradeId} is active. $${tradeAmt.toFixed(2)} is reserved from your main wallet.`,
       });
+      void Promise.allSettled([refetchTrades(), refreshCanonicalBalance()]);
     } catch (error) {
       const apiError = error as { data?: { error?: string }; message?: string };
       toast({
@@ -451,6 +451,7 @@ export function TradingPage() {
         description: apiError.data?.error ?? apiError.message ?? 'Please check your wallet balance and try again.',
       });
     } finally {
+      placingRef.current = false;
       setPlacing(false);
     }
   };

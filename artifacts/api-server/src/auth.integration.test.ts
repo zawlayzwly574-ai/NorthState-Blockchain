@@ -1,6 +1,8 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+process.env.ADMIN_SECRET = "test-only-admin-secret";
+
 const { clerkMiddleware, getAuth, getUser, select, transaction, updateUserMetadata } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
@@ -149,13 +151,26 @@ describe("member route authentication", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toMatchObject({
-      totalValue: 24680.42,
-      holdings: expect.arrayContaining([
-        expect.objectContaining({ symbol: "BTC" }),
-        expect.objectContaining({ symbol: "ETH" }),
-        expect.objectContaining({ symbol: "USDC" }),
-      ]),
+      totalValue: 0,
+      cashBalance: 0,
+      holdings: [],
     });
+  });
+
+  it("validates an admin key without depending on database or Clerk reads", async () => {
+    const accepted = await fetch(`${baseUrl}/api/admin/auth-check`, {
+      headers: { "x-admin-key": String(process.env.ADMIN_SECRET) },
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ authenticated: true });
+    expect(select).not.toHaveBeenCalled();
+    expect(getUser).not.toHaveBeenCalled();
+
+    const rejected = await fetch(`${baseUrl}/api/admin/auth-check`, {
+      headers: { "x-admin-key": "incorrect-admin-key" },
+    });
+    expect(rejected.status).toBe(401);
+    expect(await rejected.json()).toEqual({ error: "Unauthorized" });
   });
 
   it("returns fallback profile JSON from both profile routes when database access fails", async () => {
