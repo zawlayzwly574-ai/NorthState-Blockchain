@@ -49,7 +49,8 @@ const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
+  || (import.meta.env.PROD ? '/api/__clerk' : undefined);
 if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the workspace environment.');
 }
@@ -1513,6 +1514,10 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
   const [depositError, setDepositError] = useState('');
+  const [transferError, setTransferError] = useState('');
+  const [copyError, setCopyError] = useState('');
+  const { isLoaded, isSignedIn } = useAuth();
+  const sessionReady = isLoaded && isSignedIn;
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1522,11 +1527,36 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
 
   const address = asset === 'BTC' ? '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' : '0x45fa3421948a8a0372e0a172ab9a3725f785a1d2';
 
-  const close = () => { setMode(null); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); };
+  const close = () => {
+    setMode(null);
+    setCopied(false);
+    setSwapDone(null);
+    setSwapError('');
+    setDepositError('');
+    setTransferError('');
+    setCopyError('');
+  };
+
+  const copyAddress = async () => {
+    setCopyError('');
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable');
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+      setCopyError('Copy was blocked by the browser. Select and copy the address manually.');
+    }
+  };
 
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDepositError('');
+    if (!sessionReady) {
+      setDepositError('Your sign-in session is still loading. Please wait a moment and submit again.');
+      return;
+    }
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
       onSuccess: () => {
@@ -1536,19 +1566,41 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
         onDone('Deposit proof submitted successfully and is awaiting admin approval.');
       },
       onError: (error) => {
-        const apiError = error as { data?: { error?: string } };
-        setDepositError(apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
+        const apiError = error as { status?: number; data?: { error?: string } };
+        setDepositError(
+          apiError.status === 401
+            ? 'Your session could not be verified. Your form is preserved; refresh your sign-in and submit again.'
+            : apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.',
+        );
       },
     });
   };
 
   const submitTransfer = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setTransferError('');
+    if (!sessionReady) {
+      setTransferError('Your sign-in session is still loading. Please wait a moment and submit again.');
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const data = { asset, amount: Number(form.get('amount')), destination: String(form.get('destination')) };
     const mutation = mode === 'send' ? send : withdrawal;
     mutation.mutate({ data }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }); qc.invalidateQueries({ queryKey: getGetActivityQueryKey() }); close(); onDone(); },
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
+        close();
+        onDone(mode === 'withdraw' ? 'Withdrawal request submitted successfully and is awaiting admin approval.' : 'Transfer submitted successfully.');
+      },
+      onError: (error) => {
+        const apiError = error as { status?: number; data?: { error?: string } };
+        setTransferError(
+          apiError.status === 401
+            ? 'Your session could not be verified. Your form is preserved; refresh your sign-in and submit again.'
+            : apiError.data?.error || 'We could not process this request. Check the details and try again.',
+        );
+      },
     });
   };
 
@@ -1589,11 +1641,12 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
               <p className="text-[11px] font-bold uppercase tracking-wider text-primary">{asset} deposit address</p>
               <div className="mt-2 flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all font-mono-ui text-[11px] text-foreground">{address}</code>
-                <button type="button" className="shrink-0 rounded-lg border border-primary/20 p-2 text-primary hover:bg-primary/10" onClick={() => { navigator.clipboard?.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1800); }} aria-label="Copy deposit address" data-testid="button-copy-deposit-address">
+                <button type="button" className="shrink-0 rounded-lg border border-primary/20 p-2 text-primary hover:bg-primary/10" onClick={copyAddress} aria-label="Copy deposit address" data-testid="button-copy-deposit-address">
                   {copied ? <Check size={15} /> : <Copy size={15} />}
                 </button>
               </div>
               {copied && <p className="mt-2 text-xs font-bold text-primary" data-testid="status-address-copied">Address copied</p>}
+              {copyError && <p className="mt-2 text-xs font-semibold text-destructive" data-testid="status-address-copy-error">{copyError}</p>}
             </div>
             <Field label={`Amount (${asset})`} name="amount" type="number" min="0.00000001" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
             <Field label="Transaction hash" name="txHash" type="text" placeholder="Paste the on-chain transaction hash" required data-testid="input-deposit-txhash" />
@@ -1620,7 +1673,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
             <Button type="submit" className="w-full" disabled={send.isPending || withdrawal.isPending} data-testid={`button-submit-${mode}`}>
               {send.isPending || withdrawal.isPending ? 'Processing...' : `Confirm ${mode}`} <ArrowUpRight size={16} />
             </Button>
-            {(send.isError || withdrawal.isError) && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">We could not process this request. Check the details and try again.</p>}
+            {transferError && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">{transferError}</p>}
           </form>
         </Modal>
       )}

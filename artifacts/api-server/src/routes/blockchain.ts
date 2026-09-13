@@ -209,8 +209,24 @@ const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
+function getAuthenticatedUserId(req: Request): string | null {
+  const auth = getAuth(req);
+  const claims = auth.sessionClaims as { sub?: unknown } | null | undefined;
+  const directUserId = typeof auth.userId === "string" && auth.userId.trim()
+    ? auth.userId
+    : null;
+  const subjectUserId = typeof claims?.sub === "string" && claims.sub.trim()
+    ? claims.sub
+    : null;
+
+  if (directUserId && subjectUserId && directUserId !== subjectUserId) return null;
+  return directUserId ?? subjectUserId;
+}
+
 function getUserId(req: Request) {
-  return getAuth(req).userId!;
+  const userId = getAuthenticatedUserId(req);
+  if (!userId) throw new Error("Authenticated member id is unavailable");
+  return userId;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
@@ -243,7 +259,7 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  const userId = getAuth(req).userId;
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -2319,6 +2335,32 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
       return { status: "already-processed" as const, transaction: pendingTransaction };
     }
 
+    if (pendingTransaction.type === "withdrawal") {
+      await databaseTx.execute(sql`
+        select pg_advisory_xact_lock(
+          hashtext(${`${pendingTransaction.clerkUserId}:TRADING_BALANCE`})
+        )
+      `);
+      const [holding] = await databaseTx
+        .select()
+        .from(holdingsTable)
+        .where(and(
+          eq(holdingsTable.clerkUserId, pendingTransaction.clerkUserId),
+          eq(holdingsTable.symbol, pendingTransaction.asset),
+          sql`${holdingsTable.amount} >= ${pendingTransaction.amount}`,
+        ))
+        .limit(1);
+      const [account] = await databaseTx
+        .select()
+        .from(tradingAccountsTable)
+        .where(and(
+          eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId),
+          sql`${tradingAccountsTable.balance} >= ${pendingTransaction.amount}`,
+        ))
+        .limit(1);
+      if (!holding || !account) return { status: "insufficient-funds" as const };
+    }
+
     const [approvedTransaction] = await databaseTx
       .update(transactionsTable)
       .set({ status: "completed" })
@@ -2384,24 +2426,27 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
     }
 
     if (approvedTransaction.type === "withdrawal") {
-      const [existing] = await databaseTx
-        .select()
-        .from(holdingsTable)
-        .where(
-          and(
-            eq(holdingsTable.clerkUserId, approvedTransaction.clerkUserId),
-            eq(holdingsTable.symbol, approvedTransaction.asset),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(approvedTransaction.amount));
-        const newValue = Math.max(0, asNumber(existing.value) - asNumber(approvedTransaction.amount));
-        await databaseTx
-          .update(holdingsTable)
-          .set({ amount: String(newAmount), value: String(newValue) })
-          .where(eq(holdingsTable.id, existing.id));
-      }
+      await databaseTx
+        .update(holdingsTable)
+        .set({
+          amount: sql`${holdingsTable.amount} - ${approvedTransaction.amount}`,
+          value: sql`greatest(0, ${holdingsTable.value} - ${approvedTransaction.amount})`,
+        })
+        .where(and(
+          eq(holdingsTable.clerkUserId, approvedTransaction.clerkUserId),
+          eq(holdingsTable.symbol, approvedTransaction.asset),
+          sql`${holdingsTable.amount} >= ${approvedTransaction.amount}`,
+        ));
+      await databaseTx
+        .update(tradingAccountsTable)
+        .set({
+          balance: sql`${tradingAccountsTable.balance} - ${approvedTransaction.amount}`,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(tradingAccountsTable.clerkUserId, approvedTransaction.clerkUserId),
+          sql`${tradingAccountsTable.balance} >= ${approvedTransaction.amount}`,
+        ));
     }
 
     return { status: "approved" as const, transaction: approvedTransaction };
@@ -2413,6 +2458,10 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
   }
   if (result.status === "already-processed") {
     res.status(409).json({ error: "Transaction has already been processed" });
+    return;
+  }
+  if (result.status === "insufficient-funds") {
+    res.status(409).json({ error: "Insufficient available balance to approve this withdrawal" });
     return;
   }
 

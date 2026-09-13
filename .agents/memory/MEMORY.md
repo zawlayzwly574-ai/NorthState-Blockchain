@@ -11,3 +11,4 @@
 - [Disposable PostgreSQL](disposable-postgresql.md) — local validation clusters must place Unix sockets in their temporary directory because the default runtime socket directory is absent.
 - [Stable member views](stable-member-views.md) — Overview, Activity, and Settings keep cached or sample data mounted during background refreshes instead of restoring blocking states.
 - [Real-user initialization](real-user-initialization.md) — new Clerk members start unverified with zero balance and no sample holdings/activity/rewards; demo data is demo-only.
+- [External Clerk session transport](external-clerk-session-transport.md) — production web auth stays cookie-based but must use the same-origin Clerk proxy when no proxy URL is injected.

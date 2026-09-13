@@ -17,9 +17,13 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
 process.env.DATABASE_URL = testDatabaseUrl;
 process.env.ADMIN_SECRET = "test-only-admin-secret";
 
-const { authenticatedUserId, firstTimeUserId, overlappingUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
-  const authByRequest = new WeakMap<object, { userId: string | null }>();
+const { authenticatedUserId, claimsUserId, firstTimeUserId, overlappingUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
+  const authByRequest = new WeakMap<object, {
+    userId: string | null;
+    sessionClaims?: { sub?: string };
+  }>();
   const authenticatedUserId = `database_test_${crypto.randomUUID()}`;
+  const claimsUserId = `database_claims_${crypto.randomUUID()}`;
   const firstTimeUserId = `database_new_${crypto.randomUUID()}`;
   const overlappingUserId = `database_overlap_${crypto.randomUUID()}`;
   const getUser = vi.fn(async (userId: string) => ({
@@ -45,6 +49,7 @@ const { authenticatedUserId, firstTimeUserId, overlappingUserId, clerkMiddleware
 
   return {
     authenticatedUserId,
+    claimsUserId,
     firstTimeUserId,
     overlappingUserId,
     getUser,
@@ -55,13 +60,18 @@ const { authenticatedUserId, firstTimeUserId, overlappingUserId, clerkMiddleware
       next: () => void,
     ) => {
       authByRequest.set(request, {
-        userId: request.headers.cookie?.includes("__session=database-overlap")
+        userId: request.headers.cookie?.includes("__session=database-claims")
+          ? null
+          : request.headers.cookie?.includes("__session=database-overlap")
           ? overlappingUserId
           : request.headers.cookie?.includes("__session=database-first-time")
             ? firstTimeUserId
             : request.headers.cookie?.includes("__session=database-restored")
               ? authenticatedUserId
               : null,
+        sessionClaims: request.headers.cookie?.includes("__session=database-claims")
+          ? { sub: claimsUserId }
+          : undefined,
       });
       next();
     },
@@ -92,6 +102,7 @@ vi.mock("./middlewares/clerkProxyMiddleware", () => ({
 
 describe("database-backed member authentication", () => {
   const clerkUserId = authenticatedUserId;
+  const claimsClerkUserId = claimsUserId;
   const newClerkUserId = firstTimeUserId;
   const overlapClerkUserId = overlappingUserId;
   const referralCode = `DB-AUTH-${randomUUID()}`;
@@ -102,6 +113,7 @@ describe("database-backed member authentication", () => {
   beforeAll(async () => {
     ({ pool } = await import("@workspace/db"));
     await removeTestMember();
+    await removeMember(claimsClerkUserId);
     await removeFirstTimeMember();
     await removeOverlapMember();
     await pool.query(
@@ -136,6 +148,7 @@ describe("database-backed member authentication", () => {
     }
     if (pool) {
       await removeTestMember();
+      await removeMember(claimsClerkUserId);
       await removeFirstTimeMember();
       await removeOverlapMember();
       await pool.end();
@@ -251,6 +264,116 @@ describe("database-backed member authentication", () => {
     expect(holdings.rows).toEqual([]);
     expect(activities.rowCount).toBe(0);
     expect(accounts.rows).toEqual([{ balance: "0.00000000" }]);
+  });
+
+  it("persists deposit and withdrawal requests authenticated through Clerk session claims", async () => {
+    const response = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=database-claims",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "BTC",
+        amount: 0.0125,
+        txHash: `claims-proof-${randomUUID()}`,
+        proofPath: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const submitted = await response.json() as { id: string; status: string };
+    expect(submitted.status).toBe("pending");
+
+    const [transaction, activity] = await Promise.all([
+      pool.query(
+        "select clerk_user_id, type, asset, amount, status from wallet_transactions where id = $1",
+        [Number(submitted.id)],
+      ),
+      pool.query(
+        "select clerk_user_id, type, asset, amount, status from wallet_activities where transaction_id = $1",
+        [Number(submitted.id)],
+      ),
+    ]);
+    expect(transaction.rows).toEqual([expect.objectContaining({
+      clerk_user_id: claimsClerkUserId,
+      type: "deposit",
+      asset: "BTC",
+      status: "pending",
+    })]);
+    expect(activity.rows).toEqual([expect.objectContaining({
+      clerk_user_id: claimsClerkUserId,
+      type: "deposit",
+      asset: "BTC",
+      status: "pending",
+    })]);
+
+    const withdrawalResponse = await fetch(`${baseUrl}/api/transactions/withdraw`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=database-claims",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "BTC",
+        amount: 0.005,
+        destination: "bc1qclaimswithdrawaltest",
+      }),
+    });
+    expect(withdrawalResponse.status).toBe(201);
+    const withdrawal = await withdrawalResponse.json() as { id: string; status: string };
+    expect(withdrawal.status).toBe("pending");
+    const persistedWithdrawal = await pool.query(
+      "select clerk_user_id, type, asset, status from wallet_transactions where id = $1",
+      [Number(withdrawal.id)],
+    );
+    expect(persistedWithdrawal.rows).toEqual([{
+      clerk_user_id: claimsClerkUserId,
+      type: "withdrawal",
+      asset: "BTC",
+      status: "pending",
+    }]);
+  });
+
+  it("refuses to approve a withdrawal that exceeds the canonical balance", async () => {
+    expect((await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=database-first-time" },
+    })).status).toBe(200);
+    await pool.query(
+      `insert into wallet_holdings
+        (clerk_user_id, symbol, name, amount, value, allocation, change_24h, color)
+       values ($1, 'USDT', 'Tether', '10', '10', '100', '0', '#26A17B')`,
+      [newClerkUserId],
+    );
+    await pool.query(
+      `insert into trading_accounts (clerk_user_id, balance)
+       values ($1, '10')
+       on conflict (clerk_user_id) do update set balance = excluded.balance`,
+      [newClerkUserId],
+    );
+    const inserted = await pool.query(
+      `insert into wallet_transactions
+        (clerk_user_id, type, asset, amount, status, destination)
+       values ($1, 'withdrawal', 'USDT', '15', 'pending', 'test-destination')
+       returning id`,
+      [newClerkUserId],
+    );
+    const transactionId = inserted.rows[0].id;
+
+    const approval = await fetch(`${baseUrl}/api/admin/transactions/${transactionId}/approve`, {
+      method: "PATCH",
+      headers: { "x-admin-key": String(process.env.ADMIN_SECRET) },
+    });
+    expect(approval.status).toBe(409);
+
+    const [transaction, account, holding] = await Promise.all([
+      pool.query("select status from wallet_transactions where id = $1", [transactionId]),
+      pool.query("select balance from trading_accounts where clerk_user_id = $1", [newClerkUserId]),
+      pool.query("select amount from wallet_holdings where clerk_user_id = $1 and symbol = 'USDT'", [newClerkUserId]),
+    ]);
+    expect(transaction.rows).toEqual([{ status: "pending" }]);
+    expect(account.rows).toEqual([{ balance: "10.00000000" }]);
+    expect(holding.rows).toEqual([{ amount: "10.000000000000" }]);
   });
 
   it("creates one zero-balance account when first-time profile requests overlap", async () => {
