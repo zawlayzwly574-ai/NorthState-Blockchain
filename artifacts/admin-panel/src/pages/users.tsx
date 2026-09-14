@@ -411,7 +411,7 @@ export default function Users() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-mono text-foreground">
-                        ${user.totalHoldings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {money(user.totalHoldings)}
                       </div>
                     </td>
                     <td className="px-5 py-4 text-xs font-mono text-muted-foreground">

@@ -1761,13 +1761,16 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
     .select()
     .from(walletProfilesTable)
     .orderBy(desc(walletProfilesTable.createdAt));
+  const clerkUserIds = profiles.map((profile) => profile.clerkUserId);
+  const accounts = clerkUserIds.length
+    ? await db.select().from(tradingAccountsTable).where(inArray(tradingAccountsTable.clerkUserId, clerkUserIds))
+    : [];
+  const accountByUser = new Map(accounts.map((account) => [account.clerkUserId, account]));
   const result = await Promise.all(
     profiles.map(async (profile) => {
-      const holdings = await db
-        .select()
-        .from(holdingsTable)
-        .where(eq(holdingsTable.clerkUserId, profile.clerkUserId));
-      const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
+      // Real, live trading balance — never a cached or seeded figure — matching
+      // exactly what the user's own Dashboard/Wallet reads.
+      const totalHoldings = asNumber(accountByUser.get(profile.clerkUserId)?.balance ?? 0);
       const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
       const email = clerkInfo.email || profile.email;
       let accountStatus: AccountOperationalStatus | "deleted" = "active";
@@ -1941,7 +1944,7 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
     .limit(1);
   if (!profile) { res.status(404).json({ error: "User not found" }); return; }
 
-  const [holdings, transactions, kycRows] = await Promise.all([
+  const [holdings, transactions, kycRows, accountRows] = await Promise.all([
     db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
     db
       .select()
@@ -1955,9 +1958,12 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
       .where(eq(kycSubmissionsTable.clerkUserId, userId))
       .orderBy(desc(kycSubmissionsTable.submittedAt))
       .limit(1),
+    db.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
   ]);
 
-  const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
+  // Real, live trading balance — never a cached or seeded figure — matching
+  // exactly what the user's own Dashboard/Wallet reads.
+  const totalHoldings = asNumber(accountRows[0]?.balance ?? 0);
   const kyc = kycRows[0] ? await enrichKyc(kycRows[0]) : null;
   const clerkInfo = await fetchClerkUserInfo(userId);
   const displayName = clerkInfo.name || profile.displayName;
