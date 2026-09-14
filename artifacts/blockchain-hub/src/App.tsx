@@ -1511,6 +1511,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
   const [depositError, setDepositError] = useState('');
+  const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1525,6 +1526,10 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDepositError('');
+    if (!isAuthLoaded || !isSignedIn) {
+      setDepositError('Your sign-in session is not ready. Please sign in again, then resubmit the deposit proof.');
+      return;
+    }
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
       onSuccess: () => {
@@ -1534,8 +1539,11 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
         onDone('Deposit proof submitted successfully and is awaiting admin approval.');
       },
       onError: (error) => {
-        const apiError = error as { data?: { error?: string } };
-        setDepositError(apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
+        const apiError = error as { status?: number; response?: { status?: number }; data?: { error?: string } };
+        const unauthorized = apiError.status === 401 || apiError.response?.status === 401 || apiError.data?.error === 'Unauthorized';
+        setDepositError(unauthorized
+          ? 'Your sign-in session expired. Sign in again and your existing account data will be restored.'
+          : apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
       },
     });
   };
@@ -1674,7 +1682,7 @@ export function Dashboard() {
   const memberQueriesEnabled = isLoaded && isSignedIn;
 
   const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 60_000, placeholderData: (prev) => prev } });
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, refetchOnWindowFocus: true, placeholderData: (prev) => prev } });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 
   // Exchange rate: convert USD → selected currency
@@ -1892,8 +1900,8 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, placeholderData: (previous) => previous } }); const items = activity.data ?? fallbackActivity;
-  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, refetchInterval: 3_000, refetchOnWindowFocus: true, placeholderData: (previous) => previous } }); const items = activity.data ?? fallbackActivity;
+  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isError ? <EmptyState title="Activity is temporarily unavailable" detail="We could not load your transaction history. It will retry automatically." /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, withdrawals, and trades will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 export function Settings() {

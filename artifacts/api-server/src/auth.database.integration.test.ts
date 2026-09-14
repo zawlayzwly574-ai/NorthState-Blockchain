@@ -17,14 +17,18 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
 process.env.DATABASE_URL = testDatabaseUrl;
 process.env.ADMIN_SECRET = "database-test-admin-secret";
 
-const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
+const { authenticatedUserId, firstTimeUserId, relinkedUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const authenticatedUserId = `database_test_${crypto.randomUUID()}`;
   const firstTimeUserId = `database_new_${crypto.randomUUID()}`;
+  const relinkedUserId = `database_relinked_${crypto.randomUUID()}`;
   const getUser = vi.fn(async (userId: string) => ({
     privateMetadata: {},
+    primaryEmailAddressId: `email_${userId}`,
     emailAddresses: [
       {
+        id: `email_${userId}`,
+        verification: { status: "verified" },
         emailAddress:
           userId === firstTimeUserId
             ? "first-time-database-test@example.invalid"
@@ -38,6 +42,7 @@ const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser 
   return {
     authenticatedUserId,
     firstTimeUserId,
+    relinkedUserId,
     getUser,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
@@ -48,6 +53,8 @@ const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser 
       authByRequest.set(request, {
         userId: request.headers.cookie?.includes("__session=database-first-time")
           ? firstTimeUserId
+          : request.headers.cookie?.includes("__session=database-relinked")
+            ? relinkedUserId
           : request.headers.cookie?.includes("__session=database-restored")
             ? authenticatedUserId
             : null,
@@ -197,6 +204,36 @@ describe("database-backed member authentication", () => {
     ]);
   });
 
+  it("maps a replacement Clerk session to the existing database account by verified email", async () => {
+    await pool.query(
+      `insert into trading_accounts (clerk_user_id, balance)
+       values ($1, '725.50')
+       on conflict (clerk_user_id) do update set balance = excluded.balance`,
+      [clerkUserId],
+    );
+
+    const profileResponse = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=database-relinked" },
+    });
+    expect(profileResponse.status).toBe(200);
+    expect(await profileResponse.json()).toMatchObject({
+      name: "Database Test Member",
+      email: "database-test@example.invalid",
+    });
+
+    const accountResponse = await fetch(`${baseUrl}/api/trading/account`, {
+      headers: { cookie: "__session=database-relinked" },
+    });
+    expect(accountResponse.status).toBe(200);
+    expect((await accountResponse.json() as { balance: number }).balance).toBe(725.5);
+
+    const duplicate = await pool.query(
+      "select count(*)::int as count from wallet_profiles where clerk_user_id = $1",
+      [relinkedUserId],
+    );
+    expect(duplicate.rows).toEqual([{ count: 0 }]);
+  });
+
   it("creates a profile with an empty zero-balance portfolio for a first-time authenticated member", async () => {
     const response = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=database-first-time" },
@@ -204,9 +241,9 @@ describe("database-backed member authentication", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      name: "Alex Morgan",
+      name: "First-time Member",
       email: "first-time-database-test@example.invalid",
-      verificationStatus: "verified",
+      verificationStatus: "unverified",
     });
 
     const [profiles, holdings, activities, accounts] = await Promise.all([
@@ -230,7 +267,7 @@ describe("database-backed member authentication", () => {
 
     expect(profiles.rows).toEqual([
       {
-        display_name: "Alex Morgan",
+        display_name: "First-time Member",
         email: "first-time-database-test@example.invalid",
       },
     ]);
@@ -320,6 +357,10 @@ describe("database-backed member authentication", () => {
         expect.objectContaining({ status: "completed", result: "win", payout: 85 }),
       ]),
     );
+    const activityResponse = await fetch(`${baseUrl}/api/activity`, { headers });
+    expect(await activityResponse.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "buy", asset: "BTC", status: "completed", value: 85 }),
+    ]));
 
     const [accountResponse, portfolioResponse] = await Promise.all([
       fetch(`${baseUrl}/api/trading/account`, { headers }),
@@ -369,6 +410,10 @@ describe("database-backed member authentication", () => {
         expect.objectContaining({ status: "completed", result: "loss", payout: -100 }),
       ]),
     );
+    const activityResponse = await fetch(`${baseUrl}/api/activity`, { headers });
+    expect(await activityResponse.json()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "sell", asset: "BTC", status: "completed", value: -100 }),
+    ]));
 
     const [accountResponse, portfolioResponse] = await Promise.all([
       fetch(`${baseUrl}/api/trading/account`, { headers }),

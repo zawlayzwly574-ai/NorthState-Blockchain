@@ -175,7 +175,7 @@ describe("member route authentication", () => {
     }
   });
 
-  it("returns fallback activity JSON when database access fails", async () => {
+  it("returns an explicit activity error when database access fails", async () => {
     select.mockImplementation(() => {
       throw new Error("database unavailable");
     });
@@ -184,9 +184,9 @@ describe("member route authentication", () => {
       headers: { cookie: "__session=restored" },
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual([]);
+    expect(await response.json()).toEqual({ error: "Activity history is temporarily unavailable." });
   });
 
   it("keeps Clerk authentication when submitting deposit proof", async () => {

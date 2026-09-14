@@ -207,23 +207,37 @@ const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
 function getUserId(req: Request) {
-  return getAuth(req).userId!;
+  return canonicalUserIds.get(req) ?? getAuth(req).userId!;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
 const accountStatusKey = "accountStatus";
-const accountStatusCache = new Map<string, { status: AccountOperationalStatus; expiresAt: number }>();
+const canonicalUserIds = new WeakMap<Request, string>();
+const canonicalUserIdCache = new Map<string, { userId: string; expiresAt: number }>();
+const accountStatusCache = new Map<string, { status: AccountOperationalStatus; verifiedEmail: string; expiresAt: number }>();
 const ACCOUNT_STATUS_CACHE_TTL = 15_000;
+const CANONICAL_USER_ID_CACHE_TTL = 60_000;
 
-async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
-  if (userId === "demo_user") return "active";
+async function getAccountContext(userId: string): Promise<{ status: AccountOperationalStatus; verifiedEmail: string }> {
+  if (userId === "demo_user") return { status: "active", verifiedEmail: "" };
   const cached = accountStatusCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) return cached.status;
+  if (cached && cached.expiresAt > Date.now()) {
+    return { status: cached.status, verifiedEmail: cached.verifiedEmail };
+  }
   const user = await clerkClient.users.getUser(userId);
   const status = user.privateMetadata?.[accountStatusKey];
   const normalized = status === "suspended" || status === "frozen" ? status : "active";
-  accountStatusCache.set(userId, { status: normalized, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
-  return normalized;
+  const emailAddresses = user.emailAddresses ?? [];
+  const primaryEmail = emailAddresses.find((email) => email.id === user.primaryEmailAddressId);
+  const verifiedEmail = primaryEmail?.verification?.status === "verified"
+    ? primaryEmail.emailAddress.trim().toLowerCase()
+    : "";
+  accountStatusCache.set(userId, {
+    status: normalized,
+    verifiedEmail,
+    expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL,
+  });
+  return { status: normalized, verifiedEmail };
 }
 
 async function setAccountOperationalStatus(userId: string, status: AccountOperationalStatus) {
@@ -233,7 +247,63 @@ async function setAccountOperationalStatus(userId: string, status: AccountOperat
     [accountStatusKey]: status,
   };
   await clerkClient.users.updateUserMetadata(userId, { privateMetadata });
-  accountStatusCache.set(userId, { status, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
+  const emailAddresses = user.emailAddresses ?? [];
+  const primaryEmail = emailAddresses.find((email) => email.id === user.primaryEmailAddressId);
+  accountStatusCache.set(userId, {
+    status,
+    verifiedEmail: primaryEmail?.verification?.status === "verified"
+      ? primaryEmail.emailAddress.trim().toLowerCase()
+      : "",
+    expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL,
+  });
+}
+
+async function resolveCanonicalUserId(clerkUserId: string, verifiedEmail: string) {
+  if (!verifiedEmail) return clerkUserId;
+  const cached = canonicalUserIdCache.get(clerkUserId);
+  if (cached && cached.expiresAt > Date.now()) return cached.userId;
+
+  const matchingProfiles = await db
+    .select({ clerkUserId: walletProfilesTable.clerkUserId })
+    .from(walletProfilesTable)
+    .where(sql`lower(${walletProfilesTable.email}) = ${verifiedEmail}`);
+  if (matchingProfiles.length === 0) return clerkUserId;
+
+  let canonicalUserId = matchingProfiles[0].clerkUserId;
+  if (matchingProfiles.length > 1) {
+    const ids = matchingProfiles.map((profile) => profile.clerkUserId);
+    const [accounts, holdings, activities, transactions, trades] = await Promise.all([
+      db.select().from(tradingAccountsTable).where(inArray(tradingAccountsTable.clerkUserId, ids)),
+      db.select({ clerkUserId: holdingsTable.clerkUserId }).from(holdingsTable).where(inArray(holdingsTable.clerkUserId, ids)),
+      db.select({ clerkUserId: activitiesTable.clerkUserId }).from(activitiesTable).where(inArray(activitiesTable.clerkUserId, ids)),
+      db.select({ clerkUserId: transactionsTable.clerkUserId }).from(transactionsTable).where(inArray(transactionsTable.clerkUserId, ids)),
+      db.select({ clerkUserId: tradesTable.clerkUserId }).from(tradesTable).where(inArray(tradesTable.clerkUserId, ids)),
+    ]);
+    const score = (id: string) => {
+      const account = accounts.find((candidate) => candidate.clerkUserId === id);
+      return (account && asNumber(account.balance) !== 0 ? 10_000 : 0)
+        + holdings.filter((row) => row.clerkUserId === id).length * 100
+        + transactions.filter((row) => row.clerkUserId === id).length * 20
+        + trades.filter((row) => row.clerkUserId === id).length * 10
+        + activities.filter((row) => row.clerkUserId === id).length;
+    };
+    const scored = ids.map((id) => ({ id, score: score(id) }));
+    const highestScore = Math.max(...scored.map((candidate) => candidate.score));
+    const strongest = scored.filter((candidate) => candidate.score === highestScore);
+    if (strongest.length === 1 && highestScore > 0) {
+      canonicalUserId = strongest[0].id;
+    } else if (ids.includes(clerkUserId)) {
+      canonicalUserId = clerkUserId;
+    } else {
+      throw new Error("Multiple database accounts share this verified email; automatic account selection was refused.");
+    }
+  }
+
+  canonicalUserIdCache.set(clerkUserId, {
+    userId: canonicalUserId,
+    expiresAt: Date.now() + CANONICAL_USER_ID_CACHE_TTL,
+  });
+  return canonicalUserId;
 }
 
 function isFrozenOperation(req: Request) {
@@ -253,8 +323,8 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  void getAccountOperationalStatus(userId)
-    .then((status) => {
+  void getAccountContext(userId)
+    .then(async ({ status, verifiedEmail }) => {
       if (status === "suspended" || (status === "frozen" && isFrozenOperation(req))) {
         res.status(403).json({
           error: status === "suspended"
@@ -264,6 +334,7 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
         });
         return;
       }
+      canonicalUserIds.set(req, await resolveCanonicalUserId(userId, verifiedEmail));
       next();
     })
     .catch(() => {
@@ -366,7 +437,8 @@ async function ensureDefaultPortfolio(userId: string) {
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
-    const email = user.emailAddresses[0]?.emailAddress ?? "";
+    const primaryEmail = user.emailAddresses.find((item) => item.id === user.primaryEmailAddressId);
+    const email = primaryEmail?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
     return { email, name };
   } catch {
@@ -412,6 +484,20 @@ async function syncClerkUsersToWalletProfiles(force = false): Promise<number> {
     await db.transaction(async (tx) => {
       for (const user of users) {
         const identity = clerkUserIdentity(user);
+        const [matchingProfile] = identity.email
+          ? await tx
+            .select()
+            .from(walletProfilesTable)
+            .where(sql`lower(${walletProfilesTable.email}) = ${identity.email.toLowerCase()}`)
+            .limit(1)
+          : [];
+        if (matchingProfile && matchingProfile.clerkUserId !== user.id) {
+          await tx.update(walletProfilesTable).set({
+            displayName: identity.displayName,
+            email: identity.email,
+          }).where(eq(walletProfilesTable.id, matchingProfile.id));
+          continue;
+        }
         await tx
           .insert(walletProfilesTable)
           .values({
@@ -453,22 +539,16 @@ async function ensureSeededUser(userId: string) {
     .limit(1);
 
   if (existing) {
-    const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
-    if (existing.verificationStatus === "unverified") sampleProfileUpdate.verificationStatus = "verified";
-    if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
-    if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
-
-    // Keep the signed-in email, but replace legacy fallback data with the sample profile.
+    const identityUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
     if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
       const { email, name } = await fetchClerkUserInfo(userId);
-      if (email) sampleProfileUpdate.email = email;
-      if (name && existing.displayName !== "North State Blockchain Member") sampleProfileUpdate.displayName = name;
+      if (email) identityUpdate.email = email;
+      if (name) identityUpdate.displayName = name;
     }
-    if (Object.keys(sampleProfileUpdate).length) {
-      await db.update(walletProfilesTable).set(sampleProfileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
+    if (Object.keys(identityUpdate).length) {
+      await db.update(walletProfilesTable).set(identityUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
       await ensureDefaultPortfolio(userId);
-      return { ...existing, ...sampleProfileUpdate };
+      return { ...existing, ...identityUpdate };
     }
     await ensureDefaultPortfolio(userId);
     return existing;
@@ -476,12 +556,13 @@ async function ensureSeededUser(userId: string) {
 
   const isDemoUser = userId === "demo_user";
 
-  const displayName = "Alex Morgan";
+  let displayName = isDemoUser ? "Alex Morgan" : "North State Blockchain Member";
   let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
 
   if (!isDemoUser) {
     const info = await fetchClerkUserInfo(userId);
     if (info.email) email = info.email;
+    if (info.name) displayName = info.name;
   }
 
   const [profile] = await db
@@ -491,9 +572,9 @@ async function ensureSeededUser(userId: string) {
       displayName,
       email,
       referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
-      verificationStatus: "verified",
-      referralInvitedCount: 3,
-      referralReward: "50.00",
+      verificationStatus: isDemoUser ? "verified" : "unverified",
+      referralInvitedCount: isDemoUser ? 3 : 0,
+      referralReward: isDemoUser ? "50.00" : "0",
     })
     .onConflictDoNothing()
     .returning();
@@ -1202,8 +1283,7 @@ router.get("/activity", async (req, res) => {
       .select()
       .from(activitiesTable)
       .where(eq(activitiesTable.clerkUserId, userId))
-      .orderBy(desc(activitiesTable.createdAt))
-      .limit(20);
+      .orderBy(desc(activitiesTable.createdAt));
     res.json(activities.length
       ? GetActivityResponse.parse(activities.map((activity) => ({
           id: String(activity.id),
@@ -1216,8 +1296,8 @@ router.get("/activity", async (req, res) => {
         })))
       : defaultActivityResponse());
   } catch (error) {
-    req.log.error({ err: error, userId }, "Activity database query failed; serving default activity");
-    res.json(defaultActivityResponse());
+    req.log.error({ err: error, userId }, "Activity database query failed");
+    res.status(503).json({ error: "Activity history is temporarily unavailable." });
   }
 });
 
@@ -1790,7 +1870,7 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       const email = clerkInfo.email || profile.email;
       let accountStatus: AccountOperationalStatus | "deleted" = "active";
       try {
-        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
+        accountStatus = (await getAccountContext(profile.clerkUserId)).status;
       } catch (error: unknown) {
         if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
         else throw error;
@@ -2345,6 +2425,10 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     if (!settledTrade) {
       throw new Error("Trade settlement claim was lost.");
     }
+    await tx.update(activitiesTable).set({
+      value: String(settledTrade.payout ?? 0),
+      status: "completed",
+    }).where(eq(activitiesTable.tradeId, settledTrade.id));
 
     return { trade: settledTrade, settled: true, error: null, balance: updatedAccount.balance };
   });
@@ -2432,6 +2516,15 @@ router.post("/trading/trades", async (req, res) => {
       expiresAt,
       payoutRate: "0.85",
     }).returning();
+    await tx.insert(activitiesTable).values({
+      clerkUserId: userId,
+      type: direction === "long" ? "buy" : "sell",
+      asset: asset.toUpperCase(),
+      amount: amountString,
+      value: amountString,
+      status: "pending",
+      tradeId: trade.id,
+    });
     await tx.update(tradingAccountsTable).set({
       totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
       updatedAt: now,

@@ -20,6 +20,7 @@ import {
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
   getGetPortfolioQueryKey,
+  getGetActivityQueryKey,
   getGetMiningPlaceQueryKey,
   getGetMiningInvestmentsQueryKey,
 } from '@workspace/api-client-react';
@@ -353,13 +354,14 @@ export function TradingPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
+  const [tradeError, setTradeError] = useState('');
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
   const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
   const { data: miningInvestments } = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 30_000, placeholderData: (previous) => previous } });
-  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
+  const { data: account, isLoading: accountLoading, isError: accountError } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
     query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, placeholderData: (previous) => previous },
@@ -384,7 +386,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(portfolio?.totalValue ?? account?.balance ?? 0);
+  const balance = Number(account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
@@ -401,18 +403,22 @@ export function TradingPage() {
     await Promise.all([
       qc.refetchQueries({ queryKey: getGetTradingAccountQueryKey(), type: 'all' }),
       qc.refetchQueries({ queryKey: getGetPortfolioQueryKey(), type: 'all' }),
+      qc.refetchQueries({ queryKey: getGetActivityQueryKey(), type: 'all' }),
     ]);
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (placing || !currentPrice || insufficient) return;
+    if (placing || insufficient || !memberQueriesEnabled || accountLoading || accountError) return;
+    setTradeError('');
     setPlacing(true);
     try {
       await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
       await refreshCanonicalBalance();
-    } catch {
-      // error is surfaced via disabled state
+      triggerFlash(`${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} trade placed`, 'win');
+    } catch (error) {
+      const apiError = error as { data?: { error?: string }; message?: string };
+      setTradeError(apiError.data?.error || apiError.message || 'Trade could not be placed. Please try again.');
     } finally {
       setPlacing(false);
     }
@@ -622,7 +628,7 @@ export function TradingPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => handleTrade('long')}
-            disabled={placing || !currentPrice || insufficient}
+            disabled={placing || insufficient || !memberQueriesEnabled || accountLoading || accountError}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-buy-long"
           >
@@ -632,7 +638,7 @@ export function TradingPage() {
           </button>
           <button
             onClick={() => handleTrade('short')}
-            disabled={placing || !currentPrice || insufficient}
+            disabled={placing || insufficient || !memberQueriesEnabled || accountLoading || accountError}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-sell-short"
           >
@@ -641,6 +647,8 @@ export function TradingPage() {
             <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
           </button>
         </div>
+        {accountError && <p className="mt-3 text-center text-sm font-semibold text-destructive" role="alert">Your trading balance could not be loaded. Please refresh and try again.</p>}
+        {tradeError && <p className="mt-3 text-center text-sm font-semibold text-destructive" role="alert">{tradeError}</p>}
       </div>
 
       {/* ── Active Trades ── */}
