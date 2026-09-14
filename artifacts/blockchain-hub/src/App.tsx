@@ -49,8 +49,7 @@ const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
-  || (import.meta.env.PROD ? '/api/__clerk' : undefined);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the workspace environment.');
 }
@@ -60,6 +59,30 @@ const currencies = [
   'BRL', 'KRW', 'ZAR', 'THB', 'MYR', 'IDR', 'PHP', 'AED',
   'SAR', 'TRY', 'PLN', 'CZK', 'HUF', 'RON', 'MMK',
 ];
+const memberRedirectRoots = ['/dashboard', '/activity', '/trading', '/settings', '/mining-place'];
+
+export function safeMemberRedirect(rawRedirect: string | null, origin = window.location.origin) {
+  if (!rawRedirect) return '/dashboard';
+  try {
+    const decoded = decodeURIComponent(rawRedirect);
+    if (rawRedirect.includes('\\') || decoded.includes('\\')) return '/dashboard';
+    const resolved = new URL(rawRedirect, origin);
+    if (resolved.origin !== origin) return '/dashboard';
+    const isMemberRoute = memberRedirectRoots.some((root) => (
+      resolved.pathname === root || resolved.pathname.startsWith(`${root}/`)
+    ));
+    return isMemberRoute
+      ? `${resolved.pathname}${resolved.search}${resolved.hash}`
+      : '/dashboard';
+  } catch {
+    return '/dashboard';
+  }
+}
+
+export function authFlowUrl(authPath: '/sign-in' | '/sign-up', redirectPath: string) {
+  return `${basePath}${authPath}?redirect_url=${encodeURIComponent(redirectPath)}`;
+}
+
 const depositAssets = [
   { symbol: 'BTC', name: 'Bitcoin', color: '#f6ad3c' },
   { symbol: 'USDT', name: 'Tether', color: '#4bbd91' },
@@ -395,12 +418,18 @@ const clerkAppearance = {
 };
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
+  const requestedPath = new URLSearchParams(window.location.search).get('redirect_url');
+  const safeRequestedPath = safeMemberRedirect(requestedPath);
+  const redirectUrl = `${basePath}${safeRequestedPath}`;
+  const signInUrl = authFlowUrl('/sign-in', safeRequestedPath);
+  const signUpUrl = authFlowUrl('/sign-up', safeRequestedPath);
+
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="min-w-0 w-full max-w-[440px] animate-rise">
       <div className="mb-8 flex justify-center"><Logo /></div>
       {signUp
-        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
-        : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
+        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={signInUrl} fallbackRedirectUrl={redirectUrl} />
+        : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={signUpUrl} fallbackRedirectUrl={redirectUrl} />}
       <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
   </main>;
@@ -483,10 +512,6 @@ function Shell({ children }: { children: React.ReactNode }) {
   }, [mobileOpen]);
 
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
-  const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
-  const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
-  
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside id="mobile-navigation" role="dialog" aria-modal={mobileOpen ? 'true' : undefined} aria-hidden={!mobileOpen} className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 transition-transform duration-300 xl:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location === href || (href !== '/dashboard' && location.startsWith(href)) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="xl:pl-[250px]"><header className="sticky top-0 z-30 flex min-h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl xl:px-8"><button ref={triggerRef} aria-expanded={mobileOpen} aria-controls="mobile-navigation" aria-haspopup="dialog" className="rounded-xl p-2.5 text-muted-foreground hover:bg-secondary xl:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={22} /></button><div className="hidden text-sm font-semibold text-muted-foreground xl:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-2 sm:gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
                 <Bell size={20} />
@@ -519,7 +544,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                   </div>
                 </>
               )}
-            </div><Link href="/settings" className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-5 sm:py-7 xl:px-8 xl:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 xl:hidden" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
+            </div><Link href="/settings" className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-5 sm:py-7 xl:px-8 xl:py-9">{children}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 xl:hidden" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
 }
 
 function PageHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail?: string; action?: React.ReactNode }) {
@@ -2379,6 +2404,16 @@ function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { cons
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const [location, setLocation] = useLocation();
+  const [loadTimedOut, setLoadTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (isLoaded) {
+      setLoadTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLoadTimedOut(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [isLoaded]);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -2386,8 +2421,26 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
   }, [isLoaded, isSignedIn, location, setLocation]);
 
-  if (!isLoaded || !isSignedIn) {
-    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
+  if (!isLoaded) {
+    if (!loadTimedOut) {
+      return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
+    }
+    return (
+      <main className="grid min-h-[100dvh] place-items-center bg-background px-4" data-testid="protected-route-recovery">
+        <div className="surface w-full max-w-md rounded-2xl p-7 text-center">
+          <h1 className="text-xl font-extrabold">Sign-in is taking longer than expected</h1>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">Reload the secure session or return to sign in. Your account data is unchanged.</p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Button type="button" onClick={() => window.location.reload()}>Reload session</Button>
+            <Button type="button" variant="secondary" onClick={() => setLocation(`/sign-in?redirect_url=${encodeURIComponent(location)}`, { replace: true })}>Return to sign in</Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isSignedIn) {
+    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-redirecting" />;
   }
 
   return children;

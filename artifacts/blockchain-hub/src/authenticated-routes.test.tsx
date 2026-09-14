@@ -20,7 +20,7 @@ vi.mock("@clerk/react", async () => {
   };
 });
 
-import { ActivityPage, Dashboard, ProtectedRoute, Settings } from "./App";
+import { ActivityPage, authFlowUrl, Dashboard, ProtectedRoute, safeMemberRedirect, Settings } from "./App";
 
 const protectedPaths = [
   "/api/portfolio",
@@ -29,6 +29,7 @@ const protectedPaths = [
   "/api/notifications",
   "/api/referral",
 ];
+let profileVerificationStatus = "verified";
 
 function jsonFor(url: string) {
   if (url.includes("/portfolio")) {
@@ -37,7 +38,7 @@ function jsonFor(url: string) {
   if (url.includes("/activity") || url.includes("/notifications")) return [];
   if (url.includes("/fx-rates")) return { base: "USD", rates: {} };
   if (url.includes("/referral")) return { code: "TEST", totalReferrals: 0, rewardsEarned: 0, referrals: [] };
-  if (url.includes("/profile")) return { name: "Test Member", initials: "TM", verificationStatus: "verified" };
+  if (url.includes("/profile")) return { name: "Test Member", initials: "TM", verificationStatus: profileVerificationStatus };
   return {};
 }
 
@@ -63,6 +64,7 @@ describe("authenticated portfolio routes", () => {
   beforeEach(() => {
     authState.isLoaded = false;
     authState.isSignedIn = false;
+    profileVerificationStatus = "verified";
     localStorage.clear();
     fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -116,6 +118,42 @@ describe("authenticated portfolio routes", () => {
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     );
     expect(protectedCalls).toHaveLength(0);
+  });
+
+  it("keeps the Dashboard and wallet controls available while identity verification is incomplete", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    profileVerificationStatus = "unverified";
+
+    renderRoute(<Dashboard />, "/dashboard");
+
+    expect(await screen.findByTestId("button-open-deposit")).toBeInTheDocument();
+    expect(screen.getByTestId("button-open-withdraw")).toBeInTheDocument();
+    expect(screen.queryByText("Complete Identity Verification")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["/trading", "/trading"],
+    ["/settings?tab=security#passkeys", "/settings?tab=security#passkeys"],
+    ["/mining-place/BTC", "/mining-place/BTC"],
+    ["//evil.example", "/dashboard"],
+    ["/\\evil.example", "/dashboard"],
+    ["/%5Cevil.example", "/dashboard"],
+    ["https://evil.example/settings", "/dashboard"],
+    ["/sign-in", "/dashboard"],
+    ["/sign-up/verify", "/dashboard"],
+    ["not a url", "/dashboard"],
+  ])("normalizes auth return destination %s", (candidate, expected) => {
+    expect(safeMemberRedirect(candidate, "https://northstateblockchain.com")).toBe(expected);
+  });
+
+  it("preserves the safe destination when switching authentication flows", () => {
+    expect(authFlowUrl("/sign-up", "/trading")).toContain(
+      `/sign-up?redirect_url=${encodeURIComponent("/trading")}`,
+    );
+    expect(authFlowUrl("/sign-in", "/settings?tab=security")).toContain(
+      `/sign-in?redirect_url=${encodeURIComponent("/settings?tab=security")}`,
+    );
   });
 
   it.each([
