@@ -80,23 +80,6 @@ const fallbackPortfolio = {
   holdings: [],
 };
 const fallbackActivity: Array<never> = [];
-const fallbackProfile = {
-  id: 'sample-profile',
-  name: 'Alex Morgan',
-  email: 'alex@example.com',
-  initials: 'AM',
-  verificationStatus: 'verified' as const,
-  referralCode: 'NORTHSTAR-ALEX',
-  twoFactorEnabled: false,
-  smsPhoneNumber: null,
-  smsPhoneVerified: false,
-};
-const fallbackReferral = {
-  code: 'NORTHSTAR-ALEX',
-  invitedCount: 3,
-  reward: 50,
-  shareUrl: `${window.location.origin}/join/NORTHSTAR-ALEX`,
-};
 
 function money(value = 0, currency = 'USD') {
   try {
@@ -334,11 +317,6 @@ function About() {
   </main>;
 }
 
-function AuthPage({ signUp = false }: { signUp?: boolean }) {
-  const [submitted, setSubmitted] = useState(false);
-  return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8"><div className="w-full max-w-[440px] animate-rise"><div className="mb-8 flex justify-center"><Logo /></div><div className="surface rounded-3xl p-6 sm:p-8"><div className="mb-7"><p className="eyebrow">{signUp ? 'Start with North State Blockchain' : 'Welcome back'}</p><h1 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">{signUp ? 'A clearer crypto account.' : 'Your portfolio is waiting.'}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">{signUp ? 'Create your account with the email or phone you use every day.' : 'Sign in to see your balance, activity, and markets.'}</p></div>{submitted ? <div className="rounded-2xl border border-primary/25 bg-primary/10 p-5 text-center" data-testid="status-auth-success"><div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground"><Check size={19} /></div><h2 className="mt-4 font-bold">{signUp ? 'Check your inbox' : 'Sign-in link sent'}</h2><p className="mt-2 text-sm text-muted-foreground">Your configured account flow will continue from there.</p><Link href="/dashboard" className="mt-5 inline-flex rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="link-auth-dashboard">Continue to North State Blockchain</Link></div> : <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); setSubmitted(true); }}><Field label={signUp ? 'Email or phone' : 'Email or phone'} type="text" placeholder="you@example.com" required data-testid="input-auth-identifier" /><Field label="Password" type="password" placeholder="Enter your password" required data-testid="input-auth-password" />{!signUp && <Link href="/sign-in/forgot-password" className="justify-self-end text-xs font-bold text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</Link>}<Button type="submit" className="mt-2 w-full" data-testid="button-auth-submit">{signUp ? 'Create account' : 'Sign in'} <ArrowUpRight size={16} /></Button><div className="my-1 flex items-center gap-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div><Button type="button" variant="secondary" className="w-full" onClick={() => setSubmitted(true)} data-testid="button-auth-continue-email">{signUp ? 'Continue with email' : 'Continue with email'}</Button></form>}<div className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">{signUp ? 'Already have an account?' : 'New to North State Blockchain?'} <Link href={signUp ? '/sign-in' : '/sign-up'} className="font-bold text-primary hover:underline" data-testid="link-auth-switch">{signUp ? 'Sign in' : 'Create an account'}</Link></div></div><p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">By continuing, you agree to North State Blockchain's terms and privacy policy.</p></div></main>;
-}
-
 const clerkAppearance = {
   theme: shadcn,
   cssLayerName: 'clerk',
@@ -390,7 +368,7 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
     <div className="min-w-0 w-full max-w-[440px] animate-rise">
       <div className="mb-8 flex justify-center"><Logo /></div>
       {signUp
-        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
+        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/settings?tab=verification`} />
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
       <p className="mt-5 text-center text-sm text-muted-foreground">
         {signUp ? 'Already have an account?' : 'New to North State Blockchain?'}{' '}
@@ -447,16 +425,16 @@ function KycStatusScreen({ status }: { status: string }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
   const { data: profile } = useGetProfile({
-    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled },
+    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000 },
   });
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
-    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled },
+    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && profile?.verificationStatus === 'verified' },
   });
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('notif-last-seen') ?? '');
   const unreadCount = (notifs.data ?? []).filter(n => n.createdAt > lastSeen).length;
@@ -481,8 +459,17 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
-  const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
+  const isVerificationRoute = location === '/settings' || location.startsWith('/settings');
+  useEffect(() => {
+    if (profile && profile.verificationStatus !== 'verified' && !isVerificationRoute) {
+      setLocation('/settings?tab=verification', { replace: true });
+    }
+  }, [isVerificationRoute, profile, setLocation]);
+  const gatedContent = !profile
+    ? <LoadingState lines={4} />
+    : (!isVerificationRoute && verificationStatus !== 'verified')
+      ? <KycStatusScreen status={verificationStatus ?? 'unverified'} />
+      : children;
   
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside id="mobile-navigation" role="dialog" aria-modal={mobileOpen ? 'true' : undefined} aria-hidden={!mobileOpen} className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 transition-transform duration-300 xl:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location === href || (href !== '/dashboard' && location.startsWith(href)) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="xl:pl-[250px]"><header className="sticky top-0 z-30 flex min-h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl xl:px-8"><button ref={triggerRef} aria-expanded={mobileOpen} aria-controls="mobile-navigation" aria-haspopup="dialog" className="rounded-xl p-2.5 text-muted-foreground hover:bg-secondary xl:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={22} /></button><div className="hidden text-sm font-semibold text-muted-foreground xl:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-2 sm:gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
@@ -1910,10 +1897,10 @@ export function Settings() {
   const qc = useQueryClient();
   const memberQueriesEnabled = isUserLoaded && isSignedIn;
   const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
-  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
+  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled && profile.data?.verificationStatus === 'verified', placeholderData: (previous) => previous } });
   const kyc = useSubmitKyc();
   const share = useCreateReferralShare();
-  const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
+  const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>(() => new URLSearchParams(window.location.search).get('tab') === 'verification' ? 'verification' : 'profile');
   const [feedback, setFeedback] = useState('');
   const [docFrontPreview, setDocFrontPreview] = useState<string | null>(null);
   const [docBackPreview, setDocBackPreview] = useState<string | null>(null);
@@ -1923,8 +1910,8 @@ export function Settings() {
   const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
   const [editName, setEditName] = useState('');
-  const profileData = profile.data ?? fallbackProfile;
-  const referralData = referral.data ?? fallbackReferral;
+  const profileData = profile.data;
+  const referralData = referral.data;
   const verStatus = profileData?.verificationStatus;
 
   useEffect(() => {
@@ -2090,6 +2077,10 @@ export function Settings() {
   };
 
   const showKycForm = verStatus === 'unverified' || verStatus === 'rejected';
+  const isKycRestricted = !!verStatus && verStatus !== 'verified';
+  useEffect(() => {
+    if (isKycRestricted && tab !== 'verification') setTab('verification');
+  }, [isKycRestricted, tab]);
   const updateProfile = useUpdateProfile();
   const [nameSaved, setNameSaved] = useState(false);
   const saveDisplayName = () => {
@@ -2104,12 +2095,15 @@ export function Settings() {
     });
   };
 
-  const navItems: [string, string, React.ElementType][] = [
+  const allNavItems: [string, string, React.ElementType][] = [
     ['profile', 'Profile', Wallet],
     ['security', 'Security', ShieldCheck],
     ['verification', 'Verification', FileCheck2],
     ['referrals', 'Referrals', Sparkles],
   ];
+  const navItems = isKycRestricted
+    ? allNavItems.filter(([value]) => value === 'verification')
+    : allNavItems;
 
   return (
     <Shell>
@@ -2613,12 +2607,18 @@ function SupportChatWidget() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  const profile = useGetProfile({
+    query: { queryKey: getGetProfileQueryKey(), enabled: isLoaded && !!isSignedIn },
+  });
+  const canUseSupport = !isSignedIn || profile.data?.verificationStatus === 'verified';
 
   const { data, isLoading } = useGetSupportMessages({
-    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn, refetchInterval: open ? 5000 : false },
+    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn && canUseSupport, refetchInterval: open ? 5000 : false },
   });
   const sendMut = useSendSupportMessage();
   const messages = data?.messages ?? [];
+
+  if (isSignedIn && !canUseSupport) return null;
 
   useEffect(() => {
     if (open && messagesEndRef.current) {

@@ -219,7 +219,6 @@ const ACCOUNT_STATUS_CACHE_TTL = 15_000;
 const CANONICAL_USER_ID_CACHE_TTL = 60_000;
 
 async function getAccountContext(userId: string): Promise<{ status: AccountOperationalStatus; verifiedEmail: string }> {
-  if (userId === "demo_user") return { status: "active", verifiedEmail: "" };
   const cached = accountStatusCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
     return { status: cached.status, verifiedEmail: cached.verifiedEmail };
@@ -334,7 +333,22 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
         });
         return;
       }
-      canonicalUserIds.set(req, await resolveCanonicalUserId(userId, verifiedEmail));
+      const canonicalUserId = await resolveCanonicalUserId(userId, verifiedEmail);
+      canonicalUserIds.set(req, canonicalUserId);
+      const kycExemptPaths = new Set(["/profile", "/user/profile", "/kyc"]);
+      if (!kycExemptPaths.has(req.path)) {
+        const profile = await ensureSeededUser(canonicalUserId);
+        if (profile.verificationStatus !== "verified") {
+          res.status(403).json({
+            error: profile.verificationStatus === "pending"
+              ? "Identity verification is pending admin approval."
+              : "Identity verification is required before using this feature.",
+            code: "KYC_REQUIRED",
+            verificationStatus: profile.verificationStatus,
+          });
+          return;
+        }
+      }
       next();
     })
     .catch(() => {
@@ -364,20 +378,6 @@ function emailPrefix(email: string) {
 const ZERO_BALANCE = "0";
 
 const portfolioHistoryMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
-
-function defaultProfileResponse(userId: string) {
-  return GetProfileResponse.parse({
-    id: userId,
-    name: "Alex Morgan",
-    email: "alex@example.com",
-    initials: "AM",
-    verificationStatus: "verified",
-    referralCode: "NORTHSTAR-ALEX",
-    twoFactorEnabled: false,
-    smsPhoneNumber: null,
-    smsPhoneVerified: false,
-  });
-}
 
 function defaultActivityResponse() {
   return GetActivityResponse.parse([]);
@@ -540,11 +540,9 @@ async function ensureSeededUser(userId: string) {
 
   if (existing) {
     const identityUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
-      const { email, name } = await fetchClerkUserInfo(userId);
-      if (email) identityUpdate.email = email;
-      if (name) identityUpdate.displayName = name;
-    }
+    const { email, name } = await fetchClerkUserInfo(userId);
+    if (email && email !== existing.email) identityUpdate.email = email;
+    if (name && name !== existing.displayName) identityUpdate.displayName = name;
     if (Object.keys(identityUpdate).length) {
       await db.update(walletProfilesTable).set(identityUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
       await ensureDefaultPortfolio(userId);
@@ -554,15 +552,11 @@ async function ensureSeededUser(userId: string) {
     return existing;
   }
 
-  const isDemoUser = userId === "demo_user";
-
-  let displayName = isDemoUser ? "Alex Morgan" : "North State Blockchain Member";
-  let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
-
-  if (!isDemoUser) {
-    const info = await fetchClerkUserInfo(userId);
-    if (info.email) email = info.email;
-    if (info.name) displayName = info.name;
+  const info = await fetchClerkUserInfo(userId);
+  const email = info.email;
+  const displayName = info.name || emailPrefix(email);
+  if (!email) {
+    throw new Error("The authenticated Clerk account does not have an email address.");
   }
 
   const [profile] = await db
@@ -571,10 +565,10 @@ async function ensureSeededUser(userId: string) {
       clerkUserId: userId,
       displayName,
       email,
-      referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
-      verificationStatus: isDemoUser ? "verified" : "unverified",
-      referralInvitedCount: isDemoUser ? 3 : 0,
-      referralReward: isDemoUser ? "50.00" : "0",
+      referralCode: `NORTHSTAR-${userId.replace(/[^a-zA-Z0-9]/g, "").slice(-10).toUpperCase()}`,
+      verificationStatus: "unverified",
+      referralInvitedCount: 0,
+      referralReward: "0",
     })
     .onConflictDoNothing()
     .returning();
@@ -977,14 +971,14 @@ const getProfile = async (req: Request, res: Response) => {
       email: profile.email,
       initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
       verificationStatus: profile.verificationStatus,
-      referralCode: "NORTHSTAR-ALEX",
+      referralCode: profile.referralCode,
       twoFactorEnabled: profile.twoFactorEnabled ?? false,
       smsPhoneNumber: profile.smsPhoneNumber ?? null,
       smsPhoneVerified: profile.smsPhoneVerified ?? false,
     }));
   } catch (error) {
-    req.log.error({ err: error, userId }, "Profile database query failed; serving default profile");
-    res.json(defaultProfileResponse(userId));
+    req.log.error({ err: error, userId }, "Profile database query failed");
+    res.status(503).json({ error: "Your account profile is temporarily unavailable." });
   }
 };
 
@@ -1306,19 +1300,14 @@ router.get("/referral", async (req, res) => {
   try {
     const profile = await ensureSeededUser(userId);
     res.json(GetReferralResponse.parse({
-      code: "NORTHSTAR-ALEX",
+      code: profile.referralCode,
       invitedCount: profile.referralInvitedCount,
       reward: asNumber(profile.referralReward),
       shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
     }));
   } catch (error) {
-    req.log.error({ err: error, userId }, "Referral database query failed; serving default referral");
-    res.json(GetReferralResponse.parse({
-      code: "NORTHSTAR-ALEX",
-      invitedCount: 3,
-      reward: 50,
-      shareUrl: `${req.protocol}://${req.get("host")}/join/NORTHSTAR-ALEX`,
-    }));
+    req.log.error({ err: error, userId }, "Referral database query failed");
+    res.status(503).json({ error: "Referral information is temporarily unavailable." });
   }
 });
 
@@ -1327,7 +1316,7 @@ router.post("/referral", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
   req.log.info({ channel: body.channel, userId: profile.clerkUserId }, "Referral share recorded");
   res.status(201).json(CreateReferralShareResponse.parse({
-    code: "NORTHSTAR-ALEX",
+    code: profile.referralCode,
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
     shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
@@ -1995,10 +1984,6 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
     res.status(400).json({ error: "Account status must be active, suspended, or frozen." });
     return;
   }
-  if (userId === "demo_user") {
-    res.status(400).json({ error: "The demo account cannot be changed." });
-    return;
-  }
   try {
     await setAccountOperationalStatus(userId, status);
     res.json({ userId, accountStatus: status });
@@ -2013,10 +1998,6 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
 
 router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
-  if (userId === "demo_user") {
-    res.status(400).json({ error: "The demo account cannot be deleted." });
-    return;
-  }
   try {
     await clerkClient.users.deleteUser(userId);
     accountStatusCache.delete(userId);

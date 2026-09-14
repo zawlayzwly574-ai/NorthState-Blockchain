@@ -140,6 +140,7 @@ describe("database-backed member authentication", () => {
   });
 
   async function removeMember(userId: string) {
+    await pool.query("delete from kyc_submissions where clerk_user_id = $1", [userId]);
     await pool.query("delete from trades where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_activities where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_transactions where clerk_user_id = $1", [userId]);
@@ -180,6 +181,48 @@ describe("database-backed member authentication", () => {
     return transaction.id;
   }
 
+  async function submitAndApproveKyc() {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const profile = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(profile.status).toBe(200);
+    expect(await profile.json()).toMatchObject({ verificationStatus: "unverified" });
+
+    const jpeg = Buffer.alloc(64);
+    jpeg[0] = 0xff;
+    jpeg[1] = 0xd8;
+    jpeg[2] = 0xff;
+    const submitted = await fetch(`${baseUrl}/api/kyc`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        fullName: "First-time Member",
+        country: "United States",
+        city: "New York",
+        occupation: "Engineer",
+        documentType: "passport",
+        documentImageBase64: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+      }),
+    });
+    expect(submitted.status).toBe(201);
+    expect(await submitted.json()).toMatchObject({ status: "pending" });
+
+    const pending = await pool.query(
+      "select id from kyc_submissions where clerk_user_id = $1 and status = 'pending' order by id desc limit 1",
+      [newClerkUserId],
+    );
+    const approved = await fetch(`${baseUrl}/api/admin/kyc/${pending.rows[0].id}/approve`, {
+      method: "PATCH",
+      headers: { "x-admin-key": "database-test-admin-secret" },
+    });
+    expect(approved.status).toBe(200);
+
+    const verified = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(await verified.json()).toMatchObject({ verificationStatus: "verified" });
+  }
+
   it("loads an authenticated member through the real profile query", async () => {
     const response = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=database-restored" },
@@ -187,7 +230,7 @@ describe("database-backed member authentication", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      name: "Database Test Member",
+      name: "Database Member",
       email: "database-test@example.invalid",
       verificationStatus: "verified",
     });
@@ -198,7 +241,7 @@ describe("database-backed member authentication", () => {
     );
     expect(persisted.rows).toEqual([
       {
-        display_name: "Database Test Member",
+        display_name: "Database Member",
         email: "database-test@example.invalid",
       },
     ]);
@@ -217,7 +260,7 @@ describe("database-backed member authentication", () => {
     });
     expect(profileResponse.status).toBe(200);
     expect(await profileResponse.json()).toMatchObject({
-      name: "Database Test Member",
+      name: "Database Member",
       email: "database-test@example.invalid",
     });
 
@@ -283,6 +326,7 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await submitAndApproveKyc();
 
     const submitted = await fetch(`${baseUrl}/api/transactions/deposit`, {
       method: "POST",
@@ -329,6 +373,7 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await submitAndApproveKyc();
     await submitAndApproveDeposit(1000);
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
@@ -382,6 +427,7 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await submitAndApproveKyc();
     await submitAndApproveDeposit(1000);
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {

@@ -76,12 +76,12 @@ import app from "./app";
 const profile = {
   id: 1,
   clerkUserId: "user_restored",
-  displayName: "Alex Morgan",
-  email: "alex@example.com",
+  displayName: "Real Member",
+  email: "real-member@example.com",
   verificationStatus: "verified",
-  referralCode: "NORTHSTAR-ALEX-TORED",
-  referralInvitedCount: 3,
-  referralReward: "50.00",
+  referralCode: "NORTHSTAR-RESTORED",
+  referralInvitedCount: 0,
+  referralReward: "0.00",
   twoFactorEnabled: false,
   smsPhoneNumber: null,
   smsPhoneVerified: false,
@@ -123,6 +123,7 @@ describe("member route authentication", () => {
     });
     transaction.mockReset();
     transaction.mockResolvedValue(undefined);
+    profile.verificationStatus = "verified";
   });
 
   it("accepts a restored Clerk session and reaches the member handler", async () => {
@@ -133,29 +134,25 @@ describe("member route authentication", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       id: "1",
-      name: "Alex Morgan",
-      email: "alex@example.com",
+      name: "Real Member",
+      email: "real-member@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
   });
 
-  it("returns fallback portfolio JSON for an authenticated session when database work fails", async () => {
+  it("fails closed when account verification cannot be confirmed", async () => {
     transaction.mockRejectedValueOnce(new Error("database unavailable"));
 
     const response = await fetch(`${baseUrl}/api/portfolio`, {
       headers: { cookie: "__session=restored" },
     });
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toMatchObject({
-      totalValue: 0,
-      cashBalance: 0,
-      holdings: [],
-    });
+    expect(await response.json()).toEqual({ error: "Unable to verify account status. Please try again." });
   });
 
-  it("returns fallback profile JSON from both profile routes when database access fails", async () => {
+  it("does not substitute a mock identity when profile access fails", async () => {
     select.mockImplementation(() => {
       throw new Error("database unavailable");
     });
@@ -165,13 +162,9 @@ describe("member route authentication", () => {
         headers: { cookie: "__session=restored" },
       });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(503);
       expect(response.headers.get("content-type")).toContain("application/json");
-      expect(await response.json()).toMatchObject({
-        name: "Alex Morgan",
-        email: "alex@example.com",
-        verificationStatus: "verified",
-      });
+      expect(await response.json()).toEqual({ error: "Your account profile is temporarily unavailable." });
     }
   });
 
@@ -186,7 +179,7 @@ describe("member route authentication", () => {
 
     expect(response.status).toBe(503);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual({ error: "Activity history is temporarily unavailable." });
+    expect(await response.json()).toEqual({ error: "Unable to verify account status. Please try again." });
   });
 
   it("keeps Clerk authentication when submitting deposit proof", async () => {
@@ -254,6 +247,27 @@ describe("member route authentication", () => {
     });
   });
 
+  it("blocks financial endpoints until KYC is approved", async () => {
+    profile.verificationStatus = "pending";
+
+    const response = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=restored",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ asset: "BTC", amount: 0.01, txHash: "blocked-before-kyc" }),
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Identity verification is pending admin approval.",
+      code: "KYC_REQUIRED",
+      verificationStatus: "pending",
+    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
   it("returns one 401 without invoking member data access when authentication is missing", async () => {
     const response = await fetch(`${baseUrl}/api/profile`);
 
@@ -311,7 +325,7 @@ describe("member route authentication", () => {
       headers: { cookie: "__session=status_change" },
     });
     expect(activeResponse.status).toBe(200);
-    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledTimes(2);
 
     const adminResponse = await fetch(`${baseUrl}/api/admin/users/user_status_change/status`, {
       method: "PATCH",
@@ -352,7 +366,7 @@ describe("member route authentication", () => {
       error: "This account is suspended.",
       accountStatus: "suspended",
     });
-    expect(getUser).toHaveBeenCalledTimes(2);
+    expect(getUser).toHaveBeenCalledTimes(3);
     expect(select).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -367,10 +381,10 @@ describe("member route authentication", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       id: "1",
-      name: "Alex Morgan",
-      email: "alex@example.com",
+      name: "Real Member",
+      email: "real-member@example.com",
     });
-    expect(getUser).toHaveBeenCalledTimes(1);
+    expect(getUser).toHaveBeenCalledTimes(2);
     expect(getUser).toHaveBeenCalledWith("user_frozen_profile");
     expect(select).toHaveBeenCalledTimes(1);
   });
