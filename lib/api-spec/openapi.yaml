@@ -1246,12 +1246,13 @@ components:
         documentImageBase64:
           type: string
           minLength: 100
-          maxLength: 10000000
+          maxLength: 50000000
           pattern: "^data:image/jpeg;base64,"
     KycStatus:
       type: object
-      required: [status, submittedAt]
+      required: [success, status, submittedAt]
       properties:
+        success: { type: boolean }
         status: { type: string, enum: [pending, verified, rejected] }
         submittedAt: { type: string }
     DepositInput:

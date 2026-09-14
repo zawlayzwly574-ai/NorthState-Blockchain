@@ -82,9 +82,8 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
-// KYC submits two browser-optimized ID sides in one backward-compatible image.
-// Leave enough room for high-resolution documents while retaining a finite abuse guard.
-app.use(express.json({ limit: "12mb" }));
+// KYC submits two ID sides in one backward-compatible image payload.
+app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Resolve publishable key from the incoming host so the same server can

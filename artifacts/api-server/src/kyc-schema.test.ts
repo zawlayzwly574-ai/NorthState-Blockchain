@@ -10,7 +10,7 @@ const baseKyc = {
 };
 
 describe("KYC document upload contract", () => {
-  it("accepts optimized images above the previous limit and keeps a finite 10 MB guard", () => {
+  it("accepts high-resolution images up to the finite 50 MB guard", () => {
     const prefix = "data:image/jpeg;base64,";
 
     expect(SubmitKycBody.safeParse({
@@ -20,7 +20,7 @@ describe("KYC document upload contract", () => {
 
     expect(SubmitKycBody.safeParse({
       ...baseKyc,
-      documentImageBase64: prefix + "A".repeat(10_000_001),
+      documentImageBase64: prefix + "A".repeat(50_000_001),
     }).success).toBe(false);
   });
 });

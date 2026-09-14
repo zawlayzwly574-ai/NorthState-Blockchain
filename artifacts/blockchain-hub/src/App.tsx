@@ -1909,11 +1909,11 @@ export function Settings() {
       context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
       let quality = 0.82;
       let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > 9_000_000 && quality > 0.42) {
+      while (result.length > 48_000_000 && quality > 0.42) {
         quality -= 0.08;
         result = canvas.toDataURL('image/jpeg', quality);
       }
-      if (result.length > 10_000_000) {
+      if (result.length > 49_000_000) {
         reject(new Error('The ID images could not be optimized for secure upload. Please use clearer images with smaller pixel dimensions.'));
         return;
       }

@@ -390,7 +390,7 @@ export const submitKycBodyCountryMin = 2;
 
 
 export const submitKycBodyDocumentImageBase64Min = 100;
-export const submitKycBodyDocumentImageBase64Max = 10000000;
+export const submitKycBodyDocumentImageBase64Max = 50000000;
 
 
 export const submitKycBodyDocumentImageBase64RegExp = new RegExp('^data:image/jpeg;base64,');
@@ -406,6 +406,7 @@ export const SubmitKycBody = zod.object({
 })
 
 export const SubmitKycResponse = zod.object({
+  "success": zod.boolean(),
   "status": zod.enum(['pending', 'verified', 'rejected']),
   "submittedAt": zod.string()
 })

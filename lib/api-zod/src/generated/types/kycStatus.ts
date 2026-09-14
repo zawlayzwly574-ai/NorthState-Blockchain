@@ -8,6 +8,7 @@
 import type { KycStatusStatus } from './kycStatusStatus';
 
 export interface KycStatus {
+  success: boolean;
   status: KycStatusStatus;
   submittedAt: string;
 }

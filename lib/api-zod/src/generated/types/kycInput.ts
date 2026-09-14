@@ -19,7 +19,7 @@ export interface KycInput {
   documentType: KycInputDocumentType;
   /**
      * @minLength 100
-     * @maxLength 10000000
+     * @maxLength 50000000
      * @pattern ^data:image/jpeg;base64,
      */
   documentImageBase64: string;

@@ -9,7 +9,8 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 - **Enum values** — `ProfileVerificationStatus` is `unverified | pending | verified | rejected`. `rejected` was added to the OpenAPI spec and must stay there; omitting it breaks TypeScript comparisons.
 - **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `documentType`, `documentImageBase64`. SSN is not collected in the user flow; the legacy admin-visible column is stored as an empty value.
 - **Document evidence** — Keep the legacy single-image storage contract; compose the two required ID sides before submission rather than changing the database schema.
-- **Upload contract** — Source files may be JFIF/JPG/JPEG/PNG/WebP; the browser normalizes both sides to one JPEG. The encoded API field has a finite 10 MB maximum under the 12 MB JSON parser limit.
+- **Upload contract** — Source files may be JFIF/JPG/JPEG/PNG/WebP; the browser normalizes both sides to one JPEG. The encoded API field and JSON parser use a finite 50 MB limit.
+- **Submission response** — authenticated cookie-session submissions return `success: true`, `status: pending`, and `submittedAt` after the atomic insert/profile update.
 - **Route KYC gate** — authenticated unverified/pending/rejected users may open Overview, Activity, and Settings without mounting a crash state. Markets, mining, and trading still require `verified`.
 - **Server KYC gate** — profile/user, portfolio, activity, notifications, KYC, referral, security, SMS, and support reads remain available to authenticated users. Financial mutations, mining, and trading require Admin-approved KYC.
 - **Admin KYC panel** — expandable card per submission; SSN shown blurred with reveal toggle; image shown inline if base64 starts with `data:image`; approve/reject buttons in both row header and expanded footer.

@@ -1238,7 +1238,7 @@ router.post("/kyc", async (req, res) => {
   const parsedBody = SubmitKycBody.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({
-      error: "Check all personal details and upload two valid ID photos. The optimized document must be under 10 MB.",
+      error: "Check all personal details and upload two valid ID photos. The combined document must be under 50 MB.",
     });
     return;
   }
@@ -1276,6 +1276,7 @@ router.post("/kyc", async (req, res) => {
     return created;
   });
   res.status(201).json(SubmitKycResponse.parse({
+    success: true,
     status: submission.status,
     submittedAt: submission.submittedAt.toISOString(),
   }));

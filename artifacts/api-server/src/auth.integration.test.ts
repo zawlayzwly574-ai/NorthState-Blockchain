@@ -145,6 +145,49 @@ describe("member route authentication", () => {
     });
   });
 
+  it("accepts KYC submission from the restored browser session", async () => {
+    const submittedAt = new Date("2026-09-14T00:00:00.000Z");
+    transaction.mockImplementation(async (callback) => callback({
+      execute: vi.fn(),
+      insert: () => ({
+        values: () => ({
+          returning: async () => [{ status: "pending", submittedAt }],
+        }),
+      }),
+      update: () => ({
+        set: () => ({
+          where: async () => undefined,
+        }),
+      }),
+    }));
+    const jpeg = Buffer.concat([
+      Buffer.from([0xff, 0xd8, 0xff]),
+      Buffer.alloc(96, 1),
+    ]);
+
+    const response = await fetch(`${baseUrl}/api/kyc`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=restored",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        fullName: "Alex Morgan",
+        country: "United States",
+        city: "New York",
+        occupation: "Engineer",
+        documentType: "passport",
+        documentImageBase64: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      status: "pending",
+    });
+  });
+
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {
