@@ -13,12 +13,15 @@ const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(()
     transaction,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
-      request: { headers: { cookie?: string } },
+      request: { headers: { cookie?: string; authorization?: string } },
       _response: unknown,
       next: () => void,
     ) => {
       authByRequest.set(request, {
-        userId: request.headers.cookie?.includes("__session=restored") ? "user_restored" : null,
+        userId: request.headers.cookie?.includes("__session=restored")
+          || request.headers.authorization === "Bearer restored-token"
+          ? "user_restored"
+          : null,
       });
       next();
     },
@@ -145,7 +148,10 @@ describe("member route authentication", () => {
     });
   });
 
-  it("accepts KYC submission from the restored browser session", async () => {
+  it.each([
+    ["session cookie", { cookie: "__session=restored" }],
+    ["authorization header", { authorization: "Bearer restored-token" }],
+  ])("accepts KYC submission from a restored %s", async (_label, authHeaders) => {
     const submittedAt = new Date("2026-09-14T00:00:00.000Z");
     transaction.mockImplementation(async (callback) => callback({
       execute: vi.fn(),
@@ -168,7 +174,7 @@ describe("member route authentication", () => {
     const response = await fetch(`${baseUrl}/api/kyc`, {
       method: "POST",
       headers: {
-        cookie: "__session=restored",
+        ...authHeaders,
         "content-type": "application/json",
       },
       body: JSON.stringify({

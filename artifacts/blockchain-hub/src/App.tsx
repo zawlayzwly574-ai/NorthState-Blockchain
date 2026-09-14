@@ -335,7 +335,12 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
   const { data: profile } = useGetProfile({
-    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled },
+    query: {
+      queryKey: getGetProfileQueryKey(),
+      enabled: memberQueriesEnabled,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
   });
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
@@ -1549,10 +1554,35 @@ export function Dashboard() {
   const [notice, setNotice] = useState('');
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
-  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled } });
+  const profile = useGetProfile({
+    query: {
+      queryKey: getGetProfileQueryKey(),
+      enabled: memberQueriesEnabled,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    },
+  });
 
-  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 60_000, placeholderData: (prev) => prev } });
+  const portfolio = useGetPortfolio({
+    query: {
+      queryKey: getGetPortfolioQueryKey(),
+      enabled: memberQueriesEnabled,
+      staleTime: 15_000,
+      refetchInterval: 30_000,
+      refetchOnWindowFocus: false,
+      placeholderData: (prev) => prev,
+    },
+  });
+  const activity = useGetActivity({
+    query: {
+      queryKey: getGetActivityQueryKey(),
+      enabled: memberQueriesEnabled,
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: false,
+      placeholderData: (prev) => prev,
+    },
+  });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 
   // Exchange rate: convert USD → selected currency
@@ -1567,7 +1597,16 @@ export function Dashboard() {
     history: [],
     holdings: [],
   };
-  const data = portfolio.data ?? (portfolio.isError ? fallbackPortfolio : undefined);
+  const data = portfolio.data
+    ? {
+        ...fallbackPortfolio,
+        ...portfolio.data,
+        history: portfolio.data.history ?? [],
+        holdings: portfolio.data.holdings ?? [],
+      }
+    : portfolio.isError
+      ? fallbackPortfolio
+      : undefined;
   const recent = activity.data?.slice(0, 5) ?? [];
   const holdings = data?.holdings ?? [];
 
@@ -1576,7 +1615,7 @@ export function Dashboard() {
       <PageHeader eyebrow="Overview" title="Your portfolio" detail="A grounded view of everything you hold."
         action={<WalletDialogs verificationStatus={profile.data?.verificationStatus} onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
       />
-      {profile.data?.verificationStatus !== 'verified' && (
+      {profile.isSuccess && profile.data.verificationStatus !== 'verified' && (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent">
           <span>Overview is available in read-only mode. Complete KYC in Settings to enable deposits, withdrawals, and trading.</span>
           <Link href="/settings" className="font-extrabold underline underline-offset-4">Open Settings</Link>
