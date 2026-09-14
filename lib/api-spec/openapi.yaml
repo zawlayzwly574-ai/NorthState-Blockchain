@@ -1246,6 +1246,7 @@ components:
         documentImageBase64:
           type: string
           minLength: 100
+          maxLength: 1850000
           pattern: "^data:image/jpeg;base64,"
     KycStatus:
       type: object

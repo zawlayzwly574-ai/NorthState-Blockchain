@@ -107,7 +107,6 @@ export const activitiesTable = pgTable("wallet_activities", {
   value: numeric("value", { precision: 18, scale: 2 }).notNull(),
   status: text("status").notNull(),
   transactionId: integer("transaction_id"),
-  tradeId: integer("trade_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

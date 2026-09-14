@@ -8,7 +8,6 @@ import { memoryLocation } from "wouter/memory-location";
 const authState = vi.hoisted(() => ({
   isLoaded: false,
   isSignedIn: false,
-  session: { id: "session_test", reload: vi.fn(async () => undefined) },
 }));
 
 vi.mock("@clerk/react", async () => {
@@ -16,7 +15,6 @@ vi.mock("@clerk/react", async () => {
   return {
     ...actual,
     useAuth: () => authState,
-    useSession: () => ({ session: authState.session }),
     useUser: () => ({ ...authState, user: null }),
     useClerk: () => ({ signOut: vi.fn(), addListener: vi.fn(() => vi.fn()) }),
   };
@@ -34,7 +32,7 @@ const protectedPaths = [
 
 function jsonFor(url: string) {
   if (url.includes("/portfolio")) {
-    return { totalValue: 0, dayChange: 0, dayChangePercent: 0, holdings: [], history: [] };
+    return { totalValue: 0, dayChange: 0, dayChangePercent: 0, holdings: [] };
   }
   if (url.includes("/activity") || url.includes("/notifications")) return [];
   if (url.includes("/fx-rates")) return { base: "USD", rates: {} };
@@ -120,63 +118,13 @@ describe("authenticated portfolio routes", () => {
     expect(protectedCalls).toHaveLength(0);
   });
 
-  it("shows the demo preview instead of an account error when profile loading fails", async () => {
-    authState.isLoaded = true;
-    authState.isSignedIn = true;
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/profile")) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify(jsonFor(url)), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
-
-    renderRoute(<Dashboard />, "/dashboard");
-
-    expect(await screen.findByText("Your portfolio")).toBeInTheDocument();
-    expect(screen.queryByText("We could not load your account")).not.toBeInTheDocument();
-  });
-
-  it("does not enter a session-refresh loop after an unauthorized profile response", async () => {
-    authState.isLoaded = true;
-    authState.isSignedIn = true;
-    authState.session.reload.mockClear();
-    let profileCalls = 0;
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/profile") && profileCalls++ === 0) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify(jsonFor(url)), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    });
-
-    renderRoute(<Dashboard />, "/dashboard");
-
-    expect(await screen.findByText("Your portfolio")).toBeInTheDocument();
-    expect(authState.session.reload).not.toHaveBeenCalled();
-    expect(profileCalls).toBe(1);
-    expect(screen.queryByText("We could not load your account")).not.toBeInTheDocument();
-  });
-
   it.each([
     ["Overview", "/dashboard"],
     ["Activity", "/activity"],
     ["Trading", "/trading"],
     ["Mining Place", "/mining-place"],
     ["Settings", "/settings"],
-  ])("renders the %s demo preview for signed-out visitors without protected API calls", async (name, path) => {
+  ])("redirects signed-out visitors from %s to sign in without flashing account content", async (name, path) => {
     const memory = memoryLocation({ path, record: true });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -193,7 +141,8 @@ describe("authenticated portfolio routes", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText(`${name} account content`)).toBeInTheDocument();
+    expect(screen.getByTestId("protected-route-loading")).toBeInTheDocument();
+    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) =>
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     )).toBe(false);
@@ -210,8 +159,11 @@ describe("authenticated portfolio routes", () => {
       </QueryClientProvider>,
     );
 
-    expect(memory.history?.at(-1)).toBe(path);
-    expect(screen.getByText(`${name} account content`)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(memory.history?.at(-1)).toBe(`/sign-in?redirect_url=${encodeURIComponent(path)}`);
+    });
+    expect(screen.getByText("Sign in page")).toBeInTheDocument();
+    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) =>
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     )).toBe(false);

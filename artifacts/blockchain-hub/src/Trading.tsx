@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@clerk/react';
 import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
@@ -14,15 +13,10 @@ import {
   useGetTrades,
   usePlaceTrade,
   useGetMarketSummary,
-  useGetMiningPlace,
-  useGetMiningInvestments,
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
   getGetPortfolioQueryKey,
-  getGetActivityQueryKey,
-  getGetMiningPlaceQueryKey,
-  getGetMiningInvestmentsQueryKey,
 } from '@workspace/api-client-react';
 import type { Trade } from '@workspace/api-client-react';
 
@@ -44,7 +38,7 @@ const TIMEFRAMES = [
   { label: '30D', secs: 2592000 },
 ];
 
-const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
+const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP'];
 const PAYOUT_RATE = 0.85;
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
@@ -203,7 +197,7 @@ function TimeframeSheet({
             <button
               key={tf.secs}
               onClick={() => { onChange(tf.secs); onClose(); }}
-              className={`min-h-[44px] rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
+              className={`rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
                 value === tf.secs
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_16px_hsl(var(--primary)/.35)]'
                   : 'bg-secondary/70 text-muted-foreground hover:bg-secondary hover:text-foreground'
@@ -215,7 +209,7 @@ function TimeframeSheet({
         </div>
         <button
           onClick={onClose}
-          className="mt-5 min-h-[44px] w-full rounded-xl py-3 text-sm text-muted-foreground transition hover:text-foreground"
+          className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
         >
           Cancel
         </button>
@@ -283,7 +277,7 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
           <button
             type="button"
             onClick={onClose}
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-secondary/70 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary/70 text-muted-foreground transition hover:bg-secondary hover:text-foreground"
             aria-label="Close trade details"
             data-testid="button-close-trade-details"
           >
@@ -346,38 +340,25 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
 // ─── Main Trading Page ────────────────────────────────────────────────────────
 
 export function TradingPage() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const memberQueriesEnabled = isLoaded && isSignedIn;
   const [asset, setAsset] = useState('BTC');
   const [amount, setAmount] = useState('100');
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
-  const [tradeError, setTradeError] = useState('');
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
-  const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
-  const { data: miningInvestments } = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 30_000, placeholderData: (previous) => previous } });
-  const { data: account, isLoading: accountLoading, isError: accountError } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (previous) => previous } });
-  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (previous) => previous } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
+  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
+  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
-    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 3_000, placeholderData: (previous) => previous },
+    query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
   const placeTradeHook = usePlaceTrade();
-  const isDemoPreview = !isLoaded || !isSignedIn || accountError;
-  const displayAccount = account ?? (isDemoPreview
-    ? { balance: 12_500, totalTrades: 18, wins: 12, losses: 6 }
-    : undefined);
 
-  const goldQuote = miningPlace?.assets.find(item => item.symbol === 'GOLD');
-  const marketAsset = asset === 'GOLD' ? goldQuote : market.find(m => m.symbol === asset);
-  const currentPrice = marketAsset?.price ?? (asset === 'GOLD' ? 2348.4 : 0);
-  const goldInvestments = miningInvestments?.investments.filter(investment => investment.symbol === 'GOLD' && investment.status === 'active') ?? [];
-  const heldGoldUnits = goldInvestments.reduce((total, investment) => total + Number(investment.units ?? 0), 0);
-  const heldGoldValue = goldInvestments.reduce((total, investment) => total + Number(investment.currentValue ?? 0), 0);
+  const marketAsset = market.find(m => m.symbol === asset);
+  const currentPrice = marketAsset?.price ?? 0;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -390,12 +371,12 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(displayAccount?.balance ?? 0);
+  const balance = Number(portfolio?.totalValue ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
-  const winRate = displayAccount?.totalTrades
-    ? Math.round(((displayAccount.wins ?? 0) / displayAccount.totalTrades) * 100)
+  const winRate = account?.totalTrades
+    ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
     : null;
 
   const triggerFlash = (msg: string, type: 'win' | 'loss') => {
@@ -403,30 +384,16 @@ export function TradingPage() {
     setTimeout(() => setFlash(null), 2500);
   };
 
-  const refreshCanonicalBalance = async () => {
-    await Promise.all([
-      qc.refetchQueries({ queryKey: getGetTradingAccountQueryKey(), type: 'all' }),
-      qc.refetchQueries({ queryKey: getGetPortfolioQueryKey(), type: 'all' }),
-      qc.refetchQueries({ queryKey: getGetActivityQueryKey(), type: 'all' }),
-    ]);
-  };
-
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (isDemoPreview) {
-      triggerFlash(`${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} preview ready — sign in to place it`, 'win');
-      return;
-    }
-    if (placing || insufficient || !memberQueriesEnabled || accountLoading || accountError) return;
-    setTradeError('');
+    if (placing || !currentPrice || insufficient) return;
     setPlacing(true);
     try {
       await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
-      await refreshCanonicalBalance();
-      triggerFlash(`${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} trade placed`, 'win');
-    } catch (error) {
-      const apiError = error as { data?: { error?: string }; message?: string };
-      setTradeError(apiError.data?.error || apiError.message || 'Trade could not be placed. Please try again.');
+      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+    } catch {
+      // error is surfaced via disabled state
     } finally {
       setPlacing(false);
     }
@@ -438,7 +405,8 @@ export function TradingPage() {
     const nowActive = activeTrades.map(t => t.id);
     const justCompleted = prevActive.current.filter(id => !nowActive.includes(id));
     if (justCompleted.length > 0) {
-      void refreshCanonicalBalance();
+      qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+      qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
       const settled = trades.filter(t => justCompleted.includes(t.id));
       const wins = settled.filter(t => t.result === 'win');
       if (wins.length > 0) {
@@ -464,7 +432,7 @@ export function TradingPage() {
       )}
 
       {/* ── Header row ── */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card px-4 py-3">
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
           <p className="mt-0.5 font-mono text-xl font-extrabold">
@@ -474,7 +442,7 @@ export function TradingPage() {
         <div className="flex gap-4">
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
-            <p className="mt-0.5 font-mono font-bold">{displayAccount?.totalTrades ?? 0}</p>
+            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>
@@ -501,13 +469,13 @@ export function TradingPage() {
       {/* ── Asset selector ── */}
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {TRADING_ASSETS.map(a => {
-          const mkt = a === 'GOLD' ? goldQuote : market.find(m => m.symbol === a);
+          const mkt = market.find(m => m.symbol === a);
           const chg = mkt?.change24h ?? 0;
           return (
             <button
               key={a}
               onClick={() => setAsset(a)}
-              className={`min-h-[44px] shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
                   : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
@@ -523,19 +491,6 @@ export function TradingPage() {
           );
         })}
       </div>
-
-      {asset === 'GOLD' && (
-        <div className="mb-3 flex items-center justify-between rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 px-4 py-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Your active Gold position is available alongside other trading markets.</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
-            <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
-          </div>
-        </div>
-      )}
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
@@ -571,7 +526,7 @@ export function TradingPage() {
               onChange={e => setAmount(e.target.value)}
               min="1"
               step="1"
-              className="h-11 min-h-[44px] min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
               placeholder="100"
               data-testid="input-trade-amount"
             />
@@ -580,7 +535,7 @@ export function TradingPage() {
                 <button
                   key={v}
                   onClick={() => setAmount(String(v))}
-                  className={`h-11 min-h-[44px] rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                  className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
                     Number(amount) === v
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground'
@@ -603,14 +558,14 @@ export function TradingPage() {
           <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
           <button
             onClick={() => setShowPicker(true)}
-            className="flex h-11 min-h-[44px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
+            className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
             data-testid="button-timeframe-picker"
           >
             <div className="flex items-center gap-2">
-              <Clock size={16} className="text-muted-foreground" />
+              <Clock size={14} className="text-muted-foreground" />
               <span>{timeframeLabel}</span>
             </div>
-            <ChevronUp size={16} className="text-muted-foreground" />
+            <ChevronUp size={15} className="text-muted-foreground" />
           </button>
         </div>
 
@@ -636,7 +591,7 @@ export function TradingPage() {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => handleTrade('long')}
-            disabled={placing || insufficient || !memberQueriesEnabled || accountLoading || accountError}
+            disabled={placing || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-buy-long"
           >
@@ -646,7 +601,7 @@ export function TradingPage() {
           </button>
           <button
             onClick={() => handleTrade('short')}
-            disabled={placing || insufficient || !memberQueriesEnabled || accountLoading || accountError}
+            disabled={placing || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-sell-short"
           >
@@ -655,8 +610,6 @@ export function TradingPage() {
             <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
           </button>
         </div>
-        {accountError && <p className="mt-3 text-center text-sm font-semibold text-destructive" role="alert">Your trading balance could not be loaded. Please refresh and try again.</p>}
-        {tradeError && <p className="mt-3 text-center text-sm font-semibold text-destructive" role="alert">{tradeError}</p>}
       </div>
 
       {/* ── Active Trades ── */}

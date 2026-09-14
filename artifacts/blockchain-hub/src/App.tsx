@@ -8,7 +8,7 @@ import { shadcn } from '@clerk/themes';
 import {
   ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowUpRight, BarChart3, Bell, Check, ChevronDown, ChevronRight,
   Clipboard, Copy, Eye, EyeOff, FileCheck2, Fingerprint, Home as HomeIcon, Landmark, LineChart,
-  Lock, Mail, Menu, Phone, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
+  Lock, Mail, Menu, MessageCircle, Phone, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
   Sparkles, TrendingDown, TrendingUp, Upload, Wallet, X, Zap,
 } from 'lucide-react';
 import {
@@ -20,6 +20,7 @@ import {
   useSetupTotp, useVerifyTotp, useDisableTotp,
   useListPasskeys, useBeginPasskeyRegistration, useFinishPasskeyRegistration, useDeletePasskey,
   useSendSmsOtp, useVerifySmsOtp,
+  useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
   useGetMiningPlace, useGetMiningInvestments, useCreateMiningInvestment,
 } from '@workspace/api-client-react';
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
@@ -66,47 +67,6 @@ const depositAssets = [
   { symbol: 'DAI', name: 'Dai', color: '#f0b84a' },
   { symbol: 'FDUSD', name: 'First Digital USD', color: '#7ca8ff' },
   { symbol: 'BNB', name: 'BNB', color: '#f2ca52' },
-];
-const fallbackPortfolio = {
-  totalValue: 0,
-  dayChange: 0,
-  dayChangePercent: 0,
-  cashBalance: 0,
-  history: [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1].map((_multiplier, index) => ({
-    time: `${String(index * 2).padStart(2, '0')}:00`,
-    value: 0,
-  })),
-  holdings: [],
-};
-const fallbackActivity: Array<never> = [];
-const demoProfile = {
-  id: 'demo-preview',
-  name: 'Demo Member',
-  email: 'preview@northstateblockchain.com',
-  initials: 'DM',
-  verificationStatus: 'verified' as const,
-  referralCode: 'PREVIEW',
-  twoFactorEnabled: false,
-  smsPhoneNumber: null,
-  smsPhoneVerified: false,
-};
-const demoPortfolio = {
-  totalValue: 24_862.74,
-  dayChange: 386.22,
-  dayChangePercent: 1.58,
-  cashBalance: 8_420,
-  history: [23_910, 24_020, 23_984, 24_180, 24_265, 24_198, 24_410, 24_356, 24_590, 24_518, 24_730, 24_690, 24_862.74]
-    .map((value, index) => ({ time: `${String(index * 2).padStart(2, '0')}:00`, value })),
-  holdings: [
-    { symbol: 'BTC', name: 'Bitcoin', amount: 0.1842, value: 11_635.18, allocation: 46.8, change24h: 2.31, color: '#f6ad3c' },
-    { symbol: 'ETH', name: 'Ethereum', amount: 1.72, value: 4_807.56, allocation: 19.3, change24h: 1.14, color: '#9a9cf5' },
-    { symbol: 'USDT', name: 'Tether', amount: 8_420, value: 8_420, allocation: 33.9, change24h: 0.01, color: '#4bbd91' },
-  ],
-};
-const demoActivity = [
-  { id: 'demo-1', type: 'deposit' as const, asset: 'USDT', amount: 2500, value: 2500, status: 'completed' as const, createdAt: new Date(Date.now() - 86_400_000).toISOString() },
-  { id: 'demo-2', type: 'buy' as const, asset: 'BTC', amount: 0.025, value: 1578.24, status: 'completed' as const, createdAt: new Date(Date.now() - 172_800_000).toISOString() },
-  { id: 'demo-3', type: 'convert' as const, asset: 'ETH', amount: 0.4, value: 1118.04, status: 'completed' as const, createdAt: new Date(Date.now() - 259_200_000).toISOString() },
 ];
 
 function money(value = 0, currency = 'USD') {
@@ -158,7 +118,7 @@ function Button({ children, variant = 'primary', className = '', ...props }: { c
     ghost: 'text-muted-foreground hover:bg-secondary hover:text-foreground',
     danger: 'bg-destructive/15 text-destructive border border-destructive/25 hover:bg-destructive/25',
   };
-  return <button {...props} className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}>{children}</button>;
+  return <button {...props} className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}>{children}</button>;
 }
 
 function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
@@ -181,105 +141,21 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: string; children: React.ReactNode; onClose: () => void }) {
   return <div className="fixed inset-0 z-50 grid place-items-center bg-black/78 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" data-testid="dialog-overlay">
     <div className="surface max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-2xl p-5 sm:p-7 animate-rise" data-testid="dialog-panel">
-      <div className="mb-6 flex items-start justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 text-xl font-extrabold tracking-[-.03em]">{title}</h2></div><button onClick={onClose} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Close dialog" data-testid="button-close-dialog"><X size={18} /></button></div>
+      <div className="mb-6 flex items-start justify-between gap-4"><div><p className="eyebrow">{eyebrow}</p><h2 className="mt-1 text-xl font-extrabold tracking-[-.03em]">{title}</h2></div><button onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Close dialog" data-testid="button-close-dialog"><X size={18} /></button></div>
       {children}
     </div>
   </div>;
 }
 
 function PublicNav() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMobileOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.body.style.overflow = mobileOpen ? 'hidden' : previousOverflow;
-    if (mobileOpen) window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [mobileOpen]);
-
-  return (
-    <>
-      <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-5 lg:px-8">
-        <Logo />
-        
-        <nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground xl:flex">
-          <a href="#how-it-works" className="transition hover:text-foreground">How it works</a>
-          <a href="#security" className="transition hover:text-foreground">Security</a>
-          <Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link>
-          <Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link>
-          <Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link>
-        </nav>
-        
-        <div className="hidden items-center gap-2 xl:flex">
-          <Link href="/sign-in" className="inline-flex min-h-[44px] items-center justify-center rounded-xl px-4 py-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-public-sign-in">Sign in</Link>
-          <Link href="/sign-up" className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link>
-        </div>
-
-        <button 
-          ref={triggerRef}
-          aria-expanded={mobileOpen} 
-          aria-controls="public-mobile-navigation" 
-          aria-haspopup="dialog"
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary xl:hidden" 
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open menu"
-        >
-          <Menu size={22} />
-        </button>
-      </header>
-
-      {mobileOpen && (
-        <div 
-          id="public-mobile-navigation" 
-          role="dialog" 
-          aria-modal="true" 
-          className="fixed inset-0 z-50 flex xl:hidden"
-        >
-          <button className="fixed inset-0 cursor-default bg-background/80 backdrop-blur-sm" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close menu" />
-          <div className="fixed inset-y-0 right-0 w-[280px] border-l border-border bg-background p-6 shadow-2xl transition-transform duration-300 animate-in slide-in-from-right">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-foreground">Menu</span>
-              <button 
-                onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary hover:text-foreground"
-                aria-label="Close menu"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <nav className="mt-8 flex flex-col gap-2">
-              <a href="#how-it-works" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center rounded-xl px-3 text-base font-bold text-muted-foreground transition hover:bg-secondary hover:text-foreground">How it works</a>
-              <a href="#security" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center rounded-xl px-3 text-base font-bold text-muted-foreground transition hover:bg-secondary hover:text-foreground">Security</a>
-              <Link href="/about" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center rounded-xl px-3 text-base font-bold text-muted-foreground transition hover:bg-secondary hover:text-foreground" data-testid="link-public-about">About us</Link>
-              <Link href="/markets" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center rounded-xl px-3 text-base font-bold text-muted-foreground transition hover:bg-secondary hover:text-foreground" data-testid="link-public-markets">Markets</Link>
-              <Link href="/mining-place" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center rounded-xl px-3 text-base font-bold text-muted-foreground transition hover:bg-secondary hover:text-foreground" data-testid="link-public-mining">Mining Place</Link>
-            </nav>
-            <div className="mt-8 flex flex-col gap-3 border-t border-border pt-8">
-              <Link href="/sign-in" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center justify-center rounded-xl bg-secondary px-4 py-2.5 text-sm font-bold text-foreground transition hover:bg-secondary/80" data-testid="link-public-sign-in">Sign in</Link>
-              <Link href="/sign-up" onClick={() => setMobileOpen(false)} className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
 }
 
 function Home() {
   const { isSignedIn } = useAuth();
   const [, setLocation] = useLocation();
   useEffect(() => { if (isSignedIn) setLocation('/dashboard'); }, [isSignedIn]);
-  return <main className="min-h-[100dvh] overflow-hidden"><PublicNav /><section className="relative mx-auto max-w-7xl px-4 pb-16 pt-10 sm:px-5 sm:pb-20 sm:pt-16 lg:px-8 lg:pb-28 lg:pt-24">
+  return <main className="min-h-[100dvh] overflow-hidden"><PublicNav /><section className="relative mx-auto max-w-7xl px-5 pb-20 pt-16 lg:px-8 lg:pb-28 lg:pt-24">
     <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
     <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
       <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />A calmer way to hold digital assets</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">Your money, with <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">Get started <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">Explore markets <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />Bank-grade controls</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />Transparent fees</span></div></div>
@@ -345,6 +221,11 @@ function About() {
   </main>;
 }
 
+function AuthPage({ signUp = false }: { signUp?: boolean }) {
+  const [submitted, setSubmitted] = useState(false);
+  return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8"><div className="w-full max-w-[440px] animate-rise"><div className="mb-8 flex justify-center"><Logo /></div><div className="surface rounded-3xl p-6 sm:p-8"><div className="mb-7"><p className="eyebrow">{signUp ? 'Start with North State Blockchain' : 'Welcome back'}</p><h1 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">{signUp ? 'A clearer crypto account.' : 'Your portfolio is waiting.'}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">{signUp ? 'Create your account with the email or phone you use every day.' : 'Sign in to see your balance, activity, and markets.'}</p></div>{submitted ? <div className="rounded-2xl border border-primary/25 bg-primary/10 p-5 text-center" data-testid="status-auth-success"><div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground"><Check size={19} /></div><h2 className="mt-4 font-bold">{signUp ? 'Check your inbox' : 'Sign-in link sent'}</h2><p className="mt-2 text-sm text-muted-foreground">Your configured account flow will continue from there.</p><Link href="/dashboard" className="mt-5 inline-flex rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="link-auth-dashboard">Continue to North State Blockchain</Link></div> : <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); setSubmitted(true); }}><Field label={signUp ? 'Email or phone' : 'Email or phone'} type="text" placeholder="you@example.com" required data-testid="input-auth-identifier" /><Field label="Password" type="password" placeholder="Enter your password" required data-testid="input-auth-password" />{!signUp && <Link href="/sign-in/forgot-password" className="justify-self-end text-xs font-bold text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</Link>}<Button type="submit" className="mt-2 w-full" data-testid="button-auth-submit">{signUp ? 'Create account' : 'Sign in'} <ArrowUpRight size={16} /></Button><div className="my-1 flex items-center gap-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div><Button type="button" variant="secondary" className="w-full" onClick={() => setSubmitted(true)} data-testid="button-auth-continue-email">{signUp ? 'Continue with email' : 'Continue with email'}</Button></form>}<div className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">{signUp ? 'Already have an account?' : 'New to North State Blockchain?'} <Link href={signUp ? '/sign-in' : '/sign-up'} className="font-bold text-primary hover:underline" data-testid="link-auth-switch">{signUp ? 'Sign in' : 'Create an account'}</Link></div></div><p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">By continuing, you agree to North State Blockchain's terms and privacy policy.</p></div></main>;
+}
+
 const clerkAppearance = {
   theme: shadcn,
   cssLayerName: 'clerk',
@@ -366,14 +247,16 @@ const clerkAppearance = {
     borderRadius: '0.9rem',
   },
   elements: {
-    rootBox: 'flex w-full min-w-0 justify-center',
-    cardBox: 'bg-[#0b1b32] rounded-3xl !w-[calc(100vw-2rem)] !max-w-[440px] min-w-0 overflow-hidden border border-[#29425e]',
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#0b1b32] rounded-3xl w-[440px] max-w-full overflow-hidden border border-[#29425e]',
     card: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    footer: '!hidden',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
     headerTitle: 'text-[#eaf3ff] font-extrabold',
     headerSubtitle: 'text-[#8fa5bd]',
     socialButtonsBlockButtonText: 'text-[#eaf3ff]',
     formFieldLabel: 'text-[#eaf3ff]',
+    footerActionLink: 'text-[#55dbe1] font-bold',
+    footerActionText: 'text-[#8fa5bd]',
     dividerText: 'text-[#8fa5bd]',
     identityPreviewEditButton: 'text-[#55dbe1]',
     formFieldSuccessText: 'text-[#55dbe1]',
@@ -383,6 +266,7 @@ const clerkAppearance = {
     socialButtonsBlockButton: 'border-[#29425e] bg-[#171209] hover:bg-[#17304e]',
     formButtonPrimary: 'bg-[#55dbe1] text-[#06152a] hover:bg-[#77e5e9] font-extrabold',
     formFieldInput: 'border-[#29425e] bg-[#08172a] text-[#eaf3ff]',
+    footerAction: 'border-[#29425e]',
     dividerLine: 'bg-[#29425e]',
     alert: 'border-[#29425e] bg-[#171209]',
     otpCodeFieldInput: 'border-[#29425e] bg-[#08172a] text-[#eaf3ff]',
@@ -393,17 +277,11 @@ const clerkAppearance = {
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
-    <div className="min-w-0 w-full max-w-[440px] animate-rise">
+    <div className="w-full max-w-[440px] animate-rise">
       <div className="mb-8 flex justify-center"><Logo /></div>
       {signUp
-        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/settings?tab=verification`} />
+        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
-      <p className="mt-5 text-center text-sm text-muted-foreground">
-        {signUp ? 'Already have an account?' : 'New to North State Blockchain?'}{' '}
-        <Link href={signUp ? '/sign-in' : '/sign-up'} className="font-bold text-primary hover:underline">
-          {signUp ? 'Sign in' : 'Create an account'}
-        </Link>
-      </p>
       <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
   </main>;
@@ -454,90 +332,57 @@ function KycStatusScreen({ status }: { status: string }) {
 function Shell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
-  const profileQuery = useGetProfile({
-    query: {
-      queryKey: getGetProfileQueryKey(),
-      enabled: memberQueriesEnabled,
-      retry: false,
-      refetchInterval: (query) => query.state.status === 'error' ? false : 3_000,
-    },
+  const { data: profile } = useGetProfile({
+    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled },
   });
-  const isDemoPreview = !isLoaded || !isSignedIn || profileQuery.isError;
-  const profile = profileQuery.data ?? (isDemoPreview ? demoProfile : undefined);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
-    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && !isDemoPreview && profile?.verificationStatus === 'verified' },
+    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled },
   });
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('notif-last-seen') ?? '');
   const unreadCount = (notifs.data ?? []).filter(n => n.createdAt > lastSeen).length;
-  
   const openNotifications = () => {
     setNotifOpen(o => !o);
     const ts = new Date().toISOString();
     setLastSeen(ts);
     localStorage.setItem('notif-last-seen', ts);
   };
-  
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
-    document.body.style.overflow = mobileOpen ? 'hidden' : previousOverflow;
-    if (mobileOpen) window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [mobileOpen]);
-
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isVerificationRoute = location === '/settings' || location.startsWith('/settings');
-  const gatedContent = isDemoPreview
-    ? children
-    : profileQuery.isLoading
-      ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">Checking your profile and verification status…</p></div>
-    : !profile
-      ? children
-    : (!isVerificationRoute && verificationStatus !== 'verified')
-      ? <KycStatusScreen status={verificationStatus ?? 'unverified'} />
-      : children;
-  
-  return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside id="mobile-navigation" role="dialog" aria-modal={mobileOpen ? 'true' : undefined} aria-hidden={!mobileOpen} className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 transition-transform duration-300 xl:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location === href || (href !== '/dashboard' && location.startsWith(href)) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="xl:pl-[250px]"><header className="sticky top-0 z-30 flex min-h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl xl:px-8"><button ref={triggerRef} aria-expanded={mobileOpen} aria-controls="mobile-navigation" aria-haspopup="dialog" className="rounded-xl p-2.5 text-muted-foreground hover:bg-secondary xl:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={22} /></button><div className="hidden text-sm font-semibold text-muted-foreground xl:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-2 sm:gap-3"><div className="relative">
-              <button onClick={openNotifications} className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
-                <Bell size={20} />
-                {unreadCount > 0 && <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
+  const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
+  return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
+              <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
+                <Bell size={18} />
+                {unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
               {notifOpen && (
-                <>
-                  <div className="fixed inset-0 z-40 xl:hidden" onClick={() => setNotifOpen(false)} />
-                  <div className="absolute right-0 top-14 z-50 w-[calc(100vw-2rem)] max-w-sm rounded-2xl border border-border bg-background shadow-xl animate-rise sm:w-80" data-testid="panel-notifications">
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                      <p className="text-sm font-extrabold">Notifications</p>
-                      <button onClick={() => setNotifOpen(false)} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-secondary"><X size={16} /></button>
-                    </div>
-                    <div className="max-h-[60vh] overflow-y-auto divide-y divide-border/70 pb-[env(safe-area-inset-bottom)]">
-                      {notifs.isLoading ? (
-                        <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
-                      ) : !notifs.data || notifs.data.length === 0 ? (
-                        <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">No notifications yet</p></div>
-                      ) : notifs.data.map(n => (
-                        <div key={n.id} className="flex items-center gap-3 px-4 py-3">
-                          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs ${n.type === 'deposit' ? 'bg-primary/10 text-primary' : n.type === 'withdrawal' || n.type === 'send' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>{iconForActivity(n.type)}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-bold capitalize">{n.type} · {n.asset}</p>
-                            <p className="text-[10px] text-muted-foreground">{dateLabel(n.createdAt)}</p>
-                          </div>
-                          <span className={`shrink-0 text-[10px] font-bold capitalize ${n.status === 'completed' ? 'text-[#2db87a]' : n.status === 'failed' ? 'text-destructive' : 'text-accent'}`}>{n.status}</span>
-                        </div>
-                      ))}
-                    </div>
+                <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-border bg-background shadow-xl animate-rise" data-testid="panel-notifications">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <p className="text-sm font-extrabold">Notifications</p>
+                    <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-secondary"><X size={15} /></button>
                   </div>
-                </>
+                  <div className="max-h-72 overflow-y-auto divide-y divide-border/70">
+                    {notifs.isLoading ? (
+                      <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+                    ) : !notifs.data || notifs.data.length === 0 ? (
+                      <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">No notifications yet</p></div>
+                    ) : notifs.data.map(n => (
+                      <div key={n.id} className="flex items-center gap-3 px-4 py-3">
+                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs ${n.type === 'deposit' ? 'bg-primary/10 text-primary' : n.type === 'withdrawal' || n.type === 'send' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>{iconForActivity(n.type)}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-bold capitalize">{n.type} · {n.asset}</p>
+                          <p className="text-[10px] text-muted-foreground">{dateLabel(n.createdAt)}</p>
+                        </div>
+                        <span className={`text-[10px] font-bold capitalize ${n.status === 'completed' ? 'text-[#2db87a]' : n.status === 'failed' ? 'text-destructive' : 'text-accent'}`}>{n.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
-            </div><Link href="/settings" className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-5 sm:py-7 xl:px-8 xl:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 xl:hidden" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
+            </div><Link href="/settings" className="flex items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8 lg:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
 }
 
 function PageHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail?: string; action?: React.ReactNode }) {
@@ -1532,7 +1377,6 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
   const [depositError, setDepositError] = useState('');
-  const { isLoaded: isAuthLoaded, isSignedIn } = useAuth();
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1547,10 +1391,6 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDepositError('');
-    if (!isAuthLoaded || !isSignedIn) {
-      setDepositError('Your sign-in session is not ready. Please sign in again, then resubmit the deposit proof.');
-      return;
-    }
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
       onSuccess: () => {
@@ -1560,11 +1400,8 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
         onDone('Deposit proof submitted successfully and is awaiting admin approval.');
       },
       onError: (error) => {
-        const apiError = error as { status?: number; response?: { status?: number }; data?: { error?: string } };
-        const unauthorized = apiError.status === 401 || apiError.response?.status === 401 || apiError.data?.error === 'Unauthorized';
-        setDepositError(unauthorized
-          ? 'Your sign-in session expired. Sign in again and your existing account data will be restored.'
-          : apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
+        const apiError = error as { data?: { error?: string } };
+        setDepositError(apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
       },
     });
   };
@@ -1701,43 +1538,43 @@ export function Dashboard() {
   const [notice, setNotice] = useState('');
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
-  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (prev) => prev } });
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 3_000, refetchOnWindowFocus: true, placeholderData: (prev) => prev } });
-  const isDemoPreview = !isLoaded || !isSignedIn || portfolio.isError || activity.isError;
+
+  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 60_000, placeholderData: (prev) => prev } });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 
   // Exchange rate: convert USD → selected currency
   const fxRate = (currency === 'USD' ? 1 : (fxQuery.data?.rates?.[currency] ?? 1));
   const cx = (usdValue: number) => usdValue * fxRate;
 
-  const data = portfolio.data ?? (isDemoPreview ? demoPortfolio : fallbackPortfolio);
-  const recent = (activity.data ?? (isDemoPreview ? demoActivity : fallbackActivity)).slice(0, 5);
+  const data = portfolio.data;
+  const recent = activity.data?.slice(0, 5) ?? [];
   const holdings = data?.holdings ?? [];
 
   return (
     <Shell>
       <PageHeader eyebrow="Overview" title="Your portfolio" detail="A grounded view of everything you hold."
-        action={isDemoPreview
-          ? <span className="rounded-xl border border-primary/25 bg-primary/10 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-primary">Demo preview</span>
-          : <WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
+        action={<WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
       />
       {notice && (
         <div className="mb-5 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-bold text-primary animate-rise" data-testid="status-wallet-success">
           <Check size={17} />{notice}
         </div>
       )}
-      {
-        (
+      {portfolio.isLoading ? <LoadingState lines={5} />
+        : portfolio.isError ? <ErrorState retry={() => portfolio.refetch()} />
+        : !data ? <EmptyState title="Your portfolio is ready for its first asset" detail="Make a deposit to see your balance and holdings here." />
+        : (
           <>
             <section className="grid gap-4 lg:grid-cols-[1.2fr_.8fr]">
               {/* Total balance card */}
               <div className="surface relative overflow-hidden rounded-2xl p-6 sm:p-8">
                 <div className="pointer-events-none absolute -right-10 -top-24 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
                 <div className="relative flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div>
                     <p className="text-sm font-semibold text-muted-foreground">Total balance</p>
-                    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-3">
-                      <p className="min-w-0 truncate font-mono-ui text-3xl font-medium tracking-[-.06em] sm:text-4xl lg:text-5xl" data-testid="text-total-balance">
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <p className="font-mono-ui text-4xl font-medium tracking-[-.06em] sm:text-5xl" data-testid="text-total-balance">
                         {money(data.totalValue, 'USD')}
                       </p>
                       <span className="rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1.5 font-mono-ui text-xs font-medium text-primary">
@@ -1825,7 +1662,9 @@ export function Dashboard() {
                   <div><p className="eyebrow">Latest</p><h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Recent activity</h2></div>
                   <Link href="/activity" className="text-xs font-bold text-primary hover:underline" data-testid="link-see-all-activity">View all</Link>
                 </div>
-                {recent.length === 0 ? <EmptyState title="Nothing here yet" detail="Your first wallet action will show up in this timeline." />
+                {activity.isLoading ? <LoadingState lines={4} />
+                  : activity.isError ? <ErrorState retry={() => activity.refetch()} />
+                  : recent.length === 0 ? <EmptyState title="Nothing here yet" detail="Your first wallet action will show up in this timeline." />
                   : (
                     <div className="grid gap-1">
                       {recent.map((item) => (
@@ -1846,6 +1685,16 @@ export function Dashboard() {
               </div>
             </section>
 
+            <section className="mt-7 rounded-2xl border border-primary/15 bg-primary/7 p-5 sm:flex sm:items-center sm:justify-between sm:p-6">
+              <div className="flex gap-3">
+                <div className="mt-0.5 text-primary"><ShieldCheck size={20} /></div>
+                <div>
+                  <h2 className="font-bold">One more step for higher limits</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Complete verification to unlock the full North State Blockchain experience.</p>
+                </div>
+              </div>
+              <Link href="/settings" className="mt-4 inline-flex text-sm font-bold text-primary hover:underline sm:mt-0" data-testid="link-dashboard-settings">Review settings <ArrowUpRight size={15} className="ml-1" /></Link>
+            </section>
           </>
         )}
     </Shell>
@@ -1913,10 +1762,8 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, refetchInterval: query => query.state.status === 'error' ? false : 3_000, refetchOnWindowFocus: true, placeholderData: (previous) => previous } });
-  const isDemoPreview = !isLoaded || !isSignedIn || activity.isError;
-  const items = activity.data ?? (isDemoPreview ? demoActivity : fallbackActivity);
-  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isError ? <EmptyState title="Activity is temporarily unavailable" detail="We could not load your transaction history. It will retry automatically." /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, withdrawals, and trades will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
+  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : activity.isError ? <ErrorState retry={() => activity.refetch()} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 export function Settings() {
@@ -1924,12 +1771,11 @@ export function Settings() {
   const { user, isLoaded: isUserLoaded, isSignedIn } = useUser();
   const qc = useQueryClient();
   const memberQueriesEnabled = isUserLoaded && isSignedIn;
-  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
-  const isDemoPreview = !isUserLoaded || !isSignedIn || profile.isError;
-  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled && profile.data?.verificationStatus === 'verified', placeholderData: (previous) => previous } });
+  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled } });
+  const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled } });
   const kyc = useSubmitKyc();
   const share = useCreateReferralShare();
-  const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>(() => new URLSearchParams(window.location.search).get('tab') === 'verification' ? 'verification' : 'profile');
+  const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
   const [feedback, setFeedback] = useState('');
   const [docFrontPreview, setDocFrontPreview] = useState<string | null>(null);
   const [docBackPreview, setDocBackPreview] = useState<string | null>(null);
@@ -1939,7 +1785,7 @@ export function Settings() {
   const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
   const [editName, setEditName] = useState('');
-  const profileData = profile.data ?? (isDemoPreview ? demoProfile : undefined);
+  const profileData = profile.data;
   const referralData = referral.data;
   const verStatus = profileData?.verificationStatus;
 
@@ -2001,6 +1847,10 @@ export function Settings() {
       setDocUploadError('Please upload a .jfif, .jpg, .jpeg, or .png image.');
       return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setDocUploadError('Each ID image must be 5 MB or smaller.');
+      return;
+    }
     try {
       const preview = await compressDocumentImage(file);
       if (side === 'front') {
@@ -2023,28 +1873,31 @@ export function Settings() {
     const onLoad = () => {
       loaded += 1;
       if (loaded !== 2) return;
-      const sourceWidth = Math.max(frontImage.width, backImage.width);
+      const width = Math.max(frontImage.width, backImage.width);
       const gap = 32;
       const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = frontImage.height + gap + backImage.height;
       const context = canvas.getContext('2d');
       if (!context) {
         reject(new Error('The ID images could not be prepared.'));
         return;
       }
-      const scale = Math.min(1, 1100 / sourceWidth);
-      const width = Math.max(1, Math.round(sourceWidth * scale));
-      const frontWidth = Math.max(1, Math.round(frontImage.width * scale));
-      const frontHeight = Math.max(1, Math.round(frontImage.height * scale));
-      const backWidth = Math.max(1, Math.round(backImage.width * scale));
-      const backHeight = Math.max(1, Math.round(backImage.height * scale));
-      const scaledGap = Math.max(8, Math.round(gap * scale));
-      canvas.width = width;
-      canvas.height = frontHeight + scaledGap + backHeight;
       context.fillStyle = '#ffffff';
       context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(frontImage, (width - frontWidth) / 2, 0, frontWidth, frontHeight);
-      context.drawImage(backImage, (width - backWidth) / 2, frontHeight + scaledGap, backWidth, backHeight);
-      resolve(canvas.toDataURL('image/jpeg', 0.82));
+      context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
+      context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
+      let quality = 0.74;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length > 1_600_000 && quality > 0.42) {
+        quality -= 0.08;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      if (result.length > 1_850_000) {
+        reject(new Error('The combined ID images are too large.'));
+        return;
+      }
+      resolve(result);
     };
     frontImage.onerror = onError; backImage.onerror = onError;
     frontImage.onload = onLoad; backImage.onload = onLoad;
@@ -2080,7 +1933,7 @@ export function Settings() {
     } catch (error) {
       const apiError = error as { status?: number; data?: { error?: string } };
       if (apiError.status === 413) {
-        setKycSubmitError('The document upload could not be processed. Please retry the same images.');
+        setKycSubmitError('The ID images are still too large. Please choose smaller images and try again.');
       } else {
         setKycSubmitError(apiError.data?.error || 'We could not submit your details. Check your connection and try again.');
       }
@@ -2099,10 +1952,6 @@ export function Settings() {
   };
 
   const showKycForm = verStatus === 'unverified' || verStatus === 'rejected';
-  const isKycRestricted = !!verStatus && verStatus !== 'verified';
-  useEffect(() => {
-    if (isKycRestricted && tab !== 'verification') setTab('verification');
-  }, [isKycRestricted, tab]);
   const updateProfile = useUpdateProfile();
   const [nameSaved, setNameSaved] = useState(false);
   const saveDisplayName = () => {
@@ -2117,15 +1966,12 @@ export function Settings() {
     });
   };
 
-  const allNavItems: [string, string, React.ElementType][] = [
+  const navItems: [string, string, React.ElementType][] = [
     ['profile', 'Profile', Wallet],
     ['security', 'Security', ShieldCheck],
     ['verification', 'Verification', FileCheck2],
     ['referrals', 'Referrals', Sparkles],
   ];
-  const navItems = isKycRestricted
-    ? allNavItems.filter(([value]) => value === 'verification')
-    : allNavItems;
 
   return (
     <Shell>
@@ -2137,20 +1983,21 @@ export function Settings() {
       )}
       <div className="grid gap-7 lg:grid-cols-[220px_1fr]">
         {/* Sidebar nav */}
-        <nav className="surface flex h-fit overflow-x-auto rounded-2xl p-1.5 scrollbar-none lg:flex-col lg:p-2">
+        <nav className="surface h-fit rounded-2xl p-2">
           {navItems.map(([value, label, Icon]) => (
             <button key={value} onClick={() => setTab(value as typeof tab)}
-              className={`flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-bold transition lg:w-full lg:gap-3 lg:px-3 lg:py-3 ${tab === value ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${tab === value ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
               data-testid={`button-settings-${value}`}>
-              <Icon size={17} className="shrink-0" />{label}
+              <Icon size={17} />{label}
             </button>
           ))}
-          <div className="mx-1 my-auto h-6 w-px shrink-0 bg-border lg:mx-0 lg:my-2 lg:h-px lg:w-full lg:px-2" />
-          <button onClick={() => signOut()}
-            className="flex min-h-[44px] shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-destructive transition hover:bg-destructive/10 lg:w-full lg:gap-3 lg:px-3 lg:py-3"
-            data-testid="button-sign-out">
-            <X size={17} className="shrink-0" />Sign out
-          </button>
+          <div className="mt-3 border-t border-border pt-3">
+            <button onClick={() => signOut()}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold text-destructive hover:bg-destructive/10 transition"
+              data-testid="button-sign-out">
+              <X size={17} />Sign out
+            </button>
+          </div>
         </nav>
 
         {/* Tab panels */}
@@ -2167,8 +2014,9 @@ export function Settings() {
                   <p className="mt-1 truncate text-sm text-muted-foreground">{profileData?.email ?? 'Loading profile…'}</p>
                 </div>
               </div>
-              {
-                (
+              {profile.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
+                : profile.isError ? <div className="mt-7"><ErrorState retry={() => profile.refetch()} /></div>
+                : (
                   <>
                     <div className="mt-7 grid gap-4 sm:grid-cols-2">
                       <Stat label="Account ID" value={user?.id ?? '—'} />
@@ -2260,7 +2108,7 @@ export function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG images are optimized automatically.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG — max 5 MB each.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
@@ -2307,7 +2155,9 @@ export function Settings() {
               <p className="eyebrow">North State circle</p>
               <h2 className="mt-1 text-xl font-extrabold">Invite someone you trust</h2>
               <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">Share your personal link with a friend. No leaderboard, no pressure — just a thoughtful way to bring someone in.</p>
-              {referralData ? (
+              {referral.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
+                : referral.isError ? <div className="mt-7"><ErrorState retry={() => referral.refetch()} /></div>
+                : referralData ? (
                   <>
                     <div className="mt-7 rounded-2xl border border-primary/20 bg-primary/7 p-4">
                       <p className="text-xs font-bold uppercase tracking-wider text-primary">Your referral code</p>
@@ -2346,6 +2196,19 @@ export function Settings() {
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { const [location] = useLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      setLocation(`/sign-in?redirect_url=${encodeURIComponent(location)}`, { replace: true });
+    }
+  }, [isLoaded, isSignedIn, location, setLocation]);
+
+  if (!isLoaded || !isSignedIn) {
+    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
+  }
+
   return children;
 }
 function TradingRoute() { return <Shell><TradingPage /></Shell>; }
@@ -2420,8 +2283,6 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
 }
 
 function MiningPlace() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const memberQueriesEnabled = isLoaded && isSignedIn;
   const { data, isLoading, isError, refetch } = useGetMiningPlace({
     query: {
       queryKey: getGetMiningPlaceQueryKey(),
@@ -2429,7 +2290,7 @@ function MiningPlace() {
       placeholderData: (prev) => prev
     }
   });
-  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 10_000 } });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), refetchInterval: 10_000 } });
 
   const assetsByCategory = useMemo(() => {
     if (!data?.assets) return {};
@@ -2503,8 +2364,6 @@ function MiningPlace() {
 }
 
 function MiningPlaceDetail() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const memberQueriesEnabled = isLoaded && isSignedIn;
   const { symbol = '' } = useParams<{ symbol: string }>();
   const miningPlace = useGetMiningPlace({
     query: {
@@ -2513,7 +2372,7 @@ function MiningPlaceDetail() {
       placeholderData: (prev) => prev
     }
   });
-  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled } });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey() } });
   const createInvestment = useCreateMiningInvestment();
   const queryClient = useQueryClient();
   const [investmentAmount, setInvestmentAmount] = useState('');
@@ -2556,7 +2415,7 @@ function MiningPlaceDetail() {
               <p className={`mt-1 text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(item.change24h)} today</p>
             </div>
           </div>
-          <div className="mt-7 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="mt-7 grid gap-4 sm:grid-cols-4">
             <Stat label="Unit" value={item.unit ? `Per ${item.unit}` : 'Benchmark'} />
             <Stat label="Category" value={categoryLabels[item.category] ?? item.category} />
             <Stat label="Feed" value={item.status === 'live' ? 'Live quote' : item.status === 'stale' ? 'Stale quote' : 'Fallback quote'} accent={item.status === 'live'} />
@@ -2612,7 +2471,141 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/welcome" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function SupportChatWidget() {
+  const { isSignedIn, isLoaded } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useGetSupportMessages({
+    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn, refetchInterval: open ? 5000 : false },
+  });
+  const sendMut = useSendSupportMessage();
+  const messages = data?.messages ?? [];
+
+  useEffect(() => {
+    if (open && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages.length, open]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setInput('');
+    try {
+      await sendMut.mutateAsync({ data: { content: text } });
+      qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey() });
+    } catch {
+      setInput(text);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_32px_hsl(var(--primary)/.4)] transition-transform hover:scale-105 active:scale-95"
+        aria-label="Customer support"
+        data-testid="button-support-chat"
+      >
+        {open ? <X size={22} /> : <MessageCircle size={22} />}
+      </button>
+
+      {open && (
+        <div className="fixed bottom-24 right-6 z-50 flex h-[480px] w-[360px] max-h-[calc(100dvh-120px)] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-border bg-[hsl(222_10%_9%)] shadow-[0_24px_80px_rgba(0,0,0,.55)]">
+          {/* Header */}
+          <div className="flex shrink-0 items-center gap-3 border-b border-border bg-[hsl(222_10%_11%)] px-4 py-3">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
+              <MessageCircle size={17} />
+            </div>
+            <div>
+              <p className="text-sm font-bold">North State Blockchain Support</p>
+              <p className="text-[11px] text-muted-foreground">We typically reply within a few hours</p>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label="Close chat">
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            {!isLoaded ? null : !isSignedIn ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
+                  <Lock size={20} />
+                </div>
+                <p className="text-sm font-bold">Sign in to chat with support</p>
+                <p className="text-xs leading-5 text-muted-foreground">Create an account or sign in to get personalised help from our team.</p>
+              </div>
+            ) : isLoading ? (
+              <div className="flex h-full items-center justify-center">
+                <span className="text-xs text-muted-foreground">Loading…</span>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
+                  <MessageCircle size={20} />
+                </div>
+                <p className="text-sm font-bold">How can we help?</p>
+                <p className="text-xs leading-5 text-muted-foreground">Send us a message and our team will get back to you as soon as possible.</p>
+              </div>
+            ) : (
+              messages.map(msg => (
+                <div key={msg.id} className={`flex ${msg.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.senderRole === 'admin' && (
+                    <div className="mr-2 mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">N</div>
+                  )}
+                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 ${msg.senderRole === 'user' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-secondary/60 text-foreground'}`}>
+                    <p className="text-sm leading-5 whitespace-pre-wrap">{msg.content}</p>
+                    <p className={`mt-1 text-[10px] ${msg.senderRole === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          {isSignedIn && (
+            <div className="shrink-0 border-t border-border p-3">
+              <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex items-end gap-2">
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  placeholder="Type a message…"
+                  rows={1}
+                  className="min-h-[40px] max-h-[100px] flex-1 resize-none rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-sm leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  data-testid="input-support-message"
+                />
+                <button
+                  type="submit"
+                  disabled={!input.trim() || sending}
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground transition disabled:opacity-40 hover:scale-105 active:scale-95"
+                  aria-label="Send message"
+                  data-testid="button-support-send"
+                >
+                  <Send size={16} />
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();
@@ -2658,7 +2651,7 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 function App() { return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>; }

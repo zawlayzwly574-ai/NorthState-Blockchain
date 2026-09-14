@@ -11,9 +11,6 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
-if (process.env.NODE_ENV === "production" && !process.env.ADMIN_SECRET) {
-  throw new Error("ADMIN_SECRET is required in the production runtime.");
-}
 const configuredCorsOrigins = new Set(
   (process.env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
@@ -85,9 +82,9 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
-// Source KYC photos are accepted regardless of their original file size and
-// normalized in the browser before this backward-compatible JSON upload.
-app.use(express.json({ limit: "20mb" }));
+// KYC submits two client-compressed ID sides in one backward-compatible image.
+// Keep the limit narrow while allowing that payload above Express's 100 KB default.
+app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Resolve publishable key from the incoming host so the same server can

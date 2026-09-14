@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useLocation } from 'wouter';
-import { createAdminSession } from '@/lib/api';
+import { setAdminKey } from '@/lib/api';
 import { TerminalSquare, KeyRound, Loader2 } from 'lucide-react';
 
 export default function Login() {
@@ -17,11 +17,19 @@ export default function Login() {
     setError('');
 
     try {
-      await createAdminSession(key);
-      setKey('');
-      setLocation('/dashboard');
+      // Basic check via stats endpoint to verify key
+      const res = await fetch('/api/admin/stats', {
+        headers: { 'X-Admin-Key': key }
+      });
+      
+      if (res.ok) {
+        setAdminKey(key);
+        setLocation('/dashboard');
+      } else {
+        setError('Invalid admin key');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Connection failed');
+      setError('Connection failed');
     } finally {
       setLoading(false);
     }

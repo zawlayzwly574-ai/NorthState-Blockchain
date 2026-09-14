@@ -1,44 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export function getAdminKey() {
-  return sessionStorage.getItem('admin_authenticated');
+  return sessionStorage.getItem('admin_key');
 }
 
-export function setAdminKey() {
-  sessionStorage.setItem('admin_authenticated', 'true');
+export function setAdminKey(key: string) {
+  sessionStorage.setItem('admin_key', key);
 }
 
 export function clearAdminKey() {
-  sessionStorage.removeItem('admin_authenticated');
-  void fetch('/api/admin/session', {
-    method: 'DELETE',
-    credentials: 'include',
-    keepalive: true,
-  });
+  sessionStorage.removeItem('admin_key');
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || '';
   window.location.href = `${base}/login`;
 }
 
-export async function createAdminSession(key: string) {
-  const res = await fetch('/api/admin/session', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'X-Admin-Key': key },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null) as { error?: string } | null;
-    throw new Error(body?.error || (res.status === 401 ? 'Invalid admin key' : 'Unable to start admin session'));
-  }
-  setAdminKey();
-}
-
 async function apiClient(endpoint: string, options: RequestInit = {}) {
+  const key = getAdminKey();
   const headers = new Headers(options.headers);
+  if (key) {
+    headers.set('X-Admin-Key', key);
+  }
   headers.set('Content-Type', 'application/json');
 
   const res = await fetch(`/api/admin${endpoint}`, {
     ...options,
-    credentials: 'include',
     headers,
   });
 

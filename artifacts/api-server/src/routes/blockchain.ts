@@ -1,5 +1,5 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { randomBytes } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
 import { eq, desc, count, and, inArray, sql } from "drizzle-orm";
 import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, verifySync as totpVerifySync } from "otplib";
@@ -206,44 +206,24 @@ const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
-function getAuthenticatedUserId(req: Request) {
-  const auth = getAuth(req);
-  const claims = auth.sessionClaims as Record<string, unknown> | null | undefined;
-  const claimsUserId = claims?.userId ?? claims?.sub;
-  return auth.userId ?? (typeof claimsUserId === "string" ? claimsUserId : undefined);
-}
-
 function getUserId(req: Request) {
-  return canonicalUserIds.get(req) ?? getAuthenticatedUserId(req)!;
+  return getAuth(req).userId!;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
 const accountStatusKey = "accountStatus";
-const canonicalUserIds = new WeakMap<Request, string>();
-const canonicalUserIdCache = new Map<string, { userId: string; expiresAt: number }>();
-const accountStatusCache = new Map<string, { status: AccountOperationalStatus; verifiedEmail: string; expiresAt: number }>();
+const accountStatusCache = new Map<string, { status: AccountOperationalStatus; expiresAt: number }>();
 const ACCOUNT_STATUS_CACHE_TTL = 15_000;
-const CANONICAL_USER_ID_CACHE_TTL = 60_000;
 
-async function getAccountContext(userId: string): Promise<{ status: AccountOperationalStatus; verifiedEmail: string }> {
+async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
+  if (userId === "demo_user") return "active";
   const cached = accountStatusCache.get(userId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return { status: cached.status, verifiedEmail: cached.verifiedEmail };
-  }
+  if (cached && cached.expiresAt > Date.now()) return cached.status;
   const user = await clerkClient.users.getUser(userId);
   const status = user.privateMetadata?.[accountStatusKey];
   const normalized = status === "suspended" || status === "frozen" ? status : "active";
-  const emailAddresses = user.emailAddresses ?? [];
-  const primaryEmail = emailAddresses.find((email) => email.id === user.primaryEmailAddressId);
-  const verifiedEmail = primaryEmail?.verification?.status === "verified"
-    ? primaryEmail.emailAddress.trim().toLowerCase()
-    : "";
-  accountStatusCache.set(userId, {
-    status: normalized,
-    verifiedEmail,
-    expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL,
-  });
-  return { status: normalized, verifiedEmail };
+  accountStatusCache.set(userId, { status: normalized, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
+  return normalized;
 }
 
 async function setAccountOperationalStatus(userId: string, status: AccountOperationalStatus) {
@@ -253,63 +233,7 @@ async function setAccountOperationalStatus(userId: string, status: AccountOperat
     [accountStatusKey]: status,
   };
   await clerkClient.users.updateUserMetadata(userId, { privateMetadata });
-  const emailAddresses = user.emailAddresses ?? [];
-  const primaryEmail = emailAddresses.find((email) => email.id === user.primaryEmailAddressId);
-  accountStatusCache.set(userId, {
-    status,
-    verifiedEmail: primaryEmail?.verification?.status === "verified"
-      ? primaryEmail.emailAddress.trim().toLowerCase()
-      : "",
-    expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL,
-  });
-}
-
-async function resolveCanonicalUserId(clerkUserId: string, verifiedEmail: string) {
-  if (!verifiedEmail) return clerkUserId;
-  const cached = canonicalUserIdCache.get(clerkUserId);
-  if (cached && cached.expiresAt > Date.now()) return cached.userId;
-
-  const matchingProfiles = await db
-    .select({ clerkUserId: walletProfilesTable.clerkUserId })
-    .from(walletProfilesTable)
-    .where(sql`lower(${walletProfilesTable.email}) = ${verifiedEmail}`);
-  if (matchingProfiles.length === 0) return clerkUserId;
-
-  let canonicalUserId = matchingProfiles[0].clerkUserId;
-  if (matchingProfiles.length > 1) {
-    const ids = matchingProfiles.map((profile) => profile.clerkUserId);
-    const [accounts, holdings, activities, transactions, trades] = await Promise.all([
-      db.select().from(tradingAccountsTable).where(inArray(tradingAccountsTable.clerkUserId, ids)),
-      db.select({ clerkUserId: holdingsTable.clerkUserId }).from(holdingsTable).where(inArray(holdingsTable.clerkUserId, ids)),
-      db.select({ clerkUserId: activitiesTable.clerkUserId }).from(activitiesTable).where(inArray(activitiesTable.clerkUserId, ids)),
-      db.select({ clerkUserId: transactionsTable.clerkUserId }).from(transactionsTable).where(inArray(transactionsTable.clerkUserId, ids)),
-      db.select({ clerkUserId: tradesTable.clerkUserId }).from(tradesTable).where(inArray(tradesTable.clerkUserId, ids)),
-    ]);
-    const score = (id: string) => {
-      const account = accounts.find((candidate) => candidate.clerkUserId === id);
-      return (account && asNumber(account.balance) !== 0 ? 10_000 : 0)
-        + holdings.filter((row) => row.clerkUserId === id).length * 100
-        + transactions.filter((row) => row.clerkUserId === id).length * 20
-        + trades.filter((row) => row.clerkUserId === id).length * 10
-        + activities.filter((row) => row.clerkUserId === id).length;
-    };
-    const scored = ids.map((id) => ({ id, score: score(id) }));
-    const highestScore = Math.max(...scored.map((candidate) => candidate.score));
-    const strongest = scored.filter((candidate) => candidate.score === highestScore);
-    if (strongest.length === 1 && highestScore > 0) {
-      canonicalUserId = strongest[0].id;
-    } else if (ids.includes(clerkUserId)) {
-      canonicalUserId = clerkUserId;
-    } else {
-      throw new Error("Multiple database accounts share this verified email; automatic account selection was refused.");
-    }
-  }
-
-  canonicalUserIdCache.set(clerkUserId, {
-    userId: canonicalUserId,
-    expiresAt: Date.now() + CANONICAL_USER_ID_CACHE_TTL,
-  });
-  return canonicalUserId;
+  accountStatusCache.set(userId, { status, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
 }
 
 function isFrozenOperation(req: Request) {
@@ -323,14 +247,14 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  const userId = getAuthenticatedUserId(req);
+  const userId = getAuth(req).userId;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  void getAccountContext(userId)
-    .then(async ({ status, verifiedEmail }) => {
+  void getAccountOperationalStatus(userId)
+    .then((status) => {
       if (status === "suspended" || (status === "frozen" && isFrozenOperation(req))) {
         res.status(403).json({
           error: status === "suspended"
@@ -339,22 +263,6 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
           accountStatus: status,
         });
         return;
-      }
-      const canonicalUserId = await resolveCanonicalUserId(userId, verifiedEmail);
-      canonicalUserIds.set(req, canonicalUserId);
-      const kycExemptPaths = new Set(["/profile", "/user/profile", "/kyc"]);
-      if (!kycExemptPaths.has(req.path)) {
-        const profile = await ensureSeededUser(canonicalUserId);
-        if (profile.verificationStatus !== "verified") {
-          res.status(403).json({
-            error: profile.verificationStatus === "pending"
-              ? "Identity verification is pending admin approval."
-              : "Identity verification is required before using this feature.",
-            code: "KYC_REQUIRED",
-            verificationStatus: profile.verificationStatus,
-          });
-          return;
-        }
       }
       next();
     })
@@ -382,159 +290,92 @@ function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
 
-const ZERO_BALANCE = "0";
+const DEFAULT_PORTFOLIO_BALANCE = "24680.42000000";
+const portfolioSeededUsers = new Set<string>();
+const defaultPortfolioHoldings = [
+  { symbol: "BTC", name: "Bitcoin", amount: "0.1842", value: "11600.12", allocation: "47.00", change24h: "2.84", color: "#F7931A" },
+  { symbol: "ETH", name: "Ethereum", amount: "1.842", value: "5756.44", allocation: "23.32", change24h: "1.61", color: "#627EEA" },
+  { symbol: "USDC", name: "USD Coin", amount: "1835.2", value: "1835.20", allocation: "7.44", change24h: "0.01", color: "#2775CA" },
+  { symbol: "BNB", name: "BNB", amount: "1.22", value: "710.21", allocation: "2.88", change24h: "-0.44", color: "#F3BA2F" },
+  { symbol: "USDT", name: "Tether", amount: "320.5", value: "320.50", allocation: "1.30", change24h: "0.02", color: "#26A17B" },
+] as const;
 
-const portfolioHistoryMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
-
-function defaultActivityResponse() {
-  return GetActivityResponse.parse([]);
-}
-
-function serializePortfolio(
-  balance: string | number,
-  holdings: ReadonlyArray<{
-    symbol: string;
-    name: string;
-    amount: string | number;
-    value: string | number;
-    allocation: string | number;
-    change24h: string | number;
-    color: string;
-  }>,
-) {
-  const totalValue = asNumber(balance);
-  const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
-  const dayChange = holdings.reduce(
-    (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
-    0,
-  );
-
-  return GetPortfolioResponse.parse({
-    totalValue,
-    dayChange,
-    dayChangePercent: totalValue ? (dayChange / totalValue) * 100 : 0,
-    cashBalance: Math.max(0, totalValue - holdingsValue),
-    history: portfolioHistoryMultipliers.map((multiplier, index) => ({
-      time: `${String(index * 2).padStart(2, "0")}:00`,
-      value: Number((totalValue * multiplier).toFixed(2)),
-    })),
-    holdings: holdings.map((holding) => ({
-      symbol: holding.symbol,
-      name: holding.name,
-      amount: asNumber(holding.amount),
-      value: asNumber(holding.value),
-      allocation: asNumber(holding.allocation),
-      change24h: asNumber(holding.change24h),
-      color: holding.color,
-    })),
-  });
-}
+const defaultPortfolioActivities = [
+  { type: "deposit", asset: "USD", amount: "5000", value: "5000", status: "completed", ageMs: 1000 * 60 * 52 },
+  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 60 * 7 },
+  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "failed", ageMs: 1000 * 60 * 60 * 28 },
+  { type: "withdrawal", asset: "ETH", amount: "0.35", value: "1093.67", status: "pending", ageMs: 1000 * 60 * 60 * 24 * 3 },
+] as const;
 
 async function ensureDefaultPortfolio(userId: string) {
+  if (portfolioSeededUsers.has(userId)) return;
+
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
-    await tx.insert(tradingAccountsTable).values({
+
+    const [existingHoldings, existingActivities, existingAccount, existingTransactions, existingTrades] = await Promise.all([
+      tx.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
+      tx.select().from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
+      tx.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
+      tx.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.clerkUserId, userId)),
+      tx.select({ count: count() }).from(tradesTable).where(eq(tradesTable.clerkUserId, userId)),
+    ]);
+
+    const existingSymbols = new Set(existingHoldings.map((holding) => holding.symbol));
+    const missingHoldings = defaultPortfolioHoldings.filter((holding) => !existingSymbols.has(holding.symbol));
+    if (missingHoldings.length > 0) {
+      await tx.insert(holdingsTable).values(
+        missingHoldings.map((holding) => ({ clerkUserId: userId, ...holding })),
+      );
+    }
+
+    const missingActivities = defaultPortfolioActivities.filter((sample) => !existingActivities.some((activity) =>
+      activity.type === sample.type
+      && activity.asset === sample.asset
+      && String(activity.amount) === Number(sample.amount).toFixed(12)
+      && activity.status === sample.status
+    ));
+    if (missingActivities.length > 0) {
+      await tx.insert(activitiesTable).values(
+        missingActivities.map(({ ageMs, ...activity }) => ({
+          clerkUserId: userId,
+          ...activity,
+          createdAt: new Date(Date.now() - ageMs),
+        })),
+      );
+    }
+
+    if (!existingAccount[0]) {
+      await tx.insert(tradingAccountsTable).values({
         clerkUserId: userId,
-        balance: ZERO_BALANCE,
-      })
-      .onConflictDoNothing();
+        balance: DEFAULT_PORTFOLIO_BALANCE,
+      }).onConflictDoNothing();
+    } else if (
+      asNumber(existingAccount[0].balance) === 0
+      && (
+        missingHoldings.length > 0
+        || (
+          Number(existingTransactions[0]?.count ?? 0) === 0
+          && Number(existingTrades[0]?.count ?? 0) === 0
+        )
+      )
+    ) {
+      await tx.update(tradingAccountsTable)
+        .set({ balance: DEFAULT_PORTFOLIO_BALANCE, updatedAt: new Date() })
+        .where(eq(tradingAccountsTable.clerkUserId, userId));
+    }
   });
+  portfolioSeededUsers.add(userId);
 }
 
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
-    const primaryEmail = user.emailAddresses.find((item) => item.id === user.primaryEmailAddressId);
-    const email = primaryEmail?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
+    const email = user.emailAddresses[0]?.emailAddress ?? "";
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
     return { email, name };
   } catch {
     return { email: "", name: "" };
-  }
-}
-
-const CLERK_USER_SYNC_TTL_MS = 60_000;
-let clerkUserSyncCompletedAt = 0;
-let clerkUserSyncInFlight: Promise<number> | null = null;
-
-function clerkUserIdentity(user: Awaited<ReturnType<typeof clerkClient.users.getUser>>) {
-  const primaryEmail = user.emailAddresses.find(
-    (email) => email.id === user.primaryEmailAddressId,
-  )?.emailAddress;
-  const email = primaryEmail ?? user.emailAddresses[0]?.emailAddress ?? "";
-  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
-  return {
-    email: email || `${user.id}@clerk-user.invalid`,
-    displayName: name || emailPrefix(email) || "North State Blockchain Member",
-  };
-}
-
-async function syncClerkUsersToWalletProfiles(force = false): Promise<number> {
-  if (!force && Date.now() - clerkUserSyncCompletedAt < CLERK_USER_SYNC_TTL_MS) {
-    return 0;
-  }
-  if (clerkUserSyncInFlight) return clerkUserSyncInFlight;
-
-  clerkUserSyncInFlight = (async () => {
-    const users: Awaited<ReturnType<typeof clerkClient.users.getUserList>>["data"] = [];
-    const limit = 100;
-    let offset = 0;
-    let totalCount = 0;
-
-    do {
-      const page = await clerkClient.users.getUserList({ limit, offset });
-      users.push(...page.data);
-      totalCount = page.totalCount;
-      offset += page.data.length;
-    } while (offset < totalCount);
-
-    await db.transaction(async (tx) => {
-      for (const user of users) {
-        const identity = clerkUserIdentity(user);
-        const [matchingProfile] = identity.email
-          ? await tx
-            .select()
-            .from(walletProfilesTable)
-            .where(sql`lower(${walletProfilesTable.email}) = ${identity.email.toLowerCase()}`)
-            .limit(1)
-          : [];
-        if (matchingProfile && matchingProfile.clerkUserId !== user.id) {
-          await tx.update(walletProfilesTable).set({
-            displayName: identity.displayName,
-            email: identity.email,
-          }).where(eq(walletProfilesTable.id, matchingProfile.id));
-          continue;
-        }
-        await tx
-          .insert(walletProfilesTable)
-          .values({
-            clerkUserId: user.id,
-            displayName: identity.displayName,
-            email: identity.email,
-            referralCode: `NORTHSTAR-${user.id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()}`,
-            verificationStatus: "unverified",
-            referralInvitedCount: 0,
-            referralReward: "0.00",
-            createdAt: new Date(user.createdAt),
-          })
-          .onConflictDoUpdate({
-            target: walletProfilesTable.clerkUserId,
-            set: {
-              displayName: identity.displayName,
-              email: identity.email,
-            },
-          });
-      }
-    });
-
-    clerkUserSyncCompletedAt = Date.now();
-    return users.length;
-  })();
-
-  try {
-    return await clerkUserSyncInFlight;
-  } finally {
-    clerkUserSyncInFlight = null;
   }
 }
 
@@ -546,24 +387,35 @@ async function ensureSeededUser(userId: string) {
     .limit(1);
 
   if (existing) {
-    const identityUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    const { email, name } = await fetchClerkUserInfo(userId);
-    if (email && email !== existing.email) identityUpdate.email = email;
-    if (name && name !== existing.displayName) identityUpdate.displayName = name;
-    if (Object.keys(identityUpdate).length) {
-      await db.update(walletProfilesTable).set(identityUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
+    const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
+    if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
+    if (existing.verificationStatus === "unverified") sampleProfileUpdate.verificationStatus = "verified";
+    if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
+    if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
+
+    // Keep the signed-in email, but replace legacy fallback data with the sample profile.
+    if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
+      const { email, name } = await fetchClerkUserInfo(userId);
+      if (email) sampleProfileUpdate.email = email;
+      if (name && existing.displayName !== "North State Blockchain Member") sampleProfileUpdate.displayName = name;
+    }
+    if (Object.keys(sampleProfileUpdate).length) {
+      await db.update(walletProfilesTable).set(sampleProfileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
       await ensureDefaultPortfolio(userId);
-      return { ...existing, ...identityUpdate };
+      return { ...existing, ...sampleProfileUpdate };
     }
     await ensureDefaultPortfolio(userId);
     return existing;
   }
 
-  const info = await fetchClerkUserInfo(userId);
-  const email = info.email;
-  const displayName = info.name || emailPrefix(email);
-  if (!email) {
-    throw new Error("The authenticated Clerk account does not have an email address.");
+  const isDemoUser = userId === "demo_user";
+
+  const displayName = "Alex Morgan";
+  let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
+
+  if (!isDemoUser) {
+    const info = await fetchClerkUserInfo(userId);
+    if (info.email) email = info.email;
   }
 
   const [profile] = await db
@@ -572,10 +424,10 @@ async function ensureSeededUser(userId: string) {
       clerkUserId: userId,
       displayName,
       email,
-      referralCode: `NORTHSTAR-${userId.replace(/[^a-zA-Z0-9]/g, "").slice(-10).toUpperCase()}`,
-      verificationStatus: "unverified",
-      referralInvitedCount: 0,
-      referralReward: "0",
+      referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
+      verificationStatus: "verified",
+      referralInvitedCount: 3,
+      referralReward: "50.00",
     })
     .onConflictDoNothing()
     .returning();
@@ -968,29 +820,20 @@ router.get("/markets/:symbol", async (req, res) => {
 // area. Admin routes opt out here and enforce their own admin secret below.
 router.use(requireMember);
 
-const getProfile = async (req: Request, res: Response) => {
-  const userId = getUserId(req);
-  try {
-    const profile = await ensureSeededUser(userId);
-    res.json(GetProfileResponse.parse({
-      id: String(profile.id),
-      name: profile.displayName,
-      email: profile.email,
-      initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
-      verificationStatus: profile.verificationStatus,
-      referralCode: profile.referralCode,
-      twoFactorEnabled: profile.twoFactorEnabled ?? false,
-      smsPhoneNumber: profile.smsPhoneNumber ?? null,
-      smsPhoneVerified: profile.smsPhoneVerified ?? false,
-    }));
-  } catch (error) {
-    req.log.error({ err: error, userId }, "Profile database query failed");
-    res.status(503).json({ error: "Your account profile is temporarily unavailable." });
-  }
-};
-
-router.get("/profile", getProfile);
-router.get("/user/profile", getProfile);
+router.get("/profile", async (req, res) => {
+  const profile = await ensureSeededUser(getUserId(req));
+  res.json(GetProfileResponse.parse({
+    id: String(profile.id),
+    name: profile.displayName,
+    email: profile.email,
+    initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    verificationStatus: profile.verificationStatus,
+    referralCode: "NORTHSTAR-ALEX",
+    twoFactorEnabled: profile.twoFactorEnabled ?? false,
+    smsPhoneNumber: profile.smsPhoneNumber ?? null,
+    smsPhoneVerified: profile.smsPhoneVerified ?? false,
+  }));
+});
 
 router.patch("/profile", async (req, res) => {
   const userId = getUserId(req);
@@ -1028,16 +871,36 @@ router.get("/notifications", async (req, res) => {
 
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
-  try {
-    await ensureSeededUser(userId);
-    await autoSettleExpiredTrades(userId);
-    const account = await getOrCreateTradingAccount(userId);
-    const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-    res.json(serializePortfolio(account.balance, holdings));
-  } catch (error) {
-    req.log.error({ err: error, userId }, "Portfolio database query failed; serving zero-balance portfolio");
-    res.json(serializePortfolio(ZERO_BALANCE, []));
-  }
+  await ensureSeededUser(userId);
+  await autoSettleExpiredTrades(userId);
+  const account = await getOrCreateTradingAccount(userId);
+  const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
+  const value = asNumber(account.balance);
+  const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
+  const dayChange = holdings.reduce(
+    (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
+    0,
+  );
+  const historyMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
+  res.json(GetPortfolioResponse.parse({
+    totalValue: value,
+    dayChange,
+    dayChangePercent: value ? (dayChange / value) * 100 : 0,
+    cashBalance: Math.max(0, value - holdingsValue),
+    history: historyMultipliers.map((multiplier, index) => ({
+      time: `${String(index * 2).padStart(2, "0")}:00`,
+      value: Number((value * multiplier).toFixed(2)),
+    })),
+    holdings: holdings.map((holding) => ({
+      symbol: holding.symbol,
+      name: holding.name,
+      amount: asNumber(holding.amount),
+      value: asNumber(holding.value),
+      allocation: asNumber(holding.allocation),
+      change24h: asNumber(holding.change24h),
+      color: holding.color,
+    })),
+  }));
 });
 
 const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => asset.symbol));
@@ -1278,44 +1141,32 @@ router.post("/admin/mining-investments/:id/reject", requireAdmin, async (req, re
 
 router.get("/activity", async (req, res) => {
   const userId = getUserId(req);
-  try {
-    await ensureSeededUser(userId);
-    const activities = await db
-      .select()
-      .from(activitiesTable)
-      .where(eq(activitiesTable.clerkUserId, userId))
-      .orderBy(desc(activitiesTable.createdAt));
-    res.json(activities.length
-      ? GetActivityResponse.parse(activities.map((activity) => ({
-          id: String(activity.id),
-          type: activity.type,
-          asset: activity.asset,
-          amount: asNumber(activity.amount),
-          value: asNumber(activity.value),
-          status: activity.status,
-          createdAt: activity.createdAt.toISOString(),
-        })))
-      : defaultActivityResponse());
-  } catch (error) {
-    req.log.error({ err: error, userId }, "Activity database query failed");
-    res.status(503).json({ error: "Activity history is temporarily unavailable." });
-  }
+  await ensureSeededUser(userId);
+  const activities = await db
+    .select()
+    .from(activitiesTable)
+    .where(eq(activitiesTable.clerkUserId, userId))
+    .orderBy(desc(activitiesTable.createdAt))
+    .limit(20);
+  res.json(GetActivityResponse.parse(activities.map((activity) => ({
+    id: String(activity.id),
+    type: activity.type,
+    asset: activity.asset,
+    amount: asNumber(activity.amount),
+    value: asNumber(activity.value),
+    status: activity.status,
+    createdAt: activity.createdAt.toISOString(),
+  }))));
 });
 
 router.get("/referral", async (req, res) => {
-  const userId = getUserId(req);
-  try {
-    const profile = await ensureSeededUser(userId);
-    res.json(GetReferralResponse.parse({
-      code: profile.referralCode,
-      invitedCount: profile.referralInvitedCount,
-      reward: asNumber(profile.referralReward),
-      shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
-    }));
-  } catch (error) {
-    req.log.error({ err: error, userId }, "Referral database query failed");
-    res.status(503).json({ error: "Referral information is temporarily unavailable." });
-  }
+  const profile = await ensureSeededUser(getUserId(req));
+  res.json(GetReferralResponse.parse({
+    code: "NORTHSTAR-ALEX",
+    invitedCount: profile.referralInvitedCount,
+    reward: asNumber(profile.referralReward),
+    shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
+  }));
 });
 
 router.post("/referral", async (req, res) => {
@@ -1323,7 +1174,7 @@ router.post("/referral", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
   req.log.info({ channel: body.channel, userId: profile.clerkUserId }, "Referral share recorded");
   res.status(201).json(CreateReferralShareResponse.parse({
-    code: profile.referralCode,
+    code: "NORTHSTAR-ALEX",
     invitedCount: profile.referralInvitedCount,
     reward: asNumber(profile.referralReward),
     shareUrl: `${req.protocol}://${req.get("host")}/join/${profile.referralCode}`,
@@ -1805,99 +1656,23 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 
-const ADMIN_SESSION_COOKIE = "northstate_admin_session";
-const ADMIN_SESSION_TTL_MS = 12 * 60 * 60_000;
-
-function secureEqual(left: string, right: string) {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function adminSecretMatches(provided: unknown) {
-  const secret = process.env.ADMIN_SECRET;
-  return typeof secret === "string"
-    && secret.length > 0
-    && typeof provided === "string"
-    && secureEqual(provided, secret);
-}
-
-function createAdminSessionToken(expiresAt: number) {
-  const secret = process.env.ADMIN_SECRET!;
-  const payload = String(expiresAt);
-  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
-  return `${payload}.${signature}`;
-}
-
-function hasValidAdminSession(req: Request) {
-  const cookieHeader = req.headers.cookie ?? "";
-  const encodedToken = cookieHeader
-    .split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
-    ?.slice(ADMIN_SESSION_COOKIE.length + 1);
-  if (!encodedToken) return false;
-
-  let token: string;
-  try {
-    token = decodeURIComponent(encodedToken);
-  } catch {
-    return false;
-  }
-  const separator = token.indexOf(".");
-  if (separator <= 0) return false;
-  const expiresAt = Number(token.slice(0, separator));
-  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
-  return secureEqual(createAdminSessionToken(expiresAt), token);
-}
-
 function requireAdmin(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
   res: Parameters<Parameters<IRouter["get"]>[1]>[1],
   next: Parameters<Parameters<IRouter["get"]>[1]>[2],
 ) {
+  const secret = process.env.ADMIN_SECRET;
   const provided = req.headers["x-admin-key"];
-  if (!adminSecretMatches(provided) && !hasValidAdminSession(req)) {
+  if (!secret || provided !== secret) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   next();
 }
 
-router.post("/admin/session", (req, res) => {
-  if (!adminSecretMatches(req.headers["x-admin-key"])) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
-  res.cookie(ADMIN_SESSION_COOKIE, createAdminSessionToken(expiresAt), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/api/admin",
-    maxAge: ADMIN_SESSION_TTL_MS,
-  });
-  res.json({ authenticated: true, expiresAt: new Date(expiresAt).toISOString() });
-});
-
-router.delete("/admin/session", (_req, res) => {
-  res.clearCookie(ADMIN_SESSION_COOKIE, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/api/admin",
-  });
-  res.status(204).end();
-});
-
-router.get("/admin/session", requireAdmin, (_req, res) => {
-  res.json({ authenticated: true });
-});
-
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 
 router.get("/admin/stats", requireAdmin, async (_req, res) => {
-  await syncClerkUsersToWalletProfiles();
   const [[{ totalUsers }], [{ pendingDeposits }], [{ pendingWithdrawals }], [{ pendingKyc }], [{ pendingInvestments }], [{ totalTransactions }]] =
     await Promise.all([
       db.select({ totalUsers: count() }).from(walletProfilesTable),
@@ -1925,7 +1700,6 @@ router.get("/admin/stats", requireAdmin, async (_req, res) => {
 // ─── Admin: users ────────────────────────────────────────────────────────────
 
 router.get("/admin/users", requireAdmin, async (_req, res) => {
-  await syncClerkUsersToWalletProfiles();
   const profiles = await db
     .select()
     .from(walletProfilesTable)
@@ -1941,7 +1715,7 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       const email = clerkInfo.email || profile.email;
       let accountStatus: AccountOperationalStatus | "deleted" = "active";
       try {
-        accountStatus = (await getAccountContext(profile.clerkUserId)).status;
+        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
       } catch (error: unknown) {
         if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
         else throw error;
@@ -2066,6 +1840,10 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
     res.status(400).json({ error: "Account status must be active, suspended, or frozen." });
     return;
   }
+  if (userId === "demo_user") {
+    res.status(400).json({ error: "The demo account cannot be changed." });
+    return;
+  }
   try {
     await setAccountOperationalStatus(userId, status);
     res.json({ userId, accountStatus: status });
@@ -2080,6 +1858,10 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
 
 router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
+  if (userId === "demo_user") {
+    res.status(400).json({ error: "The demo account cannot be deleted." });
+    return;
+  }
   try {
     await clerkClient.users.deleteUser(userId);
     accountStatusCache.delete(userId);
@@ -2187,113 +1969,91 @@ router.get("/admin/transactions", requireAdmin, async (_req, res) => {
 
 router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) => {
   const txId = Number(req.params.id);
-  const result = await db.transaction(async (dbTx) => {
-    await dbTx.execute(sql`
-      select id from ${transactionsTable}
-      where ${transactionsTable.id} = ${txId}
-      for update
-    `);
-    const [transaction] = await dbTx
-      .select()
-      .from(transactionsTable)
-      .where(eq(transactionsTable.id, txId))
-      .limit(1);
-    if (!transaction) return { status: "not_found" as const };
-    if (transaction.status !== "pending") {
-      return { status: "already_processed" as const, transaction };
-    }
-
-    await dbTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${transaction.clerkUserId}:TRADING_BALANCE`}))`);
-    const [completed] = await dbTx
-      .update(transactionsTable)
-      .set({ status: "completed" })
-      .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
-      .returning();
-    if (!completed) return { status: "already_processed" as const, transaction };
-
-    await dbTx
-      .update(activitiesTable)
-      .set({ status: "completed" })
-      .where(eq(activitiesTable.transactionId, txId));
-
-    if (completed.type === "deposit") {
-      const [existing] = await dbTx
-        .select()
-        .from(holdingsTable)
-        .where(
-          and(
-            eq(holdingsTable.clerkUserId, completed.clerkUserId),
-            eq(holdingsTable.symbol, completed.asset),
-          ),
-        )
-        .limit(1);
-
-      if (existing) {
-        await dbTx
-          .update(holdingsTable)
-          .set({
-            amount: sql`${holdingsTable.amount} + ${completed.amount}`,
-            value: sql`${holdingsTable.value} + ${completed.amount}`,
-          })
-          .where(eq(holdingsTable.id, existing.id));
-      } else {
-        const assetDef = marketDefinitions.find((market) => market.symbol === completed.asset);
-        await dbTx.insert(holdingsTable).values({
-          clerkUserId: completed.clerkUserId,
-          symbol: completed.asset,
-          name: assetDef?.name ?? completed.asset,
-          amount: completed.amount,
-          value: completed.amount,
-          allocation: "0",
-          change24h: "0",
-          color: assetDef?.color ?? "#888888",
-        });
-      }
-
-      await dbTx.insert(tradingAccountsTable).values({
-        clerkUserId: completed.clerkUserId,
-        balance: ZERO_BALANCE,
-      }).onConflictDoNothing();
-      await dbTx.update(tradingAccountsTable).set({
-        balance: sql`${tradingAccountsTable.balance} + ${completed.amount}`,
-        updatedAt: new Date(),
-      }).where(eq(tradingAccountsTable.clerkUserId, completed.clerkUserId));
-    }
-
-    if (completed.type === "withdrawal") {
-      const [existing] = await dbTx
-        .select()
-        .from(holdingsTable)
-        .where(
-          and(
-            eq(holdingsTable.clerkUserId, completed.clerkUserId),
-            eq(holdingsTable.symbol, completed.asset),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(completed.amount));
-        const newValue = Math.max(0, asNumber(existing.value) - asNumber(completed.amount));
-        await dbTx
-          .update(holdingsTable)
-          .set({ amount: String(newAmount), value: String(newValue) })
-          .where(eq(holdingsTable.id, existing.id));
-      }
-    }
-
-    return { status: "approved" as const, transaction: completed };
-  });
-
-  if (result.status === "not_found") {
+  const [tx] = await db
+    .update(transactionsTable)
+    .set({ status: "completed" })
+    .where(eq(transactionsTable.id, txId))
+    .returning();
+  if (!tx) {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-  if (result.status === "already_processed") {
-    res.status(409).json({ error: `Transaction is already ${result.transaction.status}` });
-    return;
+
+  // Update matching activity status
+  await db
+    .update(activitiesTable)
+    .set({ status: "completed" })
+    .where(eq(activitiesTable.transactionId, txId));
+
+  // For approved deposits: credit holdings AND trading account
+  if (tx.type === "deposit") {
+    const [existing] = await db
+      .select()
+      .from(holdingsTable)
+      .where(
+        and(
+          eq(holdingsTable.clerkUserId, tx.clerkUserId),
+          eq(holdingsTable.symbol, tx.asset),
+        ),
+      )
+      .limit(1);
+    const depositAmount = asNumber(tx.amount);
+
+    if (existing) {
+      const newAmount = asNumber(existing.amount) + depositAmount;
+      const newValue = asNumber(existing.value) + depositAmount; // approximate; price-adjusted later
+      await db
+        .update(holdingsTable)
+        .set({
+          amount: String(newAmount),
+          value: String(newValue),
+        })
+        .where(eq(holdingsTable.id, existing.id));
+    } else {
+      const assetDef = marketDefinitions.find((m) => m.symbol === tx.asset);
+      await db.insert(holdingsTable).values({
+        clerkUserId: tx.clerkUserId,
+        symbol: tx.asset,
+        name: assetDef?.name ?? tx.asset,
+        amount: String(depositAmount),
+        value: String(depositAmount),
+        allocation: "0",
+        change24h: "0",
+        color: assetDef?.color ?? "#888888",
+      });
+    }
+
+    // Credit the canonical account balance without a read-modify-write race.
+    await db.insert(tradingAccountsTable).values({ clerkUserId: tx.clerkUserId }).onConflictDoNothing();
+    await db.update(tradingAccountsTable).set({
+      balance: sql`${tradingAccountsTable.balance} + ${tx.amount}`,
+      updatedAt: new Date(),
+    }).where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
   }
 
-  res.json(await enrichTransaction(result.transaction));
+  // For approved withdrawals: debit holdings
+  if (tx.type === "withdrawal") {
+    const [existing] = await db
+      .select()
+      .from(holdingsTable)
+      .where(
+        and(
+          eq(holdingsTable.clerkUserId, tx.clerkUserId),
+          eq(holdingsTable.symbol, tx.asset),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(tx.amount));
+      const newValue = Math.max(0, asNumber(existing.value) - asNumber(tx.amount));
+      await db
+        .update(holdingsTable)
+        .set({ amount: String(newAmount), value: String(newValue) })
+        .where(eq(holdingsTable.id, existing.id));
+    }
+  }
+
+  res.json(await enrichTransaction(tx));
 });
 
 router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) => {
@@ -2386,17 +2146,14 @@ router.patch("/admin/kyc/:id/reject", requireAdmin, async (req, res) => {
 // ─── Trading / Futures ────────────────────────────────────────────────────────
 
 const TRADING_FALLBACK: Record<string, number> = {
-  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52, GOLD: 2348.4,
+  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52,
 };
 
 async function getOrCreateTradingAccount(userId: string) {
-  await ensureDefaultPortfolio(userId);
   let [acct] = await db.select().from(tradingAccountsTable)
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
-    await db.insert(tradingAccountsTable)
-      .values({ clerkUserId: userId, balance: ZERO_BALANCE })
-      .onConflictDoNothing();
+    await db.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
     [acct] = await db.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   }
@@ -2448,9 +2205,7 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     }
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
-    await tx.insert(tradingAccountsTable)
-      .values({ clerkUserId: trade.clerkUserId, balance: ZERO_BALANCE })
-      .onConflictDoNothing();
+    await tx.insert(tradingAccountsTable).values({ clerkUserId: trade.clerkUserId }).onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}
       where ${tradingAccountsTable.clerkUserId} = ${trade.clerkUserId}
@@ -2488,10 +2243,6 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     if (!settledTrade) {
       throw new Error("Trade settlement claim was lost.");
     }
-    await tx.update(activitiesTable).set({
-      value: String(settledTrade.payout ?? 0),
-      status: "completed",
-    }).where(eq(activitiesTable.tradeId, settledTrade.id));
 
     return { trade: settledTrade, settled: true, error: null, balance: updatedAccount.balance };
   });
@@ -2541,9 +2292,7 @@ router.post("/trading/trades", async (req, res) => {
   await ensureSeededUser(userId);
   await getOrCreateTradingAccount(userId);
   let entryPrice: number;
-  if (asset.toUpperCase() === "GOLD") {
-    entryPrice = investmentQuote("GOLD").price;
-  } else try {
+  try {
     const assets = await fetchMarketAssets(req);
     const found = assets.find((a: { symbol: string; price: number }) => a.symbol === asset.toUpperCase());
     entryPrice = found?.price ?? TRADING_FALLBACK[asset.toUpperCase()] ?? 100;
@@ -2579,15 +2328,6 @@ router.post("/trading/trades", async (req, res) => {
       expiresAt,
       payoutRate: "0.85",
     }).returning();
-    await tx.insert(activitiesTable).values({
-      clerkUserId: userId,
-      type: direction === "long" ? "buy" : "sell",
-      asset: asset.toUpperCase(),
-      amount: amountString,
-      value: amountString,
-      status: "pending",
-      tradeId: trade.id,
-    });
     await tx.update(tradingAccountsTable).set({
       totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
       updatedAt: now,
