@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/react';
 import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -17,7 +16,6 @@ import {
   useGetMarketSummary,
   useGetMiningPlace,
   useGetMiningInvestments,
-  useConvertMiningGold,
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
@@ -47,7 +45,6 @@ const TIMEFRAMES = [
 
 const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
 const PAYOUT_RATE = 0.85;
-const DEFAULT_MAIN_WALLET_BALANCE = 0;
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
 
@@ -356,15 +353,8 @@ export function TradingPage() {
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
-  const placingRef = useRef(false);
-  const [goldSourceId, setGoldSourceId] = useState('');
-  const [goldUnits, setGoldUnits] = useState('');
-  const [goldDestination, setGoldDestination] = useState('USDT');
-  const [goldConversionError, setGoldConversionError] = useState('');
-  const [goldConversionDone, setGoldConversionDone] = useState('');
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const qc = useQueryClient();
-  const { toast } = useToast();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
   const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
@@ -375,7 +365,6 @@ export function TradingPage() {
     query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, placeholderData: (previous) => previous },
   });
   const placeTradeHook = usePlaceTrade();
-  const convertGold = useConvertMiningGold();
 
   const goldQuote = miningPlace?.assets.find(item => item.symbol === 'GOLD');
   const marketAsset = asset === 'GOLD' ? goldQuote : market.find(m => m.symbol === asset);
@@ -383,14 +372,6 @@ export function TradingPage() {
   const goldInvestments = miningInvestments?.investments.filter(investment => investment.symbol === 'GOLD' && investment.status === 'active') ?? [];
   const heldGoldUnits = goldInvestments.reduce((total, investment) => total + Number(investment.units ?? 0), 0);
   const heldGoldValue = goldInvestments.reduce((total, investment) => total + Number(investment.currentValue ?? 0), 0);
-  const selectedGoldInvestment = goldInvestments.find(investment => investment.id === goldSourceId) ?? goldInvestments[0];
-
-  useEffect(() => {
-    if (!goldSourceId && goldInvestments[0]) setGoldSourceId(goldInvestments[0].id);
-    if (goldSourceId && !goldInvestments.some(investment => investment.id === goldSourceId)) {
-      setGoldSourceId(goldInvestments[0]?.id ?? '');
-    }
-  }, [goldInvestments, goldSourceId]);
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -403,8 +384,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  // Overview and Trading display the same canonical main-wallet total.
-  const balance = Number(portfolio?.totalValue ?? DEFAULT_MAIN_WALLET_BALANCE);
+  const balance = Number(portfolio?.totalValue ?? account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
@@ -425,56 +405,16 @@ export function TradingPage() {
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (placingRef.current) return;
-    if (insufficient) {
-      toast({
-        variant: 'destructive',
-        title: 'Trade not placed',
-        description: `Reduce the amount below your available $${availableToTrade.toFixed(2)} balance.`,
-      });
-      return;
-    }
-    placingRef.current = true;
+    if (placing || !currentPrice || insufficient) return;
     setPlacing(true);
     try {
-      const result = await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
-      toast({
-        title: `${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} placed`,
-        description: `${asset} trade #${result.tradeId} is active. $${tradeAmt.toFixed(2)} is reserved from your main wallet.`,
-      });
-      void Promise.allSettled([refetchTrades(), refreshCanonicalBalance()]);
-    } catch (error) {
-      const apiError = error as { data?: { error?: string }; message?: string };
-      toast({
-        variant: 'destructive',
-        title: 'Trade could not be placed',
-        description: apiError.data?.error ?? apiError.message ?? 'Please check your wallet balance and try again.',
-      });
+      await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
+      await refetchTrades();
+      await refreshCanonicalBalance();
+    } catch {
+      // error is surfaced via disabled state
     } finally {
-      placingRef.current = false;
       setPlacing(false);
-    }
-  };
-
-  const handleGoldConversion = async () => {
-    const units = Number(goldUnits);
-    if (!selectedGoldInvestment || !Number.isFinite(units) || units <= 0) return;
-    setGoldConversionError('');
-    setGoldConversionDone('');
-    try {
-      const result = await convertGold.mutateAsync({
-        id: selectedGoldInvestment.id,
-        data: { units, toAsset: goldDestination as 'BTC' | 'ETH' | 'USDT' | 'USDC' | 'DAI' | 'FDUSD' | 'BNB' },
-      });
-      setGoldUnits('');
-      setGoldConversionDone(`${result.fromUnits.toFixed(6)} oz converted to ${result.toAmount.toFixed(6)} ${result.toAsset}.`);
-      await Promise.all([
-        qc.refetchQueries({ queryKey: getGetMiningInvestmentsQueryKey(), type: 'all' }),
-        qc.refetchQueries({ queryKey: getGetPortfolioQueryKey(), type: 'all' }),
-      ]);
-    } catch (error) {
-      const apiError = error as { data?: { error?: string } };
-      setGoldConversionError(apiError.data?.error ?? 'Gold could not be converted. Refresh the position and try again.');
     }
   };
 
@@ -497,10 +437,10 @@ export function TradingPage() {
   }, [activeTrades.length, trades]);
 
   return (
-    <div className="mx-auto w-full max-w-xl pb-4">
+    <div className="mx-auto max-w-xl">
       {/* Win/Loss flash overlay */}
       {flash && (
-        <div className={`pointer-events-none fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
+        <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
           flash.type === 'win'
             ? 'bg-green-500 text-white'
             : 'bg-destructive text-white'
@@ -510,26 +450,39 @@ export function TradingPage() {
       )}
 
       {/* ── Header row ── */}
-      <div className="mb-4 flex flex-col gap-4 rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
-        <div className="min-w-0">
-          <p className="text-xs font-extrabold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
-          <p className="mt-1 break-words font-mono text-2xl font-extrabold tracking-tight sm:text-xl">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card px-4 py-3">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
+          <p className="mt-0.5 font-mono text-xl font-extrabold">
             ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-4">
-          <div className="rounded-xl bg-secondary/40 px-3 py-2.5 text-left sm:bg-transparent sm:p-0 sm:text-right">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Trades</p>
-            <p className="mt-1 font-mono text-base font-extrabold">{account?.totalTrades ?? 0}</p>
+        <div className="flex gap-4">
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
+            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
           </div>
-          <div className="rounded-xl bg-secondary/40 px-3 py-2.5 text-left sm:bg-transparent sm:p-0 sm:text-right">
-            <p className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Win Rate</p>
-            <p className={`mt-1 font-mono text-base font-extrabold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>
+            <p className={`mt-0.5 font-mono font-bold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
               {winRate !== null ? `${winRate}%` : '—'}
             </p>
           </div>
         </div>
       </div>
+
+      {/* ── Deposit required banner (zero balance) ── */}
+      {balance === 0 && (
+        <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
+          <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
+          <div>
+            <p className="text-sm font-bold text-amber-300">No trading balance</p>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Asset selector ── */}
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -540,7 +493,7 @@ export function TradingPage() {
             <button
               key={a}
               onClick={() => setAsset(a)}
-              className={`min-h-[48px] shrink-0 rounded-xl px-3.5 py-2.5 text-sm font-extrabold transition active:scale-95 ${
+              className={`min-h-[44px] shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
                   : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
@@ -548,7 +501,7 @@ export function TradingPage() {
             >
               <span className="block">{a}</span>
               {mkt && (
-                <span className={`block font-mono text-[10px] font-semibold ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
+                <span className={`block font-mono text-[9px] font-normal ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
                   {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
                 </span>
               )}
@@ -558,48 +511,15 @@ export function TradingPage() {
       </div>
 
       {asset === 'GOLD' && (
-        <div className="mb-3 rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Convert units from an active position into a wallet asset at the current server quote.</p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
-              <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
-            </div>
+        <div className="mb-3 flex items-center justify-between rounded-2xl border border-[#d6ad3b]/30 bg-[#d6ad3b]/8 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#d6ad3b]">Mining Place Gold</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Your active Gold position is available alongside other trading markets.</p>
           </div>
-          {goldInvestments.length > 0 ? (
-            <div className="mt-4 grid gap-3 border-t border-[#d6ad3b]/20 pt-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="grid gap-1 text-xs font-bold text-muted-foreground">
-                  Source position
-                  <select value={selectedGoldInvestment?.id ?? ''} onChange={event => setGoldSourceId(event.target.value)} className="h-11 rounded-xl border border-input bg-background px-3 text-foreground" data-testid="select-gold-source">
-                    {goldInvestments.map(investment => (
-                      <option key={investment.id} value={investment.id}>#{investment.id} · {Number(investment.units ?? 0).toFixed(6)} oz</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-xs font-bold text-muted-foreground">
-                  Destination wallet asset
-                  <select value={goldDestination} onChange={event => setGoldDestination(event.target.value)} className="h-11 rounded-xl border border-input bg-background px-3 text-foreground" data-testid="select-gold-destination">
-                    {['USDT', 'USDC', 'BTC', 'ETH', 'DAI', 'FDUSD', 'BNB'].map(symbol => <option key={symbol}>{symbol}</option>)}
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input type="number" min="0.000000000001" step="any" max={Number(selectedGoldInvestment?.units ?? 0)} value={goldUnits} onChange={event => setGoldUnits(event.target.value)} placeholder="Gold units (oz)" className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 font-mono text-sm" data-testid="input-gold-conversion-units" />
-                <button type="button" onClick={() => setGoldUnits(String(selectedGoldInvestment?.units ?? ''))} className="h-11 rounded-xl border border-[#d6ad3b]/30 px-3 text-xs font-bold text-[#d6ad3b]">Max</button>
-                <button type="button" onClick={handleGoldConversion} disabled={convertGold.isPending || !goldUnits || Number(goldUnits) <= 0 || Number(goldUnits) > Number(selectedGoldInvestment?.units ?? 0)} className="h-11 rounded-xl bg-[#d6ad3b] px-4 text-sm font-extrabold text-black disabled:cursor-not-allowed disabled:opacity-50" data-testid="button-convert-gold">
-                  {convertGold.isPending ? 'Converting…' : `Convert to ${goldDestination}`}
-                </button>
-              </div>
-              {goldConversionError && <p className="text-xs font-semibold text-destructive" data-testid="status-gold-conversion-error">{goldConversionError}</p>}
-              {goldConversionDone && <p className="text-xs font-semibold text-green-400" data-testid="status-gold-conversion-success">{goldConversionDone}</p>}
-            </div>
-          ) : (
-            <p className="mt-3 border-t border-[#d6ad3b]/20 pt-3 text-xs text-muted-foreground">You need an approved active Gold position before you can convert units.</p>
-          )}
+          <div className="shrink-0 text-right">
+            <p className="font-mono text-sm font-extrabold">{heldGoldUnits.toFixed(6)} oz</p>
+            <p className="text-[10px] text-muted-foreground">${heldGoldValue.toFixed(2)} held</p>
+          </div>
         </div>
       )}
 
@@ -621,32 +541,32 @@ export function TradingPage() {
       </div>
 
       {/* ── Order Panel ── */}
-      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
         {/* Amount */}
         <div className="mb-3">
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-sm font-extrabold text-muted-foreground">Trade Amount (USD)</label>
-            <span className="text-xs font-semibold text-muted-foreground">
+            <label className="text-xs font-bold text-muted-foreground">Trade Amount (USD)</label>
+            <span className="text-[11px] text-muted-foreground">
               Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
             </span>
           </div>
-          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2">
             <input
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
               min="1"
               step="1"
-              className="h-14 min-h-[56px] w-full min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-4 font-mono text-lg font-extrabold outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 sm:h-12 sm:min-h-[48px] sm:text-base"
+              className="h-11 min-h-[44px] min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
               placeholder="100"
               data-testid="input-trade-amount"
             />
-            <div className="grid w-full shrink-0 grid-cols-4 gap-2 sm:w-auto sm:grid-cols-2">
+            <div className="grid shrink-0 grid-cols-2 gap-2">
               {[25, 50, 100, 250].map(v => (
                 <button
                   key={v}
                   onClick={() => setAmount(String(v))}
-                  className={`h-12 min-h-[48px] rounded-xl border px-2 text-sm font-extrabold transition hover:text-foreground sm:h-11 sm:min-h-[44px] sm:text-xs ${
+                  className={`h-11 min-h-[44px] rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
                     Number(amount) === v
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground'
@@ -666,10 +586,10 @@ export function TradingPage() {
 
         {/* Timeframe */}
         <div className="mb-4">
-          <label className="mb-1.5 block text-sm font-extrabold text-muted-foreground">Expiry Timeframe</label>
+          <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
           <button
             onClick={() => setShowPicker(true)}
-            className="flex h-14 min-h-[56px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-4 text-base font-extrabold transition hover:border-primary/50 sm:h-12 sm:min-h-[48px]"
+            className="flex h-11 min-h-[44px] w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
             data-testid="button-timeframe-picker"
           >
             <div className="flex items-center gap-2">
@@ -681,46 +601,44 @@ export function TradingPage() {
         </div>
 
         {/* Payout summary */}
-        <div className="mb-4 grid grid-cols-3 items-stretch rounded-xl bg-secondary/30 px-2 py-3 text-sm sm:px-4">
+        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
           <div className="text-center">
-            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">Payout</p>
-            <p className="mt-1 font-mono text-base font-extrabold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Payout</p>
+            <p className="font-mono font-bold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">If Win</p>
-            <p className="mt-1 font-mono text-base font-extrabold text-green-400">+${potentialProfit}</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Win</p>
+            <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[11px] text-muted-foreground uppercase font-extrabold tracking-wider">If Loss</p>
-            <p className="mt-1 font-mono text-base font-extrabold text-red-400">-${tradeAmt}</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Loss</p>
+            <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
           </div>
         </div>
 
         {/* Long / Short buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
-            type="button"
             onClick={() => handleTrade('long')}
-            aria-busy={placing}
-            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 px-2 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98]"
+            disabled={placing || !currentPrice || insufficient}
+            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
-            <span className="text-lg font-extrabold tracking-tight">{placing ? 'PLACING…' : 'BUY LONG'}</span>
-            <span className="text-xs font-semibold text-green-400/70">Price will rise ↑</span>
+            <span className="text-base font-extrabold tracking-tight">BUY LONG</span>
+            <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
           </button>
           <button
-            type="button"
             onClick={() => handleTrade('short')}
-            aria-busy={placing}
-            className="group relative flex min-h-[88px] flex-col items-center justify-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 px-2 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98]"
+            disabled={placing || !currentPrice || insufficient}
+            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
-            <span className="text-lg font-extrabold tracking-tight">{placing ? 'PLACING…' : 'SELL SHORT'}</span>
-            <span className="text-xs font-semibold text-red-400/70">Price will fall ↓</span>
+            <span className="text-base font-extrabold tracking-tight">SELL SHORT</span>
+            <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
           </button>
         </div>
       </div>

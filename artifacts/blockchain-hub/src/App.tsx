@@ -59,30 +59,6 @@ const currencies = [
   'BRL', 'KRW', 'ZAR', 'THB', 'MYR', 'IDR', 'PHP', 'AED',
   'SAR', 'TRY', 'PLN', 'CZK', 'HUF', 'RON', 'MMK',
 ];
-const memberRedirectRoots = ['/dashboard', '/activity', '/trading', '/settings', '/mining-place'];
-
-export function safeMemberRedirect(rawRedirect: string | null, origin = window.location.origin) {
-  if (!rawRedirect) return '/dashboard';
-  try {
-    const decoded = decodeURIComponent(rawRedirect);
-    if (rawRedirect.includes('\\') || decoded.includes('\\')) return '/dashboard';
-    const resolved = new URL(rawRedirect, origin);
-    if (resolved.origin !== origin) return '/dashboard';
-    const isMemberRoute = memberRedirectRoots.some((root) => (
-      resolved.pathname === root || resolved.pathname.startsWith(`${root}/`)
-    ));
-    return isMemberRoute
-      ? `${resolved.pathname}${resolved.search}${resolved.hash}`
-      : '/dashboard';
-  } catch {
-    return '/dashboard';
-  }
-}
-
-export function authFlowUrl(authPath: '/sign-in' | '/sign-up', redirectPath: string) {
-  return `${basePath}${authPath}?redirect_url=${encodeURIComponent(redirectPath)}`;
-}
-
 const depositAssets = [
   { symbol: 'BTC', name: 'Bitcoin', color: '#f6ad3c' },
   { symbol: 'USDT', name: 'Tether', color: '#4bbd91' },
@@ -93,38 +69,44 @@ const depositAssets = [
   { symbol: 'BNB', name: 'BNB', color: '#f2ca52' },
 ];
 const fallbackPortfolio = {
-  totalValue: 0,
-  dayChange: 0,
-  dayChangePercent: 0,
-  cashBalance: 0,
-  history: [],
-  holdings: [],
+  totalValue: 24680.42,
+  dayChange: 356.24,
+  dayChangePercent: 1.44,
+  cashBalance: 4458.0,
+  history: [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1].map((multiplier, index) => ({
+    time: `${String(index * 2).padStart(2, '0')}:00`,
+    value: Number((24680.42 * multiplier).toFixed(2)),
+  })),
+  holdings: [
+    { symbol: 'BTC', name: 'Bitcoin', amount: 0.1842, value: 11600.12, allocation: 47, change24h: 2.84, color: '#F7931A' },
+    { symbol: 'ETH', name: 'Ethereum', amount: 1.842, value: 5756.44, allocation: 23.32, change24h: 1.61, color: '#627EEA' },
+    { symbol: 'USDC', name: 'USD Coin', amount: 1835.2, value: 1835.2, allocation: 7.44, change24h: 0.01, color: '#2775CA' },
+    { symbol: 'BNB', name: 'BNB', amount: 1.22, value: 710.21, allocation: 2.88, change24h: -0.44, color: '#F3BA2F' },
+    { symbol: 'USDT', name: 'Tether', amount: 320.5, value: 320.5, allocation: 1.3, change24h: 0.02, color: '#26A17B' },
+  ],
 };
-const fallbackActivity: Array<{
-  id: string;
-  type: 'deposit' | 'withdrawal' | 'buy' | 'sell' | 'send' | 'receive';
-  asset: string;
-  amount: number;
-  value: number;
-  status: 'pending' | 'completed' | 'failed';
-  createdAt: string;
-}> = [];
+const fallbackActivity = [
+  { id: 'sample-1', type: 'deposit' as const, asset: 'USD', amount: 5000, value: 5000, status: 'completed' as const, createdAt: new Date(Date.now() - 52 * 60_000).toISOString() },
+  { id: 'sample-2', type: 'buy' as const, asset: 'BTC', amount: 0.042, value: 2645.48, status: 'completed' as const, createdAt: new Date(Date.now() - 7 * 60 * 60_000).toISOString() },
+  { id: 'sample-3', type: 'deposit' as const, asset: 'USDC', amount: 850, value: 850, status: 'failed' as const, createdAt: new Date(Date.now() - 28 * 60 * 60_000).toISOString() },
+  { id: 'sample-4', type: 'withdrawal' as const, asset: 'ETH', amount: 0.35, value: 1093.67, status: 'pending' as const, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString() },
+];
 const fallbackProfile = {
-  id: 'unavailable-profile',
-  name: 'North State Blockchain Member',
-  email: '',
-  initials: 'NS',
-  verificationStatus: 'unverified' as const,
-  referralCode: '',
+  id: 'sample-profile',
+  name: 'Alex Morgan',
+  email: 'alex@example.com',
+  initials: 'AM',
+  verificationStatus: 'verified' as const,
+  referralCode: 'NORTHSTAR-ALEX',
   twoFactorEnabled: false,
   smsPhoneNumber: null,
   smsPhoneVerified: false,
 };
 const fallbackReferral = {
-  code: '',
-  invitedCount: 0,
-  reward: 0,
-  shareUrl: '',
+  code: 'NORTHSTAR-ALEX',
+  invitedCount: 3,
+  reward: 50,
+  shareUrl: `${window.location.origin}/join/NORTHSTAR-ALEX`,
 };
 
 function money(value = 0, currency = 'USD') {
@@ -418,18 +400,12 @@ const clerkAppearance = {
 };
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
-  const requestedPath = new URLSearchParams(window.location.search).get('redirect_url');
-  const safeRequestedPath = safeMemberRedirect(requestedPath);
-  const redirectUrl = `${basePath}${safeRequestedPath}`;
-  const signInUrl = authFlowUrl('/sign-in', safeRequestedPath);
-  const signUpUrl = authFlowUrl('/sign-up', safeRequestedPath);
-
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="min-w-0 w-full max-w-[440px] animate-rise">
       <div className="mb-8 flex justify-center"><Logo /></div>
       {signUp
-        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={signInUrl} fallbackRedirectUrl={redirectUrl} />
-        : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={signUpUrl} fallbackRedirectUrl={redirectUrl} />}
+        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
+        : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
       <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
   </main>;
@@ -512,6 +488,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   }, [mobileOpen]);
 
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
+  const verificationStatus = profile?.verificationStatus;
+  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
+  const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
+  
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside id="mobile-navigation" role="dialog" aria-modal={mobileOpen ? 'true' : undefined} aria-hidden={!mobileOpen} className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 transition-transform duration-300 xl:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location === href || (href !== '/dashboard' && location.startsWith(href)) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="xl:pl-[250px]"><header className="sticky top-0 z-30 flex min-h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl xl:px-8"><button ref={triggerRef} aria-expanded={mobileOpen} aria-controls="mobile-navigation" aria-haspopup="dialog" className="rounded-xl p-2.5 text-muted-foreground hover:bg-secondary xl:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={22} /></button><div className="hidden text-sm font-semibold text-muted-foreground xl:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-2 sm:gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl p-2.5 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
                 <Bell size={20} />
@@ -544,7 +524,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                   </div>
                 </>
               )}
-            </div><Link href="/settings" className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-5 sm:py-7 xl:px-8 xl:py-9">{children}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 xl:hidden" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
+            </div><Link href="/settings" className="flex min-h-[44px] items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-5 sm:py-7 xl:px-8 xl:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 xl:hidden" onClick={() => { setMobileOpen(false); triggerRef.current?.focus(); }} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
 }
 
 function PageHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail?: string; action?: React.ReactNode }) {
@@ -1539,10 +1519,6 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
   const [depositError, setDepositError] = useState('');
-  const [transferError, setTransferError] = useState('');
-  const [copyError, setCopyError] = useState('');
-  const { isLoaded, isSignedIn } = useAuth();
-  const sessionReady = isLoaded && isSignedIn;
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1552,36 +1528,11 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
 
   const address = asset === 'BTC' ? '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' : '0x45fa3421948a8a0372e0a172ab9a3725f785a1d2';
 
-  const close = () => {
-    setMode(null);
-    setCopied(false);
-    setSwapDone(null);
-    setSwapError('');
-    setDepositError('');
-    setTransferError('');
-    setCopyError('');
-  };
-
-  const copyAddress = async () => {
-    setCopyError('');
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable');
-      await navigator.clipboard.writeText(address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-      setCopyError('Copy was blocked by the browser. Select and copy the address manually.');
-    }
-  };
+  const close = () => { setMode(null); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); };
 
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDepositError('');
-    if (!sessionReady) {
-      setDepositError('Your sign-in session is still loading. Please wait a moment and submit again.');
-      return;
-    }
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
       onSuccess: () => {
@@ -1591,41 +1542,19 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
         onDone('Deposit proof submitted successfully and is awaiting admin approval.');
       },
       onError: (error) => {
-        const apiError = error as { status?: number; data?: { error?: string } };
-        setDepositError(
-          apiError.status === 401
-            ? 'Your session could not be verified. Your form is preserved; refresh your sign-in and submit again.'
-            : apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.',
-        );
+        const apiError = error as { data?: { error?: string } };
+        setDepositError(apiError.data?.error || 'Deposit could not be submitted. Check the amount and transaction hash, then try again.');
       },
     });
   };
 
   const submitTransfer = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setTransferError('');
-    if (!sessionReady) {
-      setTransferError('Your sign-in session is still loading. Please wait a moment and submit again.');
-      return;
-    }
     const form = new FormData(event.currentTarget);
     const data = { asset, amount: Number(form.get('amount')), destination: String(form.get('destination')) };
     const mutation = mode === 'send' ? send : withdrawal;
     mutation.mutate({ data }, {
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
-        qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
-        close();
-        onDone(mode === 'withdraw' ? 'Withdrawal request submitted successfully and is awaiting admin approval.' : 'Transfer submitted successfully.');
-      },
-      onError: (error) => {
-        const apiError = error as { status?: number; data?: { error?: string } };
-        setTransferError(
-          apiError.status === 401
-            ? 'Your session could not be verified. Your form is preserved; refresh your sign-in and submit again.'
-            : apiError.data?.error || 'We could not process this request. Check the details and try again.',
-        );
-      },
+      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }); qc.invalidateQueries({ queryKey: getGetActivityQueryKey() }); close(); onDone(); },
     });
   };
 
@@ -1666,12 +1595,11 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
               <p className="text-[11px] font-bold uppercase tracking-wider text-primary">{asset} deposit address</p>
               <div className="mt-2 flex items-center gap-2">
                 <code className="min-w-0 flex-1 break-all font-mono-ui text-[11px] text-foreground">{address}</code>
-                <button type="button" className="shrink-0 rounded-lg border border-primary/20 p-2 text-primary hover:bg-primary/10" onClick={copyAddress} aria-label="Copy deposit address" data-testid="button-copy-deposit-address">
+                <button type="button" className="shrink-0 rounded-lg border border-primary/20 p-2 text-primary hover:bg-primary/10" onClick={() => { navigator.clipboard?.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1800); }} aria-label="Copy deposit address" data-testid="button-copy-deposit-address">
                   {copied ? <Check size={15} /> : <Copy size={15} />}
                 </button>
               </div>
               {copied && <p className="mt-2 text-xs font-bold text-primary" data-testid="status-address-copied">Address copied</p>}
-              {copyError && <p className="mt-2 text-xs font-semibold text-destructive" data-testid="status-address-copy-error">{copyError}</p>}
             </div>
             <Field label={`Amount (${asset})`} name="amount" type="number" min="0.00000001" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
             <Field label="Transaction hash" name="txHash" type="text" placeholder="Paste the on-chain transaction hash" required data-testid="input-deposit-txhash" />
@@ -1698,7 +1626,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
             <Button type="submit" className="w-full" disabled={send.isPending || withdrawal.isPending} data-testid={`button-submit-${mode}`}>
               {send.isPending || withdrawal.isPending ? 'Processing...' : `Confirm ${mode}`} <ArrowUpRight size={16} />
             </Button>
-            {transferError && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">{transferError}</p>}
+            {(send.isError || withdrawal.isError) && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">We could not process this request. Check the details and try again.</p>}
           </form>
         </Modal>
       )}
@@ -2404,16 +2332,6 @@ function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { cons
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   const [location, setLocation] = useLocation();
-  const [loadTimedOut, setLoadTimedOut] = useState(false);
-
-  useEffect(() => {
-    if (isLoaded) {
-      setLoadTimedOut(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setLoadTimedOut(true), 8000);
-    return () => window.clearTimeout(timer);
-  }, [isLoaded]);
 
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
@@ -2421,26 +2339,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
   }, [isLoaded, isSignedIn, location, setLocation]);
 
-  if (!isLoaded) {
-    if (!loadTimedOut) {
-      return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
-    }
-    return (
-      <main className="grid min-h-[100dvh] place-items-center bg-background px-4" data-testid="protected-route-recovery">
-        <div className="surface w-full max-w-md rounded-2xl p-7 text-center">
-          <h1 className="text-xl font-extrabold">Sign-in is taking longer than expected</h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">Reload the secure session or return to sign in. Your account data is unchanged.</p>
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Button type="button" onClick={() => window.location.reload()}>Reload session</Button>
-            <Button type="button" variant="secondary" onClick={() => setLocation(`/sign-in?redirect_url=${encodeURIComponent(location)}`, { replace: true })}>Return to sign in</Button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  if (!isSignedIn) {
-    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-redirecting" />;
+  if (!isLoaded || !isSignedIn) {
+    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
   }
 
   return children;

@@ -1,4 +1,4 @@
-- [Admin approval flow](admin-approval-flow.md) — pending-only approval is atomic and exactly-once; ADMIN_SECRET guards /api/admin/* and browser auth persists across restarts.
+- [Admin approval flow](admin-approval-flow.md) — deposits/withdrawals only credit balance after admin approves via /admin-panel/; ADMIN_SECRET guards all /api/admin/* routes.
 - [KYC flow](kyc-flow.md) — full KYC pipeline: schema, API, frontend gate, admin panel detail view.
 - [Local 2FA and passkeys](local-2fa-passkeys.md) — TOTP and WebAuthn stored in local DB; otplib v12 API; in-memory challenge Maps with TTL.
 - [Swap and FX features](swap-fx-features.md) — instant crypto swap route, fx-rates route (Frankfurter), multi-currency display, market auto-refresh, API key for CoinGecko.
@@ -10,6 +10,3 @@
 - [Canonical trading balance](canonical-trading-balance.md) — Overview and Trading read one account balance; active stakes reserve funds, then losses debit and wins credit earnings atomically.
 - [Disposable PostgreSQL](disposable-postgresql.md) — local validation clusters must place Unix sockets in their temporary directory because the default runtime socket directory is absent.
 - [Stable member views](stable-member-views.md) — Overview, Activity, and Settings keep cached or sample data mounted during background refreshes instead of restoring blocking states.
-- [Real-user initialization](real-user-initialization.md) — new Clerk members start unverified with zero balance and no sample holdings/activity/rewards; demo data is demo-only.
-- [External Clerk session transport](external-clerk-session-transport.md) — use direct external Clerk routing unless an explicit proxy URL exists; never invent a production proxy fallback.
-- [Member route access](member-route-access.md) — signed-in members retain the full app while KYC status and submission remain available in Settings.

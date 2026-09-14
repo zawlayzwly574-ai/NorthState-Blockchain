@@ -47,7 +47,6 @@ function AccountStatusBadge({ status }: { status: UserStatus }) {
     suspended: 'bg-rose-500/15 text-rose-400',
     frozen: 'bg-sky-500/15 text-sky-400',
     deleted: 'bg-muted/20 text-muted-foreground',
-    unknown: 'bg-amber-500/15 text-amber-400',
   };
   return (
     <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${cls[status]}`}>
@@ -56,7 +55,7 @@ function AccountStatusBadge({ status }: { status: UserStatus }) {
   );
 }
 
-type UserStatus = 'active' | 'suspended' | 'frozen' | 'deleted' | 'unknown';
+type UserStatus = 'active' | 'suspended' | 'frozen' | 'deleted';
 
 function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => void }) {
   const { data, isLoading, isError } = useAdminUserDetail(userId);

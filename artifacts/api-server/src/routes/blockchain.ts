@@ -8,7 +8,6 @@ import {
   activitiesTable,
   holdingsTable,
   kycSubmissionsTable,
-  miningConversionsTable,
   miningInvestmentsTable,
   passkeysTable,
   supportMessagesTable,
@@ -21,8 +20,6 @@ import {
 import {
   CreateDepositBody,
   CreateDepositResponse,
-  ConvertMiningGoldBody,
-  ConvertMiningGoldResponse,
   CreateReferralShareBody,
   CreateReferralShareResponse,
   CreateSendBody,
@@ -209,34 +206,24 @@ const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
-function getAuthenticatedUserId(req: Request): string | null {
-  const auth = getAuth(req);
-  const claims = auth.sessionClaims as { sub?: unknown } | null | undefined;
-  const directUserId = typeof auth.userId === "string" && auth.userId.trim()
-    ? auth.userId
-    : null;
-  const subjectUserId = typeof claims?.sub === "string" && claims.sub.trim()
-    ? claims.sub
-    : null;
-
-  if (directUserId && subjectUserId && directUserId !== subjectUserId) return null;
-  return directUserId ?? subjectUserId;
-}
-
 function getUserId(req: Request) {
-  const userId = getAuthenticatedUserId(req);
-  if (!userId) throw new Error("Authenticated member id is unavailable");
-  return userId;
+  return getAuth(req).userId!;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
 const accountStatusKey = "accountStatus";
+const accountStatusCache = new Map<string, { status: AccountOperationalStatus; expiresAt: number }>();
+const ACCOUNT_STATUS_CACHE_TTL = 15_000;
 
 async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
   if (userId === "demo_user") return "active";
+  const cached = accountStatusCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.status;
   const user = await clerkClient.users.getUser(userId);
   const status = user.privateMetadata?.[accountStatusKey];
-  return status === "suspended" || status === "frozen" ? status : "active";
+  const normalized = status === "suspended" || status === "frozen" ? status : "active";
+  accountStatusCache.set(userId, { status: normalized, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
+  return normalized;
 }
 
 async function setAccountOperationalStatus(userId: string, status: AccountOperationalStatus) {
@@ -246,6 +233,7 @@ async function setAccountOperationalStatus(userId: string, status: AccountOperat
     [accountStatusKey]: status,
   };
   await clerkClient.users.updateUserMetadata(userId, { privateMetadata });
+  accountStatusCache.set(userId, { status, expiresAt: Date.now() + ACCOUNT_STATUS_CACHE_TTL });
 }
 
 function isFrozenOperation(req: Request) {
@@ -259,7 +247,7 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  const userId = getAuthenticatedUserId(req);
+  const userId = getAuth(req).userId;
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
@@ -302,8 +290,7 @@ function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
 
-const ZERO_PORTFOLIO_BALANCE = "0.00000000";
-const DEMO_PORTFOLIO_BALANCE = "24680.42000000";
+const DEFAULT_PORTFOLIO_BALANCE = "24680.42000000";
 const portfolioSeededUsers = new Set<string>();
 const defaultPortfolioHoldings = [
   { symbol: "BTC", name: "Bitcoin", amount: "0.1842", value: "11600.12", allocation: "47.00", change24h: "2.84", color: "#F7931A" },
@@ -392,18 +379,6 @@ function serializePortfolio(
 async function ensureDefaultPortfolio(userId: string) {
   if (portfolioSeededUsers.has(userId)) return;
 
-  if (userId !== "demo_user") {
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
-      await tx.insert(tradingAccountsTable).values({
-        clerkUserId: userId,
-        balance: ZERO_PORTFOLIO_BALANCE,
-      }).onConflictDoNothing();
-    });
-    portfolioSeededUsers.add(userId);
-    return;
-  }
-
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
 
@@ -442,7 +417,7 @@ async function ensureDefaultPortfolio(userId: string) {
     if (!existingAccount[0]) {
       await tx.insert(tradingAccountsTable).values({
         clerkUserId: userId,
-        balance: DEMO_PORTFOLIO_BALANCE,
+        balance: DEFAULT_PORTFOLIO_BALANCE,
       }).onConflictDoNothing();
     } else if (
       asNumber(existingAccount[0].balance) === 0
@@ -455,7 +430,7 @@ async function ensureDefaultPortfolio(userId: string) {
       )
     ) {
       await tx.update(tradingAccountsTable)
-        .set({ balance: DEMO_PORTFOLIO_BALANCE, updatedAt: new Date() })
+        .set({ balance: DEFAULT_PORTFOLIO_BALANCE, updatedAt: new Date() })
         .where(eq(tradingAccountsTable.clerkUserId, userId));
     }
   });
@@ -552,21 +527,22 @@ async function ensureSeededUser(userId: string) {
     .limit(1);
 
   if (existing) {
-    const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (userId === "demo_user") {
-      if (existing.displayName === "North State Blockchain Member") profileUpdate.displayName = "Alex Morgan";
-      if (existing.verificationStatus === "unverified") profileUpdate.verificationStatus = "verified";
-      if (existing.referralInvitedCount === 0) profileUpdate.referralInvitedCount = 3;
-      if (asNumber(existing.referralReward) === 0) profileUpdate.referralReward = "50.00";
-    } else if (existing.email === "member@northstateblockchain.app") {
+    const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
+    if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
+    if (existing.verificationStatus === "unverified") sampleProfileUpdate.verificationStatus = "verified";
+    if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
+    if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
+
+    // Keep the signed-in email, but replace legacy fallback data with the sample profile.
+    if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
       const { email, name } = await fetchClerkUserInfo(userId);
-      if (email) profileUpdate.email = email;
-      if (name && existing.displayName === "North State Blockchain Member") profileUpdate.displayName = name;
+      if (email) sampleProfileUpdate.email = email;
+      if (name && existing.displayName !== "North State Blockchain Member") sampleProfileUpdate.displayName = name;
     }
-    if (Object.keys(profileUpdate).length) {
-      await db.update(walletProfilesTable).set(profileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
+    if (Object.keys(sampleProfileUpdate).length) {
+      await db.update(walletProfilesTable).set(sampleProfileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
       await ensureDefaultPortfolio(userId);
-      return { ...existing, ...profileUpdate };
+      return { ...existing, ...sampleProfileUpdate };
     }
     await ensureDefaultPortfolio(userId);
     return existing;
@@ -574,14 +550,12 @@ async function ensureSeededUser(userId: string) {
 
   const isDemoUser = userId === "demo_user";
 
-  let displayName = isDemoUser ? "Alex Morgan" : "North State Blockchain Member";
+  const displayName = "Alex Morgan";
   let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
 
   if (!isDemoUser) {
     const info = await fetchClerkUserInfo(userId);
     if (info.email) email = info.email;
-    if (info.name) displayName = info.name;
-    else if (info.email) displayName = emailPrefix(info.email);
   }
 
   const [profile] = await db
@@ -591,9 +565,9 @@ async function ensureSeededUser(userId: string) {
       displayName,
       email,
       referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
-      verificationStatus: isDemoUser ? "verified" : "unverified",
-      referralInvitedCount: isDemoUser ? 3 : 0,
-      referralReward: isDemoUser ? "50.00" : "0.00",
+      verificationStatus: "verified",
+      referralInvitedCount: 3,
+      referralReward: "50.00",
     })
     .onConflictDoNothing()
     .returning();
@@ -1051,13 +1025,10 @@ router.get("/portfolio", async (req, res) => {
     await autoSettleExpiredTrades(userId);
     const account = await getOrCreateTradingAccount(userId);
     const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-    res.json(serializePortfolio(
-      account.balance,
-      holdings.length ? holdings : (userId === "demo_user" ? defaultPortfolioHoldings : []),
-    ));
+    res.json(serializePortfolio(account.balance, holdings.length ? holdings : defaultPortfolioHoldings));
   } catch (error) {
-    req.log.error({ err: error, userId }, "Portfolio database query failed; serving a zero-balance fallback");
-    res.json(serializePortfolio(ZERO_PORTFOLIO_BALANCE, []));
+    req.log.error({ err: error, userId }, "Portfolio database query failed; serving default portfolio");
+    res.json(serializePortfolio(DEFAULT_PORTFOLIO_BALANCE, defaultPortfolioHoldings));
   }
 });
 
@@ -1081,10 +1052,7 @@ function investmentQuote(symbol: string) {
 }
 
 function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
-  const originalAmount = asNumber(investment.approvedAmount ?? investment.requestedAmount);
-  const remainingCostBasis = investment.units == null
-    ? originalAmount
-    : asNumber(investment.units) * asNumber(investment.entryPrice);
+  const amount = asNumber(investment.approvedAmount ?? investment.requestedAmount);
   const currentValue = asNumber(investment.currentValue);
   return {
     id: String(investment.id),
@@ -1096,7 +1064,7 @@ function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSel
     units: investment.units == null ? null : asNumber(investment.units),
     entryPrice: asNumber(investment.entryPrice),
     currentValue,
-    gainLoss: investment.status === "active" ? currentValue - remainingCostBasis : 0,
+    gainLoss: investment.status === "active" ? currentValue - amount : 0,
     status: investment.status,
     adminNote: investment.adminNote ?? "",
     createdAt: investment.createdAt.toISOString(),
@@ -1180,158 +1148,6 @@ router.post("/mining-investments", async (req, res) => {
   }
   const investment = result.investment;
   res.status(201).json(serializeInvestment(investment));
-});
-
-const miningConversionAssets = new Set(["BTC", "ETH", "USDT", "USDC", "DAI", "FDUSD", "BNB"]);
-
-router.post("/mining-investments/:id/convert", async (req, res) => {
-  const userId = getUserId(req);
-  const investmentId = Number(req.params.id);
-  const body = ConvertMiningGoldBody.parse(req.body);
-  if (!Number.isInteger(investmentId) || investmentId <= 0) {
-    res.status(404).json({ error: "Gold position not found." });
-    return;
-  }
-  if (!Number.isFinite(body.units) || body.units <= 0 || body.units > 1_000_000_000) {
-    res.status(400).json({ error: "Gold units must be greater than zero." });
-    return;
-  }
-  if (!miningConversionAssets.has(body.toAsset)) {
-    res.status(400).json({ error: "That destination wallet asset is not supported." });
-    return;
-  }
-
-  await ensureSeededUser(userId);
-  const [marketAssets, goldQuote] = await Promise.all([
-    fetchMarketAssets(req),
-    Promise.resolve(investmentQuote("GOLD")),
-  ]);
-  const destinationQuote = marketAssets.find((asset) => asset.symbol === body.toAsset);
-  if (!destinationQuote || goldQuote.price <= 0 || destinationQuote.price <= 0) {
-    res.status(503).json({ error: "A current conversion quote is unavailable." });
-    return;
-  }
-
-  const sourceUnits = Number(body.units.toFixed(12));
-  const valueUsd = sourceUnits * goldQuote.price;
-  const destinationAmount = valueUsd / destinationQuote.price;
-  const executedAt = new Date();
-
-  const result = await db.transaction(async (tx) => {
-    await tx.execute(sql`
-      select id from ${walletProfilesTable}
-      where ${walletProfilesTable.clerkUserId} = ${userId}
-      for update
-    `);
-    const [position] = await tx.select().from(miningInvestmentsTable).where(and(
-      eq(miningInvestmentsTable.id, investmentId),
-      eq(miningInvestmentsTable.clerkUserId, userId),
-    )).limit(1);
-    if (!position) return { kind: "not_found" as const };
-    if (position.symbol !== "GOLD" || position.status !== "active") {
-      return { kind: "not_active" as const };
-    }
-
-    const previousUnits = asNumber(position.units);
-    if (previousUnits + 1e-12 < sourceUnits) return { kind: "insufficient" as const };
-    const remainingUnits = Math.max(0, previousUnits - sourceUnits);
-    const remainingValue = Math.max(0, remainingUnits * goldQuote.price);
-    const nextStatus = remainingUnits < 1e-12 ? "converted" : "active";
-    const [updatedPosition] = await tx.update(miningInvestmentsTable).set({
-      units: remainingUnits.toFixed(12),
-      currentValue: remainingValue.toFixed(8),
-      status: nextStatus,
-      updatedAt: executedAt,
-    }).where(and(
-      eq(miningInvestmentsTable.id, investmentId),
-      eq(miningInvestmentsTable.clerkUserId, userId),
-      eq(miningInvestmentsTable.status, "active"),
-      sql`${miningInvestmentsTable.units} >= ${sourceUnits}`,
-    )).returning();
-    if (!updatedPosition) return { kind: "insufficient" as const };
-
-    const [destinationHolding] = await tx.select().from(holdingsTable).where(and(
-      eq(holdingsTable.clerkUserId, userId),
-      eq(holdingsTable.symbol, body.toAsset),
-    )).limit(1);
-    if (destinationHolding) {
-      await tx.update(holdingsTable).set({
-        amount: sql`${holdingsTable.amount} + ${destinationAmount}`,
-        value: sql`${holdingsTable.value} + ${valueUsd}`,
-      }).where(eq(holdingsTable.id, destinationHolding.id));
-    } else {
-      await tx.insert(holdingsTable).values({
-        clerkUserId: userId,
-        symbol: body.toAsset,
-        name: destinationQuote.name,
-        amount: destinationAmount.toFixed(12),
-        value: valueUsd.toFixed(2),
-        allocation: "0",
-        change24h: destinationQuote.change24h.toFixed(2),
-        color: destinationQuote.color,
-      });
-    }
-
-    const [transaction] = await tx.insert(transactionsTable).values({
-      clerkUserId: userId,
-      type: "mining_conversion",
-      asset: body.toAsset,
-      amount: destinationAmount.toFixed(12),
-      destination: `Mining Place GOLD position ${investmentId}`,
-      status: "completed",
-    }).returning();
-    const [conversion] = await tx.insert(miningConversionsTable).values({
-      clerkUserId: userId,
-      miningInvestmentId: investmentId,
-      sourceSymbol: "GOLD",
-      sourceUnits: sourceUnits.toFixed(12),
-      sourcePriceUsd: goldQuote.price.toFixed(8),
-      destinationAsset: body.toAsset,
-      destinationAmount: destinationAmount.toFixed(12),
-      destinationPriceUsd: destinationQuote.price.toFixed(8),
-      valueUsd: valueUsd.toFixed(8),
-      transactionId: transaction.id,
-      createdAt: executedAt,
-    }).returning();
-    await tx.insert(activitiesTable).values({
-      clerkUserId: userId,
-      type: "mining_conversion",
-      asset: body.toAsset,
-      amount: destinationAmount.toFixed(12),
-      value: valueUsd.toFixed(2),
-      status: "completed",
-      transactionId: transaction.id,
-      createdAt: executedAt,
-    });
-    return { kind: "success" as const, conversion, remainingUnits };
-  });
-
-  if (result.kind === "not_found") {
-    res.status(404).json({ error: "Gold position not found." });
-    return;
-  }
-  if (result.kind === "not_active") {
-    res.status(409).json({ error: "Only active Mining Place Gold positions can be converted." });
-    return;
-  }
-  if (result.kind === "insufficient") {
-    res.status(409).json({ error: "This Gold position does not have enough remaining units." });
-    return;
-  }
-
-  res.json(ConvertMiningGoldResponse.parse({
-    id: String(result.conversion.id),
-    investmentId: String(investmentId),
-    fromAsset: "GOLD",
-    fromUnits: sourceUnits,
-    toAsset: body.toAsset,
-    toAmount: destinationAmount,
-    sourcePriceUsd: goldQuote.price,
-    destinationPriceUsd: destinationQuote.price,
-    valueUsd,
-    remainingUnits: result.remainingUnits,
-    executedAt: executedAt.toISOString(),
-  }));
 });
 
 router.get("/admin/mining-investments", requireAdmin, async (_req, res) => {
@@ -2003,16 +1819,8 @@ function requireAdmin(
 
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 
-router.get("/admin/auth-check", requireAdmin, (_req, res) => {
-  res.json({ authenticated: true });
-});
-
-router.get("/admin/stats", requireAdmin, async (req, res) => {
-  try {
-    await syncClerkUsersToWalletProfiles();
-  } catch (error) {
-    req.log.warn({ err: error }, "Clerk user sync unavailable; calculating stats from durable database records");
-  }
+router.get("/admin/stats", requireAdmin, async (_req, res) => {
+  await syncClerkUsersToWalletProfiles();
   const [[{ totalUsers }], [{ pendingDeposits }], [{ pendingWithdrawals }], [{ pendingKyc }], [{ pendingInvestments }], [{ totalTransactions }]] =
     await Promise.all([
       db.select({ totalUsers: count() }).from(walletProfilesTable),
@@ -2039,12 +1847,8 @@ router.get("/admin/stats", requireAdmin, async (req, res) => {
 
 // ─── Admin: users ────────────────────────────────────────────────────────────
 
-router.get("/admin/users", requireAdmin, async (req, res) => {
-  try {
-    await syncClerkUsersToWalletProfiles();
-  } catch (error) {
-    req.log.warn({ err: error }, "Clerk user sync unavailable; serving durable database profiles");
-  }
+router.get("/admin/users", requireAdmin, async (_req, res) => {
+  await syncClerkUsersToWalletProfiles();
   const profiles = await db
     .select()
     .from(walletProfilesTable)
@@ -2058,17 +1862,17 @@ router.get("/admin/users", requireAdmin, async (req, res) => {
       const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
       const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
       const email = clerkInfo.email || profile.email;
-      let accountStatus: AccountOperationalStatus | "deleted" | "unknown" = "active";
+      let accountStatus: AccountOperationalStatus | "deleted" = "active";
       try {
         accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
       } catch (error: unknown) {
         if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
-        else accountStatus = "unknown";
+        else throw error;
       }
       return {
         id: String(profile.id),
         clerkUserId: profile.clerkUserId,
-        displayName: clerkInfo.name || profile.displayName || emailPrefix(email),
+        displayName: clerkInfo.name || emailPrefix(email),
         email,
         verificationStatus: profile.verificationStatus,
         referralCode: profile.referralCode,
@@ -2209,6 +2013,7 @@ router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
   }
   try {
     await clerkClient.users.deleteUser(userId);
+    accountStatusCache.delete(userId);
     res.json({ deleted: true, userId });
   } catch (error: unknown) {
     if ((error as { status?: number })?.status === 404) {
@@ -2313,207 +2118,109 @@ router.get("/admin/transactions", requireAdmin, async (_req, res) => {
 
 router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) => {
   const txId = Number(req.params.id);
-  if (!Number.isSafeInteger(txId) || txId <= 0) {
-    res.status(400).json({ error: "Invalid transaction id" });
-    return;
-  }
-
-  const result = await db.transaction(async (databaseTx) => {
-    await databaseTx.execute(sql`
-      select id from ${transactionsTable}
-      where ${transactionsTable.id} = ${txId}
-      for update
-    `);
-    const [pendingTransaction] = await databaseTx
-      .select()
-      .from(transactionsTable)
-      .where(eq(transactionsTable.id, txId))
-      .limit(1);
-
-    if (!pendingTransaction) return { status: "not-found" as const };
-    if (pendingTransaction.status !== "pending") {
-      return { status: "already-processed" as const, transaction: pendingTransaction };
-    }
-
-    if (pendingTransaction.type === "withdrawal") {
-      await databaseTx.execute(sql`
-        select pg_advisory_xact_lock(
-          hashtext(${`${pendingTransaction.clerkUserId}:TRADING_BALANCE`})
-        )
-      `);
-      const [holding] = await databaseTx
-        .select()
-        .from(holdingsTable)
-        .where(and(
-          eq(holdingsTable.clerkUserId, pendingTransaction.clerkUserId),
-          eq(holdingsTable.symbol, pendingTransaction.asset),
-          sql`${holdingsTable.amount} >= ${pendingTransaction.amount}`,
-        ))
-        .limit(1);
-      const [account] = await databaseTx
-        .select()
-        .from(tradingAccountsTable)
-        .where(and(
-          eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId),
-          sql`${tradingAccountsTable.balance} >= ${pendingTransaction.amount}`,
-        ))
-        .limit(1);
-      if (!holding || !account) return { status: "insufficient-funds" as const };
-    }
-
-    const [approvedTransaction] = await databaseTx
-      .update(transactionsTable)
-      .set({ status: "completed" })
-      .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
-      .returning();
-    if (!approvedTransaction) {
-      return { status: "already-processed" as const, transaction: pendingTransaction };
-    }
-
-    await databaseTx
-      .update(activitiesTable)
-      .set({ status: "completed" })
-      .where(eq(activitiesTable.transactionId, txId));
-
-    if (approvedTransaction.type === "deposit") {
-      await databaseTx.execute(sql`
-        select pg_advisory_xact_lock(
-          hashtext(${`${approvedTransaction.clerkUserId}:TRADING_BALANCE`})
-        )
-      `);
-      const [existing] = await databaseTx
-        .select()
-        .from(holdingsTable)
-        .where(
-          and(
-            eq(holdingsTable.clerkUserId, approvedTransaction.clerkUserId),
-            eq(holdingsTable.symbol, approvedTransaction.asset),
-          ),
-        )
-        .limit(1);
-      const depositAmount = asNumber(approvedTransaction.amount);
-
-      if (existing) {
-        await databaseTx
-          .update(holdingsTable)
-          .set({
-            amount: sql`${holdingsTable.amount} + ${approvedTransaction.amount}`,
-            value: sql`${holdingsTable.value} + ${approvedTransaction.amount}`,
-          })
-          .where(eq(holdingsTable.id, existing.id));
-      } else {
-        const assetDef = marketDefinitions.find((market) => market.symbol === approvedTransaction.asset);
-        await databaseTx.insert(holdingsTable).values({
-          clerkUserId: approvedTransaction.clerkUserId,
-          symbol: approvedTransaction.asset,
-          name: assetDef?.name ?? approvedTransaction.asset,
-          amount: String(depositAmount),
-          value: String(depositAmount),
-          allocation: "0",
-          change24h: "0",
-          color: assetDef?.color ?? "#888888",
-        });
-      }
-
-      await databaseTx.insert(tradingAccountsTable).values({
-        clerkUserId: approvedTransaction.clerkUserId,
-        balance: ZERO_PORTFOLIO_BALANCE,
-      }).onConflictDoNothing();
-      await databaseTx.update(tradingAccountsTable).set({
-        balance: sql`${tradingAccountsTable.balance} + ${approvedTransaction.amount}`,
-        updatedAt: new Date(),
-      }).where(eq(tradingAccountsTable.clerkUserId, approvedTransaction.clerkUserId));
-    }
-
-    if (approvedTransaction.type === "withdrawal") {
-      await databaseTx
-        .update(holdingsTable)
-        .set({
-          amount: sql`${holdingsTable.amount} - ${approvedTransaction.amount}`,
-          value: sql`greatest(0, ${holdingsTable.value} - ${approvedTransaction.amount})`,
-        })
-        .where(and(
-          eq(holdingsTable.clerkUserId, approvedTransaction.clerkUserId),
-          eq(holdingsTable.symbol, approvedTransaction.asset),
-          sql`${holdingsTable.amount} >= ${approvedTransaction.amount}`,
-        ));
-      await databaseTx
-        .update(tradingAccountsTable)
-        .set({
-          balance: sql`${tradingAccountsTable.balance} - ${approvedTransaction.amount}`,
-          updatedAt: new Date(),
-        })
-        .where(and(
-          eq(tradingAccountsTable.clerkUserId, approvedTransaction.clerkUserId),
-          sql`${tradingAccountsTable.balance} >= ${approvedTransaction.amount}`,
-        ));
-    }
-
-    return { status: "approved" as const, transaction: approvedTransaction };
-  });
-
-  if (result.status === "not-found") {
+  const [tx] = await db
+    .update(transactionsTable)
+    .set({ status: "completed" })
+    .where(eq(transactionsTable.id, txId))
+    .returning();
+  if (!tx) {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-  if (result.status === "already-processed") {
-    res.status(409).json({ error: "Transaction has already been processed" });
-    return;
-  }
-  if (result.status === "insufficient-funds") {
-    res.status(409).json({ error: "Insufficient available balance to approve this withdrawal" });
-    return;
+
+  // Update matching activity status
+  await db
+    .update(activitiesTable)
+    .set({ status: "completed" })
+    .where(eq(activitiesTable.transactionId, txId));
+
+  // For approved deposits: credit holdings AND trading account
+  if (tx.type === "deposit") {
+    const [existing] = await db
+      .select()
+      .from(holdingsTable)
+      .where(
+        and(
+          eq(holdingsTable.clerkUserId, tx.clerkUserId),
+          eq(holdingsTable.symbol, tx.asset),
+        ),
+      )
+      .limit(1);
+    const depositAmount = asNumber(tx.amount);
+
+    if (existing) {
+      const newAmount = asNumber(existing.amount) + depositAmount;
+      const newValue = asNumber(existing.value) + depositAmount; // approximate; price-adjusted later
+      await db
+        .update(holdingsTable)
+        .set({
+          amount: String(newAmount),
+          value: String(newValue),
+        })
+        .where(eq(holdingsTable.id, existing.id));
+    } else {
+      const assetDef = marketDefinitions.find((m) => m.symbol === tx.asset);
+      await db.insert(holdingsTable).values({
+        clerkUserId: tx.clerkUserId,
+        symbol: tx.asset,
+        name: assetDef?.name ?? tx.asset,
+        amount: String(depositAmount),
+        value: String(depositAmount),
+        allocation: "0",
+        change24h: "0",
+        color: assetDef?.color ?? "#888888",
+      });
+    }
+
+    // Credit the canonical account balance without a read-modify-write race.
+    await db.insert(tradingAccountsTable).values({ clerkUserId: tx.clerkUserId }).onConflictDoNothing();
+    await db.update(tradingAccountsTable).set({
+      balance: sql`${tradingAccountsTable.balance} + ${tx.amount}`,
+      updatedAt: new Date(),
+    }).where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
   }
 
-  res.json(await enrichTransaction(result.transaction));
+  // For approved withdrawals: debit holdings
+  if (tx.type === "withdrawal") {
+    const [existing] = await db
+      .select()
+      .from(holdingsTable)
+      .where(
+        and(
+          eq(holdingsTable.clerkUserId, tx.clerkUserId),
+          eq(holdingsTable.symbol, tx.asset),
+        ),
+      )
+      .limit(1);
+    if (existing) {
+      const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(tx.amount));
+      const newValue = Math.max(0, asNumber(existing.value) - asNumber(tx.amount));
+      await db
+        .update(holdingsTable)
+        .set({ amount: String(newAmount), value: String(newValue) })
+        .where(eq(holdingsTable.id, existing.id));
+    }
+  }
+
+  res.json(await enrichTransaction(tx));
 });
 
 router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) => {
   const txId = Number(req.params.id);
-  if (!Number.isSafeInteger(txId) || txId <= 0) {
-    res.status(400).json({ error: "Invalid transaction id" });
-    return;
-  }
-
-  const result = await db.transaction(async (databaseTx) => {
-    await databaseTx.execute(sql`
-      select id from ${transactionsTable}
-      where ${transactionsTable.id} = ${txId}
-      for update
-    `);
-    const [pendingTransaction] = await databaseTx
-      .select()
-      .from(transactionsTable)
-      .where(eq(transactionsTable.id, txId))
-      .limit(1);
-    if (!pendingTransaction) return { status: "not-found" as const };
-    if (pendingTransaction.status !== "pending") {
-      return { status: "already-processed" as const };
-    }
-
-    const [rejectedTransaction] = await databaseTx
-      .update(transactionsTable)
-      .set({ status: "failed" })
-      .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
-      .returning();
-    if (!rejectedTransaction) return { status: "already-processed" as const };
-
-    await databaseTx
-      .update(activitiesTable)
-      .set({ status: "failed" })
-      .where(eq(activitiesTable.transactionId, txId));
-    return { status: "rejected" as const, transaction: rejectedTransaction };
-  });
-
-  if (result.status === "not-found") {
+  const [tx] = await db
+    .update(transactionsTable)
+    .set({ status: "failed" })
+    .where(eq(transactionsTable.id, txId))
+    .returning();
+  if (!tx) {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-  if (result.status === "already-processed") {
-    res.status(409).json({ error: "Transaction has already been processed" });
-    return;
-  }
-  res.json(await enrichTransaction(result.transaction));
+  await db
+    .update(activitiesTable)
+    .set({ status: "failed" })
+    .where(eq(activitiesTable.transactionId, txId));
+  res.json(await enrichTransaction(tx));
 });
 
 // ─── Admin: KYC ──────────────────────────────────────────────────────────────
@@ -2597,7 +2304,7 @@ async function getOrCreateTradingAccount(userId: string) {
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
     await db.insert(tradingAccountsTable)
-      .values({ clerkUserId: userId, balance: ZERO_PORTFOLIO_BALANCE })
+      .values({ clerkUserId: userId, balance: DEFAULT_PORTFOLIO_BALANCE })
       .onConflictDoNothing();
     [acct] = await db.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
@@ -2651,7 +2358,7 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
     await tx.insert(tradingAccountsTable)
-      .values({ clerkUserId: trade.clerkUserId, balance: ZERO_PORTFOLIO_BALANCE })
+      .values({ clerkUserId: trade.clerkUserId, balance: DEFAULT_PORTFOLIO_BALANCE })
       .onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}

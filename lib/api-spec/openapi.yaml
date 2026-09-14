@@ -96,33 +96,6 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MiningInvestment" }
-  /mining-investments/{id}/convert:
-    post:
-      operationId: convertMiningGold
-      tags: [portfolio, wallet]
-      summary: Convert units from an active Mining Place Gold position into a wallet asset
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: string }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/MiningGoldConversionInput" }
-      responses:
-        "200":
-          description: Gold units consumed and destination wallet asset credited
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/MiningGoldConversionResult" }
-        "400":
-          description: Invalid units or destination asset
-        "404":
-          description: Gold position not found
-        "409":
-          description: Position is not active or has insufficient units
   /markets/{symbol}:
     get:
       operationId: getMarketDetail
@@ -891,27 +864,6 @@ components:
       properties:
         symbol: { type: string, enum: [GOLD, XLE, OIL, AAPL, TSLA, NVDA, MSFT, AMZN] }
         amount: { type: number, exclusiveMinimum: 0 }
-    MiningGoldConversionInput:
-      type: object
-      required: [units, toAsset]
-      properties:
-        units: { type: number, exclusiveMinimum: 0 }
-        toAsset: { type: string, enum: [BTC, ETH, USDT, USDC, DAI, FDUSD, BNB] }
-    MiningGoldConversionResult:
-      type: object
-      required: [id, investmentId, fromAsset, fromUnits, toAsset, toAmount, sourcePriceUsd, destinationPriceUsd, valueUsd, remainingUnits, executedAt]
-      properties:
-        id: { type: string }
-        investmentId: { type: string }
-        fromAsset: { type: string, enum: [GOLD] }
-        fromUnits: { type: number }
-        toAsset: { type: string }
-        toAmount: { type: number }
-        sourcePriceUsd: { type: number }
-        destinationPriceUsd: { type: number }
-        valueUsd: { type: number }
-        remainingUnits: { type: number }
-        executedAt: { type: string }
     UpdateMiningInvestmentInput:
       type: object
       properties:
@@ -932,7 +884,7 @@ components:
         entryPrice: { type: number }
         currentValue: { type: number }
         gainLoss: { type: number }
-        status: { type: string, enum: [pending, active, rejected, converted] }
+        status: { type: string, enum: [pending, active, rejected] }
         adminNote: { type: string }
         createdAt: { type: string }
         reviewedAt: { type: [string, "null"] }

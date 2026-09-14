@@ -79,7 +79,7 @@ export const GetMiningInvestmentsResponse = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),
@@ -112,42 +112,11 @@ export const CreateMiningInvestmentResponse = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),
   "updatedAt": zod.string()
-})
-
-
-/**
- * @summary Convert units from an active Mining Place Gold position into a wallet asset
- */
-export const ConvertMiningGoldParams = zod.object({
-  "id": zod.coerce.string()
-})
-
-export const convertMiningGoldBodyUnitsExclusiveMin = 0;
-
-
-
-export const ConvertMiningGoldBody = zod.object({
-  "units": zod.number().gt(convertMiningGoldBodyUnitsExclusiveMin),
-  "toAsset": zod.enum(['BTC', 'ETH', 'USDT', 'USDC', 'DAI', 'FDUSD', 'BNB'])
-})
-
-export const ConvertMiningGoldResponse = zod.object({
-  "id": zod.string(),
-  "investmentId": zod.string(),
-  "fromAsset": zod.enum(['GOLD']),
-  "fromUnits": zod.number(),
-  "toAsset": zod.string(),
-  "toAmount": zod.number(),
-  "sourcePriceUsd": zod.number(),
-  "destinationPriceUsd": zod.number(),
-  "valueUsd": zod.number(),
-  "remainingUnits": zod.number(),
-  "executedAt": zod.string()
 })
 
 
@@ -775,7 +744,7 @@ export const GetAdminMiningInvestmentsResponseItem = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),
@@ -820,7 +789,7 @@ export const UpdateAdminMiningInvestmentResponse = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),
@@ -846,7 +815,7 @@ export const ApproveMiningInvestmentResponse = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),
@@ -886,7 +855,7 @@ export const RejectMiningInvestmentResponse = zod.object({
   "entryPrice": zod.number(),
   "currentValue": zod.number(),
   "gainLoss": zod.number(),
-  "status": zod.enum(['pending', 'active', 'rejected', 'converted']),
+  "status": zod.enum(['pending', 'active', 'rejected']),
   "adminNote": zod.string(),
   "createdAt": zod.string(),
   "reviewedAt": zod.string().nullish(),

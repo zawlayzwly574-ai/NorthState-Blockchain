@@ -7,4 +7,4 @@ Store account operational state (`active`, `suspended`, or `frozen`) in Clerk pr
 
 **Why:** Admin account controls must persist without changing the existing database schema or erasing financial history, and they must be enforced server-side rather than represented only as UI labels.
 
-**How to apply:** Keep operational state checks in authenticated member request handling, read status from shared Clerk metadata on every protected request rather than a process-local cache, and never repurpose verification/KYC status for access control.
+**How to apply:** Keep operational state checks in authenticated member request handling, invalidate any short-lived status cache immediately after admin changes, and never repurpose verification/KYC status for access control.

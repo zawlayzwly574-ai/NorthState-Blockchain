@@ -13,5 +13,4 @@ export const MiningInvestmentStatus = {
   pending: 'pending',
   active: 'active',
   rejected: 'rejected',
-  converted: 'converted',
 } as const;

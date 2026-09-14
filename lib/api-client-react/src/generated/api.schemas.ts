@@ -87,46 +87,6 @@ export interface CreateMiningInvestmentInput {
   amount: number;
 }
 
-export type MiningGoldConversionInputToAsset = typeof MiningGoldConversionInputToAsset[keyof typeof MiningGoldConversionInputToAsset];
-
-
-export const MiningGoldConversionInputToAsset = {
-  BTC: 'BTC',
-  ETH: 'ETH',
-  USDT: 'USDT',
-  USDC: 'USDC',
-  DAI: 'DAI',
-  FDUSD: 'FDUSD',
-  BNB: 'BNB',
-} as const;
-
-export interface MiningGoldConversionInput {
-  /** @exclusiveMinimum 0 */
-  units: number;
-  toAsset: MiningGoldConversionInputToAsset;
-}
-
-export type MiningGoldConversionResultFromAsset = typeof MiningGoldConversionResultFromAsset[keyof typeof MiningGoldConversionResultFromAsset];
-
-
-export const MiningGoldConversionResultFromAsset = {
-  GOLD: 'GOLD',
-} as const;
-
-export interface MiningGoldConversionResult {
-  id: string;
-  investmentId: string;
-  fromAsset: MiningGoldConversionResultFromAsset;
-  fromUnits: number;
-  toAsset: string;
-  toAmount: number;
-  sourcePriceUsd: number;
-  destinationPriceUsd: number;
-  valueUsd: number;
-  remainingUnits: number;
-  executedAt: string;
-}
-
 export interface UpdateMiningInvestmentInput {
   /** @exclusiveMinimum 0 */
   approvedAmount?: number;
@@ -153,7 +113,6 @@ export const MiningInvestmentStatus = {
   pending: 'pending',
   active: 'active',
   rejected: 'rejected',
-  converted: 'converted',
 } as const;
 
 export interface MiningInvestment {

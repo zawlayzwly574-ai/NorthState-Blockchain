@@ -34,9 +34,7 @@
 .dark { color-scheme: dark; }
 @layer base {
   * { @apply border-border; }
-  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { @apply font-sans antialiased bg-background text-foreground; min-width: 320px; background-image: radial-gradient(circle at 82% -8%, rgba(207,162,48,.07), transparent 40%), radial-gradient(circle at -8% 26%, rgba(4,4,6,.55), transparent 34%); }
-  input, select, textarea { font-size: max(16px, 1em); }
 }
 @layer utilities {
   .font-mono-ui { font-family: var(--app-font-mono); }
@@ -61,9 +59,4 @@
 .reveal-visible { opacity: 1; transform: translateY(0); }
 @media (prefers-reduced-motion: reduce) {
   .quote-flash-up, .quote-flash-down, .quote-change-up, .quote-change-down { animation: none; }
-}
-@media (max-width: 767px) {
-  html { font-size: 17px; }
-  body { line-height: 1.55; }
-  .eyebrow { font-size: .72rem; font-weight: 800; }
 }
