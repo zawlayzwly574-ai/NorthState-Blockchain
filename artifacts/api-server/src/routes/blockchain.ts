@@ -206,8 +206,15 @@ const MINING_PLACE_TTL = 3_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
+function getAuthenticatedUserId(req: Request) {
+  const auth = getAuth(req);
+  const claims = auth.sessionClaims as Record<string, unknown> | null | undefined;
+  const claimsUserId = claims?.userId ?? claims?.sub;
+  return auth.userId ?? (typeof claimsUserId === "string" ? claimsUserId : undefined);
+}
+
 function getUserId(req: Request) {
-  return canonicalUserIds.get(req) ?? getAuth(req).userId!;
+  return canonicalUserIds.get(req) ?? getAuthenticatedUserId(req)!;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
@@ -316,7 +323,7 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  const userId = getAuth(req).userId;
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;

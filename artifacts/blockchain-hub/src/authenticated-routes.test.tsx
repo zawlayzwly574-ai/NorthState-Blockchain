@@ -8,6 +8,7 @@ import { memoryLocation } from "wouter/memory-location";
 const authState = vi.hoisted(() => ({
   isLoaded: false,
   isSignedIn: false,
+  session: { reload: vi.fn(async () => undefined) },
 }));
 
 vi.mock("@clerk/react", async () => {
@@ -15,6 +16,7 @@ vi.mock("@clerk/react", async () => {
   return {
     ...actual,
     useAuth: () => authState,
+    useSession: () => ({ session: authState.session }),
     useUser: () => ({ ...authState, user: null }),
     useClerk: () => ({ signOut: vi.fn(), addListener: vi.fn(() => vi.fn()) }),
   };
@@ -32,7 +34,7 @@ const protectedPaths = [
 
 function jsonFor(url: string) {
   if (url.includes("/portfolio")) {
-    return { totalValue: 0, dayChange: 0, dayChangePercent: 0, holdings: [] };
+    return { totalValue: 0, dayChange: 0, dayChangePercent: 0, holdings: [], history: [] };
   }
   if (url.includes("/activity") || url.includes("/notifications")) return [];
   if (url.includes("/fx-rates")) return { base: "USD", rates: {} };
@@ -140,6 +142,32 @@ describe("authenticated portfolio routes", () => {
     expect(await screen.findByText("We could not load your account")).toBeInTheDocument();
     expect(screen.getByText("Retry")).toBeInTheDocument();
     expect(screen.getByText("Sign in again")).toBeInTheDocument();
+  });
+
+  it("refreshes a valid Clerk session once and loads the account without requiring sign-in again", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    authState.session.reload.mockClear();
+    let profileCalls = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/profile") && profileCalls++ === 0) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(jsonFor(url)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    renderRoute(<Dashboard />, "/dashboard");
+
+    expect(await screen.findByText("Your portfolio")).toBeInTheDocument();
+    expect(authState.session.reload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("We could not load your account")).not.toBeInTheDocument();
   });
 
   it.each([

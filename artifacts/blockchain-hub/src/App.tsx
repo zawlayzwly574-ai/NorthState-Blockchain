@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TradingPage } from './Trading';
 import type * as React from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useSession, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
@@ -428,6 +428,9 @@ function Shell({ children }: { children: React.ReactNode }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { isLoaded, isSignedIn } = useAuth();
   const { signOut } = useClerk();
+  const { session } = useSession();
+  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
+  const recoveryAttemptedRef = useRef(false);
   const memberQueriesEnabled = isLoaded && isSignedIn;
   const profileQuery = useGetProfile({
     query: {
@@ -438,6 +441,29 @@ function Shell({ children }: { children: React.ReactNode }) {
     },
   });
   const profile = profileQuery.data;
+  const profileErrorStatus = (profileQuery.error as { status?: number } | null)?.status;
+
+  useEffect(() => {
+    if (!profileQuery.isError) {
+      recoveryAttemptedRef.current = false;
+      return;
+    }
+    if (
+      profileErrorStatus !== 401
+      || !memberQueriesEnabled
+      || !session
+      || recoveryAttemptedRef.current
+    ) {
+      return;
+    }
+
+    recoveryAttemptedRef.current = true;
+    setIsRecoveringSession(true);
+    void session.reload()
+      .then(() => profileQuery.refetch())
+      .catch(() => undefined)
+      .finally(() => setIsRecoveringSession(false));
+  }, [memberQueriesEnabled, profileErrorStatus, profileQuery.isError, profileQuery.refetch, session]);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
     query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && profile?.verificationStatus === 'verified' },
@@ -466,8 +492,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
   const isVerificationRoute = location === '/settings' || location.startsWith('/settings');
-  const gatedContent = !memberQueriesEnabled || profileQuery.isLoading
-    ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">Checking your profile and verification status…</p></div>
+  const gatedContent = !memberQueriesEnabled || profileQuery.isLoading || isRecoveringSession
+    ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">{isRecoveringSession ? 'Refreshing your secure session…' : 'Checking your profile and verification status…'}</p></div>
     : profileQuery.isError || !profile
       ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">We could not load your account</p><p className="mt-2 text-sm text-muted-foreground">Your sign-in may have expired. Retry now or sign in again.</p><div className="mt-6 flex flex-wrap justify-center gap-3"><Button onClick={() => profileQuery.refetch()}>Retry</Button><Button variant="secondary" onClick={() => signOut({ redirectUrl: '/sign-in' })}>Sign in again</Button></div></div>
     : (!isVerificationRoute && verificationStatus !== 'verified')

@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { clerkMiddleware, getAuth, getUser, select, transaction, updateUserMetadata } = vi.hoisted(() => {
-  const authByRequest = new WeakMap<object, { userId: string | null }>();
+  const authByRequest = new WeakMap<object, { userId: string | null; sessionClaims?: { userId: string } }>();
   const getUser = vi.fn();
   const select = vi.fn();
   const transaction = vi.fn();
@@ -21,7 +21,9 @@ const { clerkMiddleware, getAuth, getUser, select, transaction, updateUserMetada
     ) => {
       const session = request.headers.cookie?.match(/__session=([^;]+)/)?.[1];
       authByRequest.set(request, {
-        userId: session === "restored"
+        userId: session === "claims_only"
+          ? null
+          : session === "restored"
           ? "user_restored"
           : session === "status_change"
             ? "user_status_change"
@@ -32,6 +34,7 @@ const { clerkMiddleware, getAuth, getUser, select, transaction, updateUserMetada
             : session === "frozen"
               ? "user_frozen"
               : null,
+        ...(session === "claims_only" ? { sessionClaims: { userId: "user_restored" } } : {}),
       });
       next();
     },
@@ -138,6 +141,19 @@ describe("member route authentication", () => {
       email: "real-member@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a validated Clerk identity supplied through session claims", async () => {
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=claims_only" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "1",
+      name: "Real Member",
+      email: "real-member@example.com",
+    });
   });
 
   it("fails closed when account verification cannot be confirmed", async () => {
