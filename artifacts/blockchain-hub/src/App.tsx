@@ -1858,7 +1858,7 @@ export function Settings() {
 
   const showFeedback = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 3000); };
 
-  const compressDocumentImage = (file: File) => new Promise<string>((resolve, reject) => {
+  const readFileAsDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('The selected image could not be read.'));
     reader.onload = (ev) => {
@@ -1867,8 +1867,31 @@ export function Settings() {
         reject(new Error('The selected image could not be read.'));
         return;
       }
+      resolve(raw);
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // Any common camera/phone format is accepted. HEIC/HEIF (the default on
+  // iPhones) is not decodable by <canvas>/<img> in most browsers, so it is
+  // converted to JPEG first; every other image type loads directly.
+  const toDecodableDataUrl = async (file: File) => {
+    const isHeic = file.type.toLowerCase().includes('heic')
+      || file.type.toLowerCase().includes('heif')
+      || /\.(heic|heif)$/i.test(file.name);
+    if (isHeic) {
+      const heic2any = (await import('heic2any')).default;
+      const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+      const blob = Array.isArray(converted) ? converted[0] : converted;
+      return readFileAsDataUrl(blob);
+    }
+    return readFileAsDataUrl(file);
+  };
+
+  const compressDocumentImage = (file: File) => new Promise<string>((resolve, reject) => {
+    toDecodableDataUrl(file).then((raw) => {
       const img = new Image();
-      img.onerror = () => reject(new Error('The selected image could not be decoded.'));
+      img.onerror = () => reject(new Error('The selected image could not be decoded. Please try a different photo.'));
       img.onload = () => {
         const MAX = 1800;
         let { width, height } = img;
@@ -1893,8 +1916,7 @@ export function Settings() {
         resolve(canvas.toDataURL('image/jpeg', 0.82));
       };
       img.src = raw;
-    };
-    reader.readAsDataURL(file);
+    }).catch(reject);
   });
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
@@ -1903,11 +1925,8 @@ export function Settings() {
     e.target.value = '';
     setDocUploadError('');
     setKycSubmitError('');
-    const extension = file.name.split('.').pop()?.toLowerCase();
-    const supportedExtension = extension != null && ['jfif', 'jpg', 'jpeg', 'png', 'webp'].includes(extension);
-    const supportedMime = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase());
-    if (!supportedExtension && !supportedMime) {
-      setDocUploadError('Please upload a .jfif, .jpg, .jpeg, .png, or .webp image.');
+    if (!file.type.toLowerCase().startsWith('image/') && !/\.(jfif|jpg|jpeg|png|webp|gif|heic|heif|bmp|tiff?)$/i.test(file.name)) {
+      setDocUploadError('Please upload an image file.');
       return;
     }
     try {
@@ -1946,13 +1965,13 @@ export function Settings() {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
       context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
-      let quality = 0.82;
+      let quality = 0.86;
       let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > 48_000_000 && quality > 0.42) {
+      while (result.length > 96_000_000 && quality > 0.35) {
         quality -= 0.08;
         result = canvas.toDataURL('image/jpeg', quality);
       }
-      if (result.length > 49_000_000) {
+      if (result.length > 98_000_000) {
         reject(new Error('The ID images could not be optimized for secure upload. Please use clearer images with smaller pixel dimensions.'));
         return;
       }
@@ -2166,7 +2185,7 @@ export function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, PNG, or WebP files are optimized automatically before secure submission.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Any photo format (JPG, PNG, WEBP, GIF, HEIC, and more) is accepted and optimized automatically before secure submission.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
@@ -2181,7 +2200,7 @@ export function Settings() {
                               <p className="truncate text-sm font-semibold">{fileName || `Choose ${side} image`}</p>
                               <p className="text-xs text-muted-foreground">Image only</p>
                             </div>
-                            <input id={id} type="file" accept=".jfif,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
+                            <input id={id} type="file" accept="image/*,.heic,.heif" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
                           </label>
                           {preview && (
                             <div className="overflow-hidden rounded-xl border border-border">

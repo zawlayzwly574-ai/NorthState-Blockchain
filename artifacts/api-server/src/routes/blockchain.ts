@@ -1234,25 +1234,47 @@ router.post("/referral", async (req, res) => {
   }));
 });
 
+// Recognize the document payload's declared image type and confirm its
+// magic bytes actually match — accepts any common image format the client
+// composed the ID photos into, instead of requiring JPEG specifically.
+function detectImageSignature(bytes: Buffer): "jpeg" | "png" | "webp" | "gif" | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 &&
+    bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a
+  ) return "png";
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) return "webp";
+  if (
+    bytes.length >= 6 &&
+    bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38 &&
+    (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61
+  ) return "gif";
+  return null;
+}
+
 router.post("/kyc", async (req, res) => {
   const parsedBody = SubmitKycBody.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({
-      error: "Check all personal details and upload two valid ID photos. The combined document must be under 50 MB.",
+      error: "Check all personal details and upload two valid ID photos. The combined document must be under 100 MB.",
     });
     return;
   }
   const body = parsedBody.data;
-  const encodedDocument = body.documentImageBase64.slice("data:image/jpeg;base64,".length);
+  const declaredMimeMatch = body.documentImageBase64.match(/^data:image\/(jpeg|png|webp|gif);base64,/);
+  const declaredMime = declaredMimeMatch?.[1] as "jpeg" | "png" | "webp" | "gif" | undefined;
+  const encodedDocument = body.documentImageBase64.slice(declaredMimeMatch?.[0].length ?? 0);
   const normalizedDocument = encodedDocument.replace(/=+$/, "");
   const documentBytes = Buffer.from(encodedDocument, "base64");
   const normalizedDecodedDocument = documentBytes.toString("base64").replace(/=+$/, "");
-  const isJpeg = documentBytes.length >= 64
-    && documentBytes[0] === 0xff
-    && documentBytes[1] === 0xd8
-    && documentBytes[2] === 0xff;
-  if (!isJpeg || normalizedDecodedDocument !== normalizedDocument) {
-    res.status(400).json({ error: "A valid combined JPEG document image is required." });
+  const actualFormat = detectImageSignature(documentBytes);
+  if (!declaredMime || !actualFormat || actualFormat !== declaredMime || normalizedDecodedDocument !== normalizedDocument) {
+    res.status(400).json({ error: "A valid combined ID document image is required." });
     return;
   }
   const userId = getUserId(req);

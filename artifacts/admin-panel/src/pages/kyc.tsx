@@ -132,7 +132,7 @@ export default function Kyc() {
                         <button
                           onClick={() => handleReject(k.id)}
                           disabled={rejectKyc.isPending || approveKyc.isPending}
-                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                          className="grid h-10 w-10 shrink-0 place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                           title="Reject"
                           data-testid={`btn-reject-kyc-${k.id}`}
                         >
@@ -141,7 +141,7 @@ export default function Kyc() {
                         <button
                           onClick={() => handleApprove(k.id)}
                           disabled={rejectKyc.isPending || approveKyc.isPending}
-                          className="p-1.5 text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-md transition-colors"
+                          className="grid h-10 w-10 shrink-0 place-items-center text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-md transition-colors"
                           title="Approve"
                           data-testid={`btn-approve-kyc-${k.id}`}
                         >
@@ -149,7 +149,7 @@ export default function Kyc() {
                         </button>
                       </div>
                     )}
-                    <button className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Expand details">
+                    <button className="grid h-10 w-10 shrink-0 place-items-center text-muted-foreground hover:text-foreground transition-colors" title="Expand details">
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </button>
                   </div>
@@ -243,14 +243,14 @@ export default function Kyc() {
                           <button
                             onClick={() => handleReject(k.id)}
                             disabled={rejectKyc.isPending || approveKyc.isPending}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-destructive bg-destructive/10 hover:bg-destructive/20 rounded-lg transition-colors"
+                            className="flex min-h-11 items-center gap-1.5 px-4 py-2 text-sm font-semibold text-destructive bg-destructive/10 hover:bg-destructive/20 rounded-lg transition-colors"
                           >
                             <X className="w-4 h-4" />Reject
                           </button>
                           <button
                             onClick={() => handleApprove(k.id)}
                             disabled={rejectKyc.isPending || approveKyc.isPending}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors"
+                            className="flex min-h-11 items-center gap-1.5 px-4 py-2 text-sm font-semibold text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-lg transition-colors"
                           >
                             <Check className="w-4 h-4" />Approve & Unlock Access
                           </button>

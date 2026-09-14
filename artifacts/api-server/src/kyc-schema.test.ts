@@ -10,7 +10,7 @@ const baseKyc = {
 };
 
 describe("KYC document upload contract", () => {
-  it("accepts high-resolution images up to the finite 50 MB guard", () => {
+  it("accepts high-resolution images up to the finite 100 MB guard", () => {
     const prefix = "data:image/jpeg;base64,";
 
     expect(SubmitKycBody.safeParse({
@@ -20,7 +20,21 @@ describe("KYC document upload contract", () => {
 
     expect(SubmitKycBody.safeParse({
       ...baseKyc,
-      documentImageBase64: prefix + "A".repeat(50_000_001),
+      documentImageBase64: prefix + "A".repeat(100_000_001),
+    }).success).toBe(false);
+  });
+
+  it("accepts any common image format the client composed the document into", () => {
+    for (const mime of ["jpeg", "png", "webp", "gif"]) {
+      expect(SubmitKycBody.safeParse({
+        ...baseKyc,
+        documentImageBase64: `data:image/${mime};base64,` + "A".repeat(200),
+      }).success).toBe(true);
+    }
+
+    expect(SubmitKycBody.safeParse({
+      ...baseKyc,
+      documentImageBase64: "data:image/heic;base64," + "A".repeat(200),
     }).success).toBe(false);
   });
 });

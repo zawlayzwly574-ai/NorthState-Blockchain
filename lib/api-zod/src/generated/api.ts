@@ -390,10 +390,10 @@ export const submitKycBodyCountryMin = 2;
 
 
 export const submitKycBodyDocumentImageBase64Min = 100;
-export const submitKycBodyDocumentImageBase64Max = 50000000;
+export const submitKycBodyDocumentImageBase64Max = 100000000;
 
 
-export const submitKycBodyDocumentImageBase64RegExp = new RegExp('^data:image/jpeg;base64,');
+export const submitKycBodyDocumentImageBase64RegExp = new RegExp('^data:image/(jpeg|png|webp|gif);base64,');
 
 
 export const SubmitKycBody = zod.object({

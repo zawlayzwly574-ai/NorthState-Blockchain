@@ -82,9 +82,10 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
-// KYC submits two ID sides in one backward-compatible image payload.
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true }));
+// KYC submits two ID sides in one backward-compatible image payload; allow
+// generous headroom for large phone-camera photos before optimization.
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
 // Resolve publishable key from the incoming host so the same server can
 // serve multiple Clerk custom domains / .replit.app deployments.
