@@ -156,6 +156,35 @@ describe("member route authentication", () => {
     });
   });
 
+  it("creates an HttpOnly admin session that authenticates later admin requests", async () => {
+    const login = await fetch(`${baseUrl}/api/admin/session`, {
+      method: "POST",
+      headers: { "x-admin-key": String(process.env.ADMIN_SECRET) },
+    });
+
+    expect(login.status).toBe(200);
+    const setCookie = login.headers.get("set-cookie");
+    expect(setCookie).toContain("northstate_admin_session=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Strict");
+
+    const cookie = setCookie?.split(";")[0] ?? "";
+    const session = await fetch(`${baseUrl}/api/admin/session`, {
+      headers: { cookie },
+    });
+    expect(session.status).toBe(200);
+    expect(await session.json()).toEqual({ authenticated: true });
+  });
+
+  it("refuses to create an admin session for a non-matching key", async () => {
+    const response = await fetch(`${baseUrl}/api/admin/session`, {
+      method: "POST",
+      headers: { "x-admin-key": "not-the-admin-key" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
   it("fails closed when account verification cannot be confirmed", async () => {
     transaction.mockRejectedValueOnce(new Error("database unavailable"));
 

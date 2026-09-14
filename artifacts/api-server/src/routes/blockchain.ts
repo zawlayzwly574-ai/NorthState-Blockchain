@@ -1,5 +1,5 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
 import { eq, desc, count, and, inArray, sql } from "drizzle-orm";
 import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, verifySync as totpVerifySync } from "otplib";
@@ -1805,19 +1805,94 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 
+const ADMIN_SESSION_COOKIE = "northstate_admin_session";
+const ADMIN_SESSION_TTL_MS = 12 * 60 * 60_000;
+
+function secureEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function adminSecretMatches(provided: unknown) {
+  const secret = process.env.ADMIN_SECRET;
+  return typeof secret === "string"
+    && secret.length > 0
+    && typeof provided === "string"
+    && secureEqual(provided, secret);
+}
+
+function createAdminSessionToken(expiresAt: number) {
+  const secret = process.env.ADMIN_SECRET!;
+  const payload = String(expiresAt);
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function hasValidAdminSession(req: Request) {
+  const cookieHeader = req.headers.cookie ?? "";
+  const encodedToken = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${ADMIN_SESSION_COOKIE}=`))
+    ?.slice(ADMIN_SESSION_COOKIE.length + 1);
+  if (!encodedToken) return false;
+
+  let token: string;
+  try {
+    token = decodeURIComponent(encodedToken);
+  } catch {
+    return false;
+  }
+  const separator = token.indexOf(".");
+  if (separator <= 0) return false;
+  const expiresAt = Number(token.slice(0, separator));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
+  return secureEqual(createAdminSessionToken(expiresAt), token);
+}
+
 function requireAdmin(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
   res: Parameters<Parameters<IRouter["get"]>[1]>[1],
   next: Parameters<Parameters<IRouter["get"]>[1]>[2],
 ) {
-  const secret = process.env.ADMIN_SECRET;
   const provided = req.headers["x-admin-key"];
-  if (!secret || provided !== secret) {
+  if (!adminSecretMatches(provided) && !hasValidAdminSession(req)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
   next();
 }
+
+router.post("/admin/session", (req, res) => {
+  if (!adminSecretMatches(req.headers["x-admin-key"])) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  const expiresAt = Date.now() + ADMIN_SESSION_TTL_MS;
+  res.cookie(ADMIN_SESSION_COOKIE, createAdminSessionToken(expiresAt), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/admin",
+    maxAge: ADMIN_SESSION_TTL_MS,
+  });
+  res.json({ authenticated: true, expiresAt: new Date(expiresAt).toISOString() });
+});
+
+router.delete("/admin/session", (_req, res) => {
+  res.clearCookie(ADMIN_SESSION_COOKIE, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/admin",
+  });
+  res.status(204).end();
+});
+
+router.get("/admin/session", requireAdmin, (_req, res) => {
+  res.json({ authenticated: true });
+});
 
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 

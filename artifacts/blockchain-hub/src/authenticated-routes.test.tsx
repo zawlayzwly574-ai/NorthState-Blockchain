@@ -8,7 +8,7 @@ import { memoryLocation } from "wouter/memory-location";
 const authState = vi.hoisted(() => ({
   isLoaded: false,
   isSignedIn: false,
-  session: { reload: vi.fn(async () => undefined) },
+  session: { id: "session_test", reload: vi.fn(async () => undefined) },
 }));
 
 vi.mock("@clerk/react", async () => {

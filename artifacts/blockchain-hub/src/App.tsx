@@ -430,7 +430,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
   const { session } = useSession();
   const [isRecoveringSession, setIsRecoveringSession] = useState(false);
-  const recoveryAttemptedRef = useRef(false);
+  const recoveredSessionIdRef = useRef<string | null>(null);
   const memberQueriesEnabled = isLoaded && isSignedIn;
   const profileQuery = useGetProfile({
     query: {
@@ -444,20 +444,18 @@ function Shell({ children }: { children: React.ReactNode }) {
   const profileErrorStatus = (profileQuery.error as { status?: number } | null)?.status;
 
   useEffect(() => {
-    if (!profileQuery.isError) {
-      recoveryAttemptedRef.current = false;
-      return;
-    }
     if (
+      !profileQuery.isError
+      ||
       profileErrorStatus !== 401
       || !memberQueriesEnabled
       || !session
-      || recoveryAttemptedRef.current
+      || recoveredSessionIdRef.current === session.id
     ) {
       return;
     }
 
-    recoveryAttemptedRef.current = true;
+    recoveredSessionIdRef.current = session.id;
     setIsRecoveringSession(true);
     void session.reload()
       .then(() => profileQuery.refetch())

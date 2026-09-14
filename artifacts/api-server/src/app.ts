@@ -11,6 +11,9 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+if (process.env.NODE_ENV === "production" && !process.env.ADMIN_SECRET) {
+  throw new Error("ADMIN_SECRET is required in the production runtime.");
+}
 const configuredCorsOrigins = new Set(
   (process.env.CORS_ALLOWED_ORIGINS ?? "")
     .split(",")
