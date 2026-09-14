@@ -1823,6 +1823,27 @@ router.post("/admin/cleanup-demo-holdings", requireAdmin, async (_req, res) => {
   res.json({ removed: deleted });
 });
 
+// Every account created before signups started at a real 0 balance was seeded
+// with this exact hardcoded demo starting balance. Only reset accounts that
+// still sit at this exact untouched value with zero trades ever placed — that
+// combination can only occur if no real deposit, withdrawal, admin
+// adjustment, or trade has ever happened on the account, so zeroing it is
+// unambiguous. Accounts that drifted from this value (a real trade, a real
+// admin adjustment) are left completely alone for manual review.
+const LEGACY_DEMO_BALANCE_BASE = "24680.42000000";
+
+router.post("/admin/cleanup-legacy-balance-base", requireAdmin, async (_req, res) => {
+  const rows = await db
+    .update(tradingAccountsTable)
+    .set({ balance: "0", updatedAt: new Date() })
+    .where(and(
+      eq(tradingAccountsTable.balance, LEGACY_DEMO_BALANCE_BASE),
+      eq(tradingAccountsTable.totalTrades, 0),
+    ))
+    .returning({ id: tradingAccountsTable.id });
+  res.json({ reset: rows.length });
+});
+
 router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
   const direction = req.body?.direction;

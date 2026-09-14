@@ -240,6 +240,16 @@ export function useCleanupDemoHoldings() {
   });
 }
 
+export function useCleanupLegacyBalanceBase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient('/cleanup-legacy-balance-base', { method: 'POST' }) as Promise<{ reset: number }>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+}
+
 export function useAdminTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['admin', 'transactions'],

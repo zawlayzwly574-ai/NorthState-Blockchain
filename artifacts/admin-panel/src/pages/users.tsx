@@ -6,6 +6,7 @@ import {
   useDeleteAdminUser,
   useAdjustAdminUserBalance,
   useCleanupDemoHoldings,
+  useCleanupLegacyBalanceBase,
 } from '@/lib/api';
 import {
   Search, ShieldAlert, ShieldCheck, Shield, Loader2,
@@ -262,6 +263,7 @@ export default function Users() {
   const deleteUser = useDeleteAdminUser();
   const adjustBalance = useAdjustAdminUserBalance();
   const cleanupDemoHoldings = useCleanupDemoHoldings();
+  const cleanupLegacyBalanceBase = useCleanupLegacyBalanceBase();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -299,6 +301,19 @@ export default function Users() {
           : 'No leftover demo holdings were found.'
       ),
       onError: (error) => setCleanupMessage(error instanceof Error ? error.message : 'Unable to clean up demo holdings.'),
+    });
+  };
+
+  const handleCleanupLegacyBalanceBase = () => {
+    if (!window.confirm('Reset the leftover demo starting balance (24,680.42 USDT) to 0 for every account that still has it untouched, with zero trades ever placed? Accounts with any real trade or admin adjustment on top of it are left alone.')) return;
+    setCleanupMessage(null);
+    cleanupLegacyBalanceBase.mutate(undefined, {
+      onSuccess: (data) => setCleanupMessage(
+        data.reset > 0
+          ? `Reset ${data.reset} account${data.reset === 1 ? '' : 's'} still at the untouched demo balance.`
+          : 'No untouched demo balances were found.'
+      ),
+      onError: (error) => setCleanupMessage(error instanceof Error ? error.message : 'Unable to reset legacy demo balances.'),
     });
   };
 
@@ -357,6 +372,15 @@ export default function Users() {
           >
             {cleanupDemoHoldings.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
             Clean up demo holdings
+          </button>
+          <button
+            type="button"
+            onClick={handleCleanupLegacyBalanceBase}
+            disabled={cleanupLegacyBalanceBase.isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md border border-border bg-card hover:bg-muted/40 disabled:opacity-60 whitespace-nowrap"
+          >
+            {cleanupLegacyBalanceBase.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            Reset untouched demo balances
           </button>
           <div className="relative w-full md:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
