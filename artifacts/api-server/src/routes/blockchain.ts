@@ -290,79 +290,30 @@ function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
 
-const DEFAULT_PORTFOLIO_BALANCE = "24680.42000000";
+const DEFAULT_PORTFOLIO_BALANCE = "0";
 const portfolioSeededUsers = new Set<string>();
-const defaultPortfolioHoldings = [
-  { symbol: "BTC", name: "Bitcoin", amount: "0.1842", value: "11600.12", allocation: "47.00", change24h: "2.84", color: "#F7931A" },
-  { symbol: "ETH", name: "Ethereum", amount: "1.842", value: "5756.44", allocation: "23.32", change24h: "1.61", color: "#627EEA" },
-  { symbol: "USDC", name: "USD Coin", amount: "1835.2", value: "1835.20", allocation: "7.44", change24h: "0.01", color: "#2775CA" },
-  { symbol: "BNB", name: "BNB", amount: "1.22", value: "710.21", allocation: "2.88", change24h: "-0.44", color: "#F3BA2F" },
-  { symbol: "USDT", name: "Tether", amount: "320.5", value: "320.50", allocation: "1.30", change24h: "0.02", color: "#26A17B" },
-] as const;
 
-const defaultPortfolioActivities = [
-  { type: "deposit", asset: "USD", amount: "5000", value: "5000", status: "completed", ageMs: 1000 * 60 * 52 },
-  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 60 * 7 },
-  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "failed", ageMs: 1000 * 60 * 60 * 28 },
-  { type: "withdrawal", asset: "ETH", amount: "0.35", value: "1093.67", status: "pending", ageMs: 1000 * 60 * 60 * 24 * 3 },
-] as const;
-
+// New accounts start with zero balance and no holdings/activity — everything
+// after this point must come from a real, admin-approved deposit.
 async function ensureDefaultPortfolio(userId: string) {
   if (portfolioSeededUsers.has(userId)) return;
 
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
 
-    const [existingHoldings, existingActivities, existingAccount, existingTransactions, existingTrades] = await Promise.all([
-      tx.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
-      tx.select().from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
-      tx.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
-      tx.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.clerkUserId, userId)),
-      tx.select({ count: count() }).from(tradesTable).where(eq(tradesTable.clerkUserId, userId)),
-    ]);
+    const [existingAccount] = await tx
+      .select()
+      .from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, userId))
+      .limit(1);
 
-    const existingSymbols = new Set(existingHoldings.map((holding) => holding.symbol));
-    const missingHoldings = defaultPortfolioHoldings.filter((holding) => !existingSymbols.has(holding.symbol));
-    if (missingHoldings.length > 0) {
-      await tx.insert(holdingsTable).values(
-        missingHoldings.map((holding) => ({ clerkUserId: userId, ...holding })),
-      );
-    }
-
-    const missingActivities = defaultPortfolioActivities.filter((sample) => !existingActivities.some((activity) =>
-      activity.type === sample.type
-      && activity.asset === sample.asset
-      && String(activity.amount) === Number(sample.amount).toFixed(12)
-      && activity.status === sample.status
-    ));
-    if (missingActivities.length > 0) {
-      await tx.insert(activitiesTable).values(
-        missingActivities.map(({ ageMs, ...activity }) => ({
-          clerkUserId: userId,
-          ...activity,
-          createdAt: new Date(Date.now() - ageMs),
-        })),
-      );
-    }
-
-    if (!existingAccount[0]) {
+    if (!existingAccount) {
+      // Repairs an interrupted first sign-in that never got its starter
+      // trading-account row; never assigns a non-zero starting balance.
       await tx.insert(tradingAccountsTable).values({
         clerkUserId: userId,
         balance: DEFAULT_PORTFOLIO_BALANCE,
       }).onConflictDoNothing();
-    } else if (
-      asNumber(existingAccount[0].balance) === 0
-      && (
-        missingHoldings.length > 0
-        || (
-          Number(existingTransactions[0]?.count ?? 0) === 0
-          && Number(existingTrades[0]?.count ?? 0) === 0
-        )
-      )
-    ) {
-      await tx.update(tradingAccountsTable)
-        .set({ balance: DEFAULT_PORTFOLIO_BALANCE, updatedAt: new Date() })
-        .where(eq(tradingAccountsTable.clerkUserId, userId));
     }
   });
   portfolioSeededUsers.add(userId);

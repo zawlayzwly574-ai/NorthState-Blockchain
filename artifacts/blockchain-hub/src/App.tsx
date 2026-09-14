@@ -77,6 +77,11 @@ function money(value = 0, currency = 'USD') {
     return `${currency} ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)}`;
   }
 }
+// Canonical wallet balance/transaction amounts are always denominated and
+// displayed in USDT, regardless of the reference currency selector.
+function usdt(value = 0) {
+  return `${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)} USDT`;
+}
 function compact(value = 0) {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value);
 }
@@ -1639,15 +1644,15 @@ export function Dashboard() {
                     <p className="text-sm font-semibold text-muted-foreground">Total balance</p>
                     <div className="mt-2 flex flex-wrap items-center gap-3">
                       <p className="font-mono-ui text-4xl font-medium tracking-[-.06em] sm:text-5xl" data-testid="text-total-balance">
-                        {money(data.totalValue, 'USD')}
+                        {usdt(data.totalValue)}
                       </p>
                       <span className="rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1.5 font-mono-ui text-xs font-medium text-primary">
-                        USD
+                        USDT
                       </span>
                     </div>
                     <div className="mt-4 flex items-center gap-2 text-sm">
                       <span className={`font-bold ${data.dayChange >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>
-                        {money(cx(data.dayChange), currency)}
+                        {usdt(data.dayChange)}
                       </span>
                       <span className={`rounded-md px-1.5 py-0.5 text-xs font-bold ${data.dayChangePercent >= 0 ? 'bg-[#2db87a]/10 text-[#2db87a]' : 'bg-destructive/10 text-destructive'}`}>
                         {pct(data.dayChangePercent)}
@@ -1826,7 +1831,7 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
-  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail={activity.isError ? "Activity is temporarily unavailable. Please check again shortly." : "Deposits, sends, and withdrawals will appear here as they happen."} /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
+  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail={activity.isError ? "Activity is temporarily unavailable. Please check again shortly." : "Deposits, sends, and withdrawals will appear here as they happen."} /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{usdt(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 export function Settings() {
@@ -2248,7 +2253,7 @@ export function Settings() {
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <Stat label="People invited" value={String(referralData.invitedCount)} />
-                      <Stat label="Rewards earned" value={money(referralData.reward)} accent />
+                      <Stat label="Rewards earned" value={usdt(referralData.reward)} accent />
                     </div>
                     <div className="mt-5 flex flex-wrap gap-3">
                       <Button onClick={copyReferral} disabled={share.isPending} data-testid="button-share-referral">

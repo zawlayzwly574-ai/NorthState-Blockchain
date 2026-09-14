@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dialog';
 
 function money(v = 0) {
-  return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
 }
 
 function typeIcon(type: string) {
