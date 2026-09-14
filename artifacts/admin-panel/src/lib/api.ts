@@ -230,6 +230,16 @@ export function useAdjustAdminUserBalance() {
   });
 }
 
+export function useCleanupDemoHoldings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient('/cleanup-demo-holdings', { method: 'POST' }) as Promise<{ removed: number }>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+}
+
 export function useAdminTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['admin', 'transactions'],

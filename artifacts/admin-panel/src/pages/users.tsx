@@ -5,11 +5,12 @@ import {
   useUpdateAdminUserStatus,
   useDeleteAdminUser,
   useAdjustAdminUserBalance,
+  useCleanupDemoHoldings,
 } from '@/lib/api';
 import {
   Search, ShieldAlert, ShieldCheck, Shield, Loader2,
   X, ArrowUpRight, ArrowDownLeft, Coins, FileCheck, TrendingUp, User,
-  Ban, Snowflake, Trash2, Unlock, Wallet,
+  Ban, Snowflake, Trash2, Unlock, Wallet, Sparkles,
 } from 'lucide-react';
 import {
   Dialog,
@@ -260,9 +261,11 @@ export default function Users() {
   const updateStatus = useUpdateAdminUserStatus();
   const deleteUser = useDeleteAdminUser();
   const adjustBalance = useAdjustAdminUserBalance();
+  const cleanupDemoHoldings = useCleanupDemoHoldings();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const [balanceUser, setBalanceUser] = useState<{ clerkUserId: string; displayName: string } | null>(null);
   const [balanceDirection, setBalanceDirection] = useState<'credit' | 'debit'>('credit');
   const [balanceAmount, setBalanceAmount] = useState('');
@@ -283,6 +286,19 @@ export default function Users() {
     setActionError(null);
     updateStatus.mutate({ userId, status }, {
       onError: (error) => setActionError(error instanceof Error ? error.message : 'Unable to update account status.'),
+    });
+  };
+
+  const handleCleanupDemoHoldings = () => {
+    if (!window.confirm('Remove leftover demo crypto holdings (BTC/ETH/USDC/BNB) from every account that still has them? This only clears the old seed rows and never touches real deposits, balances, or profiles.')) return;
+    setCleanupMessage(null);
+    cleanupDemoHoldings.mutate(undefined, {
+      onSuccess: (data) => setCleanupMessage(
+        data.removed > 0
+          ? `Removed ${data.removed} leftover demo holding${data.removed === 1 ? '' : 's'}.`
+          : 'No leftover demo holdings were found.'
+      ),
+      onError: (error) => setCleanupMessage(error instanceof Error ? error.message : 'Unable to clean up demo holdings.'),
     });
   };
 
@@ -332,19 +348,35 @@ export default function Users() {
           <h1 className="text-2xl font-bold font-mono tracking-tight">User Directory</h1>
           <p className="text-muted-foreground text-sm mt-1">Click any user to inspect their account.</p>
         </div>
-        <div className="relative w-full md:w-64">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary font-sans"
-          />
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={handleCleanupDemoHoldings}
+            disabled={cleanupDemoHoldings.isPending}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md border border-border bg-card hover:bg-muted/40 disabled:opacity-60 whitespace-nowrap"
+          >
+            {cleanupDemoHoldings.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            Clean up demo holdings
+          </button>
+          <div className="relative w-full md:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+            />
+          </div>
         </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        {cleanupMessage && (
+          <div className="border-b border-border bg-muted/20 px-5 py-3 text-sm text-foreground" role="status">
+            {cleanupMessage}
+          </div>
+        )}
         {actionError && (
           <div className="border-b border-rose-500/20 bg-rose-500/10 px-5 py-3 text-sm text-rose-300" role="alert">
             {actionError}

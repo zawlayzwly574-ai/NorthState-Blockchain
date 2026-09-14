@@ -1796,6 +1796,33 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
   res.json(result);
 });
 
+// Exact amount+value fingerprints of the fixed demo holdings that were once
+// seeded for every new signup (BTC/ETH/USDC/BNB). Real deposits/holdings never
+// land on these exact numbers, so matching all four fields is safe: it can
+// only ever hit leftover seed rows, never a genuine user balance.
+const LEGACY_DEMO_HOLDINGS = [
+  { symbol: "BTC", amount: "0.1842", value: "11600.12" },
+  { symbol: "ETH", amount: "1.842", value: "5756.44" },
+  { symbol: "USDC", amount: "1835.2", value: "1835.20" },
+  { symbol: "BNB", amount: "1.22", value: "710.21" },
+] as const;
+
+router.post("/admin/cleanup-demo-holdings", requireAdmin, async (_req, res) => {
+  let deleted = 0;
+  for (const seed of LEGACY_DEMO_HOLDINGS) {
+    const rows = await db
+      .delete(holdingsTable)
+      .where(and(
+        eq(holdingsTable.symbol, seed.symbol),
+        eq(holdingsTable.amount, seed.amount),
+        eq(holdingsTable.value, seed.value),
+      ))
+      .returning({ id: holdingsTable.id });
+    deleted += rows.length;
+  }
+  res.json({ removed: deleted });
+});
+
 router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
   const direction = req.body?.direction;
