@@ -290,22 +290,7 @@ function emailPrefix(email: string) {
   return email.trim().split("@")[0] || "Unknown user";
 }
 
-const DEFAULT_PORTFOLIO_BALANCE = "24680.42000000";
-const portfolioSeededUsers = new Set<string>();
-const defaultPortfolioHoldings = [
-  { symbol: "BTC", name: "Bitcoin", amount: "0.1842", value: "11600.12", allocation: "47.00", change24h: "2.84", color: "#F7931A" },
-  { symbol: "ETH", name: "Ethereum", amount: "1.842", value: "5756.44", allocation: "23.32", change24h: "1.61", color: "#627EEA" },
-  { symbol: "USDC", name: "USD Coin", amount: "1835.2", value: "1835.20", allocation: "7.44", change24h: "0.01", color: "#2775CA" },
-  { symbol: "BNB", name: "BNB", amount: "1.22", value: "710.21", allocation: "2.88", change24h: "-0.44", color: "#F3BA2F" },
-  { symbol: "USDT", name: "Tether", amount: "320.5", value: "320.50", allocation: "1.30", change24h: "0.02", color: "#26A17B" },
-] as const;
-
-const defaultPortfolioActivities = [
-  { type: "deposit", asset: "USD", amount: "5000", value: "5000", status: "completed", ageMs: 1000 * 60 * 52 },
-  { type: "buy", asset: "BTC", amount: "0.042", value: "2645.48", status: "completed", ageMs: 1000 * 60 * 60 * 7 },
-  { type: "deposit", asset: "USDC", amount: "850", value: "850", status: "failed", ageMs: 1000 * 60 * 60 * 28 },
-  { type: "withdrawal", asset: "ETH", amount: "0.35", value: "1093.67", status: "pending", ageMs: 1000 * 60 * 60 * 24 * 3 },
-] as const;
+const ZERO_BALANCE = "0";
 
 const portfolioHistoryMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
 
@@ -324,16 +309,7 @@ function defaultProfileResponse(userId: string) {
 }
 
 function defaultActivityResponse() {
-  const now = Date.now();
-  return GetActivityResponse.parse(defaultPortfolioActivities.map((activity, index) => ({
-    id: `sample-${index + 1}`,
-    type: activity.type,
-    asset: activity.asset,
-    amount: asNumber(activity.amount),
-    value: asNumber(activity.value),
-    status: activity.status,
-    createdAt: new Date(now - activity.ageMs).toISOString(),
-  })));
+  return GetActivityResponse.parse([]);
 }
 
 function serializePortfolio(
@@ -377,64 +353,14 @@ function serializePortfolio(
 }
 
 async function ensureDefaultPortfolio(userId: string) {
-  if (portfolioSeededUsers.has(userId)) return;
-
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
-
-    const [existingHoldings, existingActivities, existingAccount, existingTransactions, existingTrades] = await Promise.all([
-      tx.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId)),
-      tx.select().from(activitiesTable).where(eq(activitiesTable.clerkUserId, userId)),
-      tx.select().from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1),
-      tx.select({ count: count() }).from(transactionsTable).where(eq(transactionsTable.clerkUserId, userId)),
-      tx.select({ count: count() }).from(tradesTable).where(eq(tradesTable.clerkUserId, userId)),
-    ]);
-
-    const existingSymbols = new Set(existingHoldings.map((holding) => holding.symbol));
-    const missingHoldings = defaultPortfolioHoldings.filter((holding) => !existingSymbols.has(holding.symbol));
-    if (missingHoldings.length > 0) {
-      await tx.insert(holdingsTable).values(
-        missingHoldings.map((holding) => ({ clerkUserId: userId, ...holding })),
-      );
-    }
-
-    const missingActivities = defaultPortfolioActivities.filter((sample) => !existingActivities.some((activity) =>
-      activity.type === sample.type
-      && activity.asset === sample.asset
-      && String(activity.amount) === Number(sample.amount).toFixed(12)
-      && activity.status === sample.status
-    ));
-    if (missingActivities.length > 0) {
-      await tx.insert(activitiesTable).values(
-        missingActivities.map(({ ageMs, ...activity }) => ({
-          clerkUserId: userId,
-          ...activity,
-          createdAt: new Date(Date.now() - ageMs),
-        })),
-      );
-    }
-
-    if (!existingAccount[0]) {
-      await tx.insert(tradingAccountsTable).values({
+    await tx.insert(tradingAccountsTable).values({
         clerkUserId: userId,
-        balance: DEFAULT_PORTFOLIO_BALANCE,
-      }).onConflictDoNothing();
-    } else if (
-      asNumber(existingAccount[0].balance) === 0
-      && (
-        missingHoldings.length > 0
-        || (
-          Number(existingTransactions[0]?.count ?? 0) === 0
-          && Number(existingTrades[0]?.count ?? 0) === 0
-        )
-      )
-    ) {
-      await tx.update(tradingAccountsTable)
-        .set({ balance: DEFAULT_PORTFOLIO_BALANCE, updatedAt: new Date() })
-        .where(eq(tradingAccountsTable.clerkUserId, userId));
-    }
+        balance: ZERO_BALANCE,
+      })
+      .onConflictDoNothing();
   });
-  portfolioSeededUsers.add(userId);
 }
 
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
@@ -1025,10 +951,10 @@ router.get("/portfolio", async (req, res) => {
     await autoSettleExpiredTrades(userId);
     const account = await getOrCreateTradingAccount(userId);
     const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-    res.json(serializePortfolio(account.balance, holdings.length ? holdings : defaultPortfolioHoldings));
+    res.json(serializePortfolio(account.balance, holdings));
   } catch (error) {
-    req.log.error({ err: error, userId }, "Portfolio database query failed; serving default portfolio");
-    res.json(serializePortfolio(DEFAULT_PORTFOLIO_BALANCE, defaultPortfolioHoldings));
+    req.log.error({ err: error, userId }, "Portfolio database query failed; serving zero-balance portfolio");
+    res.json(serializePortfolio(ZERO_BALANCE, []));
   }
 });
 
@@ -2118,91 +2044,113 @@ router.get("/admin/transactions", requireAdmin, async (_req, res) => {
 
 router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) => {
   const txId = Number(req.params.id);
-  const [tx] = await db
-    .update(transactionsTable)
-    .set({ status: "completed" })
-    .where(eq(transactionsTable.id, txId))
-    .returning();
-  if (!tx) {
+  const result = await db.transaction(async (dbTx) => {
+    await dbTx.execute(sql`
+      select id from ${transactionsTable}
+      where ${transactionsTable.id} = ${txId}
+      for update
+    `);
+    const [transaction] = await dbTx
+      .select()
+      .from(transactionsTable)
+      .where(eq(transactionsTable.id, txId))
+      .limit(1);
+    if (!transaction) return { status: "not_found" as const };
+    if (transaction.status !== "pending") {
+      return { status: "already_processed" as const, transaction };
+    }
+
+    await dbTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${transaction.clerkUserId}:TRADING_BALANCE`}))`);
+    const [completed] = await dbTx
+      .update(transactionsTable)
+      .set({ status: "completed" })
+      .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
+      .returning();
+    if (!completed) return { status: "already_processed" as const, transaction };
+
+    await dbTx
+      .update(activitiesTable)
+      .set({ status: "completed" })
+      .where(eq(activitiesTable.transactionId, txId));
+
+    if (completed.type === "deposit") {
+      const [existing] = await dbTx
+        .select()
+        .from(holdingsTable)
+        .where(
+          and(
+            eq(holdingsTable.clerkUserId, completed.clerkUserId),
+            eq(holdingsTable.symbol, completed.asset),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        await dbTx
+          .update(holdingsTable)
+          .set({
+            amount: sql`${holdingsTable.amount} + ${completed.amount}`,
+            value: sql`${holdingsTable.value} + ${completed.amount}`,
+          })
+          .where(eq(holdingsTable.id, existing.id));
+      } else {
+        const assetDef = marketDefinitions.find((market) => market.symbol === completed.asset);
+        await dbTx.insert(holdingsTable).values({
+          clerkUserId: completed.clerkUserId,
+          symbol: completed.asset,
+          name: assetDef?.name ?? completed.asset,
+          amount: completed.amount,
+          value: completed.amount,
+          allocation: "0",
+          change24h: "0",
+          color: assetDef?.color ?? "#888888",
+        });
+      }
+
+      await dbTx.insert(tradingAccountsTable).values({
+        clerkUserId: completed.clerkUserId,
+        balance: ZERO_BALANCE,
+      }).onConflictDoNothing();
+      await dbTx.update(tradingAccountsTable).set({
+        balance: sql`${tradingAccountsTable.balance} + ${completed.amount}`,
+        updatedAt: new Date(),
+      }).where(eq(tradingAccountsTable.clerkUserId, completed.clerkUserId));
+    }
+
+    if (completed.type === "withdrawal") {
+      const [existing] = await dbTx
+        .select()
+        .from(holdingsTable)
+        .where(
+          and(
+            eq(holdingsTable.clerkUserId, completed.clerkUserId),
+            eq(holdingsTable.symbol, completed.asset),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(completed.amount));
+        const newValue = Math.max(0, asNumber(existing.value) - asNumber(completed.amount));
+        await dbTx
+          .update(holdingsTable)
+          .set({ amount: String(newAmount), value: String(newValue) })
+          .where(eq(holdingsTable.id, existing.id));
+      }
+    }
+
+    return { status: "approved" as const, transaction: completed };
+  });
+
+  if (result.status === "not_found") {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-
-  // Update matching activity status
-  await db
-    .update(activitiesTable)
-    .set({ status: "completed" })
-    .where(eq(activitiesTable.transactionId, txId));
-
-  // For approved deposits: credit holdings AND trading account
-  if (tx.type === "deposit") {
-    const [existing] = await db
-      .select()
-      .from(holdingsTable)
-      .where(
-        and(
-          eq(holdingsTable.clerkUserId, tx.clerkUserId),
-          eq(holdingsTable.symbol, tx.asset),
-        ),
-      )
-      .limit(1);
-    const depositAmount = asNumber(tx.amount);
-
-    if (existing) {
-      const newAmount = asNumber(existing.amount) + depositAmount;
-      const newValue = asNumber(existing.value) + depositAmount; // approximate; price-adjusted later
-      await db
-        .update(holdingsTable)
-        .set({
-          amount: String(newAmount),
-          value: String(newValue),
-        })
-        .where(eq(holdingsTable.id, existing.id));
-    } else {
-      const assetDef = marketDefinitions.find((m) => m.symbol === tx.asset);
-      await db.insert(holdingsTable).values({
-        clerkUserId: tx.clerkUserId,
-        symbol: tx.asset,
-        name: assetDef?.name ?? tx.asset,
-        amount: String(depositAmount),
-        value: String(depositAmount),
-        allocation: "0",
-        change24h: "0",
-        color: assetDef?.color ?? "#888888",
-      });
-    }
-
-    // Credit the canonical account balance without a read-modify-write race.
-    await db.insert(tradingAccountsTable).values({ clerkUserId: tx.clerkUserId }).onConflictDoNothing();
-    await db.update(tradingAccountsTable).set({
-      balance: sql`${tradingAccountsTable.balance} + ${tx.amount}`,
-      updatedAt: new Date(),
-    }).where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
+  if (result.status === "already_processed") {
+    res.status(409).json({ error: `Transaction is already ${result.transaction.status}` });
+    return;
   }
 
-  // For approved withdrawals: debit holdings
-  if (tx.type === "withdrawal") {
-    const [existing] = await db
-      .select()
-      .from(holdingsTable)
-      .where(
-        and(
-          eq(holdingsTable.clerkUserId, tx.clerkUserId),
-          eq(holdingsTable.symbol, tx.asset),
-        ),
-      )
-      .limit(1);
-    if (existing) {
-      const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(tx.amount));
-      const newValue = Math.max(0, asNumber(existing.value) - asNumber(tx.amount));
-      await db
-        .update(holdingsTable)
-        .set({ amount: String(newAmount), value: String(newValue) })
-        .where(eq(holdingsTable.id, existing.id));
-    }
-  }
-
-  res.json(await enrichTransaction(tx));
+  res.json(await enrichTransaction(result.transaction));
 });
 
 router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) => {
@@ -2304,7 +2252,7 @@ async function getOrCreateTradingAccount(userId: string) {
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
     await db.insert(tradingAccountsTable)
-      .values({ clerkUserId: userId, balance: DEFAULT_PORTFOLIO_BALANCE })
+      .values({ clerkUserId: userId, balance: ZERO_BALANCE })
       .onConflictDoNothing();
     [acct] = await db.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
@@ -2358,7 +2306,7 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
     await tx.insert(tradingAccountsTable)
-      .values({ clerkUserId: trade.clerkUserId, balance: DEFAULT_PORTFOLIO_BALANCE })
+      .values({ clerkUserId: trade.clerkUserId, balance: ZERO_BALANCE })
       .onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}

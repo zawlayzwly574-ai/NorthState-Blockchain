@@ -149,12 +149,9 @@ describe("member route authentication", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toMatchObject({
-      totalValue: 24680.42,
-      holdings: expect.arrayContaining([
-        expect.objectContaining({ symbol: "BTC" }),
-        expect.objectContaining({ symbol: "ETH" }),
-        expect.objectContaining({ symbol: "USDC" }),
-      ]),
+      totalValue: 0,
+      cashBalance: 0,
+      holdings: [],
     });
   });
 
@@ -189,23 +186,23 @@ describe("member route authentication", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(await response.json()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "deposit", asset: "USD", status: "completed" }),
-      expect.objectContaining({ type: "buy", asset: "BTC", status: "completed" }),
-    ]));
+    expect(await response.json()).toEqual([]);
   });
 
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {
+      execute: () => Promise<void>;
       insert: () => {
         values: (values: Record<string, unknown>) => Promise<void> | {
           returning: () => Promise<Array<Record<string, unknown>>>;
+          onConflictDoNothing?: () => Promise<void>;
         };
       };
     }) => Promise<unknown>) => {
       let insertCount = 0;
       return callback({
+        execute: async () => undefined,
         insert: () => ({
           values: (values) => {
             insertedValues.push(values);
@@ -219,6 +216,7 @@ describe("member route authentication", () => {
                   status: "pending",
                   createdAt: new Date("2026-09-10T00:00:00.000Z"),
                 }],
+                onConflictDoNothing: async () => undefined,
               };
             }
             return Promise.resolve();
@@ -249,7 +247,7 @@ describe("member route authentication", () => {
       amount: 0.01,
       status: "pending",
     });
-    expect(insertedValues[0]).toMatchObject({
+    expect(insertedValues.find((values) => values.txHash === "proof-hash-1234")).toMatchObject({
       clerkUserId: "user_restored",
       txHash: "proof-hash-1234",
       proofPath: null,

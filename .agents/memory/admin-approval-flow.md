@@ -4,11 +4,12 @@ description: How deposit/withdrawal approval works — admin must approve before
 ---
 
 ## Rule
-Deposits and withdrawals do NOT touch `wallet_holdings` until an admin approves them via the admin panel. Only approving a transaction credits/debits holdings.
+Deposits and withdrawals do NOT touch `wallet_holdings` or the canonical trading balance until an admin approves them via the admin panel. Approval is valid only while the transaction is pending and credits exactly once.
 
 ## How it works
 - `POST /api/transactions/deposit` inserts a `wallet_transactions` row with `status = pending` and a matching `wallet_activities` row linked via `transactionId`.
-- `PATCH /api/admin/transactions/:id/approve` sets status → `completed`, updates the matching activity row, and upserts/increments `wallet_holdings` for the user.
+- `PATCH /api/admin/transactions/:id/approve` locks the pending transaction and the user's canonical balance, then atomically marks it completed, updates activity and holdings, and credits the trading account.
+- Repeated approval returns a conflict and cannot add funds again.
 - `PATCH /api/admin/transactions/:id/reject` sets status → `failed`, marks activity `failed`. No holdings change.
 - Withdrawals on approval: deduct from holdings.
 
@@ -18,4 +19,4 @@ Deposits and withdrawals do NOT touch `wallet_holdings` until an admin approves 
 - All admin routes in `artifacts/api-server/src/routes/blockchain.ts` — guarded by `requireAdmin` middleware that checks `process.env.ADMIN_SECRET`.
 - Admin API prefix: `GET/PATCH /api/admin/*`.
 
-**Why:** Deposits must be admin-verified before appearing in user balance to prevent fraud.
+**Why:** Deposits must be admin-verified before appearing in user balance, and retries or simultaneous admin actions must never duplicate a credit.

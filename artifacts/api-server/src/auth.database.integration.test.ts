@@ -15,6 +15,7 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL === testDatabaseUrl) {
   );
 }
 process.env.DATABASE_URL = testDatabaseUrl;
+process.env.ADMIN_SECRET = "database-test-admin-secret";
 
 const { authenticatedUserId, firstTimeUserId, clerkMiddleware, getAuth, getUser } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
@@ -134,6 +135,7 @@ describe("database-backed member authentication", () => {
   async function removeMember(userId: string) {
     await pool.query("delete from trades where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_activities where clerk_user_id = $1", [userId]);
+    await pool.query("delete from wallet_transactions where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_holdings where clerk_user_id = $1", [userId]);
     await pool.query("delete from trading_accounts where clerk_user_id = $1", [userId]);
     await pool.query("delete from wallet_profiles where clerk_user_id = $1", [userId]);
@@ -145,6 +147,30 @@ describe("database-backed member authentication", () => {
 
   async function removeFirstTimeMember() {
     await removeMember(newClerkUserId);
+  }
+
+  async function submitAndApproveDeposit(amount: number) {
+    const memberHeaders = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const submitted = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers: memberHeaders,
+      body: JSON.stringify({
+        asset: "USDT",
+        amount,
+        txHash: `database-test-${randomUUID()}`,
+      }),
+    });
+    expect(submitted.status).toBe(201);
+    const transaction = await submitted.json() as { id: string };
+    const approved = await fetch(`${baseUrl}/api/admin/transactions/${transaction.id}/approve`, {
+      method: "PATCH",
+      headers: { "x-admin-key": "database-test-admin-secret" },
+    });
+    expect(approved.status).toBe(200);
+    return transaction.id;
   }
 
   it("loads an authenticated member through the real profile query", async () => {
@@ -171,7 +197,7 @@ describe("database-backed member authentication", () => {
     ]);
   });
 
-  it("creates a profile and starter portfolio for a first-time authenticated member", async () => {
+  it("creates a profile with an empty zero-balance portfolio for a first-time authenticated member", async () => {
     const response = await fetch(`${baseUrl}/api/profile`, {
       headers: { cookie: "__session=database-first-time" },
     });
@@ -208,15 +234,55 @@ describe("database-backed member authentication", () => {
         email: "first-time-database-test@example.invalid",
       },
     ]);
-    expect(holdings.rows.map(({ symbol }) => symbol)).toEqual([
-      "BNB",
-      "BTC",
-      "ETH",
-      "USDC",
-      "USDT",
+    expect(holdings.rows).toEqual([]);
+    expect(activities.rowCount).toBe(0);
+    expect(accounts.rows).toEqual([{ balance: "0.00000000" }]);
+  });
+
+  it("credits an approved deposit exactly once in both Trading and Overview", async () => {
+    const headers = {
+      cookie: "__session=database-first-time",
+      "content-type": "application/json",
+    };
+    const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
+    expect(profileResponse.status).toBe(200);
+
+    const submitted = await fetch(`${baseUrl}/api/transactions/deposit`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        asset: "USDT",
+        amount: 275.25,
+        txHash: `database-test-${randomUUID()}`,
+      }),
+    });
+    expect(submitted.status).toBe(201);
+    const transaction = await submitted.json() as { id: string };
+
+    const beforeApproval = await fetch(`${baseUrl}/api/portfolio`, { headers });
+    expect((await beforeApproval.json() as { totalValue: number }).totalValue).toBe(0);
+
+    const approvalHeaders = { "x-admin-key": "database-test-admin-secret" };
+    const approved = await fetch(`${baseUrl}/api/admin/transactions/${transaction.id}/approve`, {
+      method: "PATCH",
+      headers: approvalHeaders,
+    });
+    expect(approved.status).toBe(200);
+
+    const duplicateApproval = await fetch(`${baseUrl}/api/admin/transactions/${transaction.id}/approve`, {
+      method: "PATCH",
+      headers: approvalHeaders,
+    });
+    expect(duplicateApproval.status).toBe(409);
+
+    const [accountResponse, portfolioResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/trading/account`, { headers }),
+      fetch(`${baseUrl}/api/portfolio`, { headers }),
     ]);
-    expect(activities.rowCount).toBe(4);
-    expect(accounts.rows).toEqual([{ balance: "24680.42000000" }]);
+    const account = await accountResponse.json() as { balance: number };
+    const portfolio = await portfolioResponse.json() as { totalValue: number };
+    expect(account.balance).toBe(275.25);
+    expect(portfolio.totalValue).toBe(275.25);
   });
 
   it("settles a winning trade into the balance shared by Trading and Overview", async () => {
@@ -226,6 +292,7 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await submitAndApproveDeposit(1000);
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
       method: "POST",
@@ -263,8 +330,8 @@ describe("database-backed member authentication", () => {
 
     const account = await accountResponse.json() as { balance: number };
     const portfolio = await portfolioResponse.json() as { totalValue: number };
-    expect(account.balance).toBe(24765.42);
-    expect(portfolio.totalValue).toBe(24765.42);
+    expect(account.balance).toBe(1085);
+    expect(portfolio.totalValue).toBe(1085);
   });
 
   it("settles a losing trade into the balance shared by Trading and Overview", async () => {
@@ -274,6 +341,7 @@ describe("database-backed member authentication", () => {
     };
     const profileResponse = await fetch(`${baseUrl}/api/profile`, { headers });
     expect(profileResponse.status).toBe(200);
+    await submitAndApproveDeposit(1000);
 
     const placementResponse = await fetch(`${baseUrl}/api/trading/trades`, {
       method: "POST",
@@ -308,7 +376,7 @@ describe("database-backed member authentication", () => {
     ]);
     const account = await accountResponse.json() as { balance: number };
     const portfolio = await portfolioResponse.json() as { totalValue: number };
-    expect(account.balance).toBe(24580.42);
-    expect(portfolio.totalValue).toBe(24580.42);
+    expect(account.balance).toBe(900);
+    expect(portfolio.totalValue).toBe(900);
   });
 });

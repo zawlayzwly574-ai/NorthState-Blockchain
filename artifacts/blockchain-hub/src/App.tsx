@@ -69,28 +69,17 @@ const depositAssets = [
   { symbol: 'BNB', name: 'BNB', color: '#f2ca52' },
 ];
 const fallbackPortfolio = {
-  totalValue: 24680.42,
-  dayChange: 356.24,
-  dayChangePercent: 1.44,
-  cashBalance: 4458.0,
-  history: [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1].map((multiplier, index) => ({
+  totalValue: 0,
+  dayChange: 0,
+  dayChangePercent: 0,
+  cashBalance: 0,
+  history: [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1].map((_multiplier, index) => ({
     time: `${String(index * 2).padStart(2, '0')}:00`,
-    value: Number((24680.42 * multiplier).toFixed(2)),
+    value: 0,
   })),
-  holdings: [
-    { symbol: 'BTC', name: 'Bitcoin', amount: 0.1842, value: 11600.12, allocation: 47, change24h: 2.84, color: '#F7931A' },
-    { symbol: 'ETH', name: 'Ethereum', amount: 1.842, value: 5756.44, allocation: 23.32, change24h: 1.61, color: '#627EEA' },
-    { symbol: 'USDC', name: 'USD Coin', amount: 1835.2, value: 1835.2, allocation: 7.44, change24h: 0.01, color: '#2775CA' },
-    { symbol: 'BNB', name: 'BNB', amount: 1.22, value: 710.21, allocation: 2.88, change24h: -0.44, color: '#F3BA2F' },
-    { symbol: 'USDT', name: 'Tether', amount: 320.5, value: 320.5, allocation: 1.3, change24h: 0.02, color: '#26A17B' },
-  ],
+  holdings: [],
 };
-const fallbackActivity = [
-  { id: 'sample-1', type: 'deposit' as const, asset: 'USD', amount: 5000, value: 5000, status: 'completed' as const, createdAt: new Date(Date.now() - 52 * 60_000).toISOString() },
-  { id: 'sample-2', type: 'buy' as const, asset: 'BTC', amount: 0.042, value: 2645.48, status: 'completed' as const, createdAt: new Date(Date.now() - 7 * 60 * 60_000).toISOString() },
-  { id: 'sample-3', type: 'deposit' as const, asset: 'USDC', amount: 850, value: 850, status: 'failed' as const, createdAt: new Date(Date.now() - 28 * 60 * 60_000).toISOString() },
-  { id: 'sample-4', type: 'withdrawal' as const, asset: 'ETH', amount: 0.35, value: 1093.67, status: 'pending' as const, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString() },
-];
+const fallbackActivity: Array<never> = [];
 const fallbackProfile = {
   id: 'sample-profile',
   name: 'Alex Morgan',
@@ -374,13 +363,11 @@ const clerkAppearance = {
     rootBox: 'flex w-full min-w-0 justify-center',
     cardBox: 'bg-[#0b1b32] rounded-3xl !w-[calc(100vw-2rem)] !max-w-[440px] min-w-0 overflow-hidden border border-[#29425e]',
     card: '!shadow-none !border-0 !bg-transparent !rounded-none',
-    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!hidden',
     headerTitle: 'text-[#eaf3ff] font-extrabold',
     headerSubtitle: 'text-[#8fa5bd]',
     socialButtonsBlockButtonText: 'text-[#eaf3ff]',
     formFieldLabel: 'text-[#eaf3ff]',
-    footerActionLink: 'text-[#55dbe1] font-bold',
-    footerActionText: 'text-[#8fa5bd]',
     dividerText: 'text-[#8fa5bd]',
     identityPreviewEditButton: 'text-[#55dbe1]',
     formFieldSuccessText: 'text-[#55dbe1]',
@@ -390,7 +377,6 @@ const clerkAppearance = {
     socialButtonsBlockButton: 'border-[#29425e] bg-[#171209] hover:bg-[#17304e]',
     formButtonPrimary: 'bg-[#55dbe1] text-[#06152a] hover:bg-[#77e5e9] font-extrabold',
     formFieldInput: 'border-[#29425e] bg-[#08172a] text-[#eaf3ff]',
-    footerAction: 'border-[#29425e]',
     dividerLine: 'bg-[#29425e]',
     alert: 'border-[#29425e] bg-[#171209]',
     otpCodeFieldInput: 'border-[#29425e] bg-[#08172a] text-[#eaf3ff]',
@@ -406,6 +392,12 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
       {signUp
         ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        {signUp ? 'Already have an account?' : 'New to North State Blockchain?'}{' '}
+        <Link href={signUp ? '/sign-in' : '/sign-up'} className="font-bold text-primary hover:underline">
+          {signUp ? 'Sign in' : 'Create an account'}
+        </Link>
+      </p>
       <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
   </main>;
