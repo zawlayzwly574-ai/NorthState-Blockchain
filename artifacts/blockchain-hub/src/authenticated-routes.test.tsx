@@ -118,6 +118,30 @@ describe("authenticated portfolio routes", () => {
     expect(protectedCalls).toHaveLength(0);
   });
 
+  it("shows a recoverable account message instead of a blank body when profile loading fails", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/profile")) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(jsonFor(url)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    renderRoute(<Dashboard />, "/dashboard");
+
+    expect(await screen.findByText("We could not load your account")).toBeInTheDocument();
+    expect(screen.getByText("Retry")).toBeInTheDocument();
+    expect(screen.getByText("Sign in again")).toBeInTheDocument();
+  });
+
   it.each([
     ["Overview", "/dashboard"],
     ["Activity", "/activity"],

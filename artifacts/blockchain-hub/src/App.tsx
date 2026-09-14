@@ -424,13 +424,20 @@ function KycStatusScreen({ status }: { status: string }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { isLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
   const memberQueriesEnabled = isLoaded && isSignedIn;
-  const { data: profile } = useGetProfile({
-    query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000 },
+  const profileQuery = useGetProfile({
+    query: {
+      queryKey: getGetProfileQueryKey(),
+      enabled: memberQueriesEnabled,
+      retry: false,
+      refetchInterval: (query) => query.state.status === 'error' ? false : 3_000,
+    },
   });
+  const profile = profileQuery.data;
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
     query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && profile?.verificationStatus === 'verified' },
@@ -459,13 +466,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
   const isVerificationRoute = location === '/settings' || location.startsWith('/settings');
-  useEffect(() => {
-    if (profile && profile.verificationStatus !== 'verified' && !isVerificationRoute) {
-      setLocation('/settings?tab=verification', { replace: true });
-    }
-  }, [isVerificationRoute, profile, setLocation]);
-  const gatedContent = !profile
-    ? <LoadingState lines={4} />
+  const gatedContent = !memberQueriesEnabled || profileQuery.isLoading
+    ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">Checking your profile and verification status…</p></div>
+    : profileQuery.isError || !profile
+      ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">We could not load your account</p><p className="mt-2 text-sm text-muted-foreground">Your sign-in may have expired. Retry now or sign in again.</p><div className="mt-6 flex flex-wrap justify-center gap-3"><Button onClick={() => profileQuery.refetch()}>Retry</Button><Button variant="secondary" onClick={() => signOut({ redirectUrl: '/sign-in' })}>Sign in again</Button></div></div>
     : (!isVerificationRoute && verificationStatus !== 'verified')
       ? <KycStatusScreen status={verificationStatus ?? 'unverified'} />
       : children;
@@ -2243,7 +2247,7 @@ export function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG — max 5 MB each.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG images are optimized automatically.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
