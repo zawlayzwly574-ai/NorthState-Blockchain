@@ -339,7 +339,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   });
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
-    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled },
+    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && profile?.verificationStatus === 'verified' },
   });
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('notif-last-seen') ?? '');
   const unreadCount = (notifs.data ?? []).filter(n => n.createdAt > lastSeen).length;
@@ -351,7 +351,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   };
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/trading' || location.startsWith('/trading');
+  const isExemptRoute = location === '/settings' || location.startsWith('/settings');
   const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
@@ -1807,7 +1807,7 @@ export function Settings() {
       const img = new Image();
       img.onerror = () => reject(new Error('The selected image could not be decoded.'));
       img.onload = () => {
-        const MAX = 1000;
+        const MAX = 1800;
         let { width, height } = img;
         if (!width || !height) {
           reject(new Error('The selected image has invalid dimensions.'));
@@ -1827,7 +1827,7 @@ export function Settings() {
         context.fillStyle = '#ffffff';
         context.fillRect(0, 0, width, height);
         context.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.74));
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
       };
       img.src = raw;
     };
@@ -1845,10 +1845,6 @@ export function Settings() {
     const supportedMime = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png'].includes(file.type.toLowerCase());
     if (!supportedExtension && !supportedMime) {
       setDocUploadError('Please upload a .jfif, .jpg, .jpeg, or .png image.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setDocUploadError('Each ID image must be 5 MB or smaller.');
       return;
     }
     try {
@@ -1887,14 +1883,14 @@ export function Settings() {
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
       context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
-      let quality = 0.74;
+      let quality = 0.82;
       let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > 1_600_000 && quality > 0.42) {
+      while (result.length > 9_000_000 && quality > 0.42) {
         quality -= 0.08;
         result = canvas.toDataURL('image/jpeg', quality);
       }
-      if (result.length > 1_850_000) {
-        reject(new Error('The combined ID images are too large.'));
+      if (result.length > 10_000_000) {
+        reject(new Error('The ID images could not be optimized for secure upload. Please use clearer images with smaller pixel dimensions.'));
         return;
       }
       resolve(result);
@@ -1933,7 +1929,7 @@ export function Settings() {
     } catch (error) {
       const apiError = error as { status?: number; data?: { error?: string } };
       if (apiError.status === 413) {
-        setKycSubmitError('The ID images are still too large. Please choose smaller images and try again.');
+        setKycSubmitError('The document upload exceeded the server safety limit after optimization. Please use images with smaller pixel dimensions.');
       } else {
         setKycSubmitError(apiError.data?.error || 'We could not submit your details. Check your connection and try again.');
       }
@@ -2108,7 +2104,7 @@ export function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG — max 5 MB each.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG files are optimized automatically before secure submission.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([

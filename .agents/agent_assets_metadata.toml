@@ -2,15 +2,15 @@ uploads = []
 generated = []
 
 [[outputs]]
-id = "IEchdirccrApuxCkdZFk2"
-uri = "file://north-state-blockchain-app.zip"
+id = "HrDMzVPEBmgoZNHr0K8UB"
+uri = "file://north-state-blockchain-app-full.zip.part-an-01"
 type = "unspecified"
-title = "North State Blockchain App ZIP"
-description = "Complete source package for the web app and admin panel, including code, shared libraries, database/API schemas, generated files, uploaded assets, icons, and workspace configuration. Secrets, node_modules, build output, and Git metadata are excluded."
-logical_id = "1c0d0932-bf18-425b-988b-251368cda195"
-content_hash = "sha256:71d3f51e0685e518a867ead4be292bc72dc68ca14d11974a430d8c58fc3540df"
-size = 4302630
-mtime_ms = 1789366633432
-storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:f3514809-2fb5-4124-ba88-7e5f8c71d5b0/1c0d0932-bf18-425b-988b-251368cda195/af3aa46b-0844-495d-bbd4-4bb5f641194a"
-storage_version_token = "1789366640709960"
+title = "North State Blockchain Full ZIP — Part 14A of 15"
+description = "This replaces the failed Part 14 upload. Download it together with Part 14B, then assemble in order."
+logical_id = "66be8693-2cdc-4010-bb95-3835a99cacfe"
+content_hash = "sha256:787061e89a5a63a0d43c8adcb0c11f24f1b5ffbf828dffa92a89fc540d46fa71"
+size = 26214400
+mtime_ms = 1789367224561
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:f3514809-2fb5-4124-ba88-7e5f8c71d5b0/66be8693-2cdc-4010-bb95-3835a99cacfe/15d521c4-4b15-495f-b6ba-46ecc60599e5"
+storage_version_token = "1789367232877927"
 content_type = "application/octet-stream"

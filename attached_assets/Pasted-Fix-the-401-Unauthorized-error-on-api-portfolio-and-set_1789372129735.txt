@@ -1,0 +1,14 @@
+Fix the 401 Unauthorized error on /api/portfolio and settings views. When a user is signed in, ensure the backend session cookie/token is correctly passed and handled so that Overview, Activity, and Settings views can load user data without failing.
+
+Fix the deposit submission error ("Deposit could not be submitted. Try again."). Ensure the deposit API route correctly inserts the transaction proof into the PostgreSQL database without validation failures or missing schema fields, and return clear success feedback to the user.
+
+Also seed initial sample wallet activity timeline data for the Activity page so that every account displays sample transactions (Deposit USD, Buy BTC, Deposit USDC, Withdrawal ETH) with realistic amounts, statuses (Completed, Failed, Pending), and dates instead of an empty timeline.
+
+Also seed complete sample profile and account settings data for all logged-in accounts so that the Settings pages (Profile, Security, Verification, Referrals) display populated profile info Expemle - (Display Name: Alex Morgan, Verification Status: verified, Referral Code: NORTHSTAR-ALEX, 3 people invited, $50 rewards) instead of empty or infinite loading states. ဖြင့်အစစ်အမှန်နဲ့တူညီမှု့ရှိနဲ့ပုံစံမျိုးအတိုင်းပြုလုပ်ပါ။
+
+
+Mandatory KYC Verification Wall: အကောင့်သစ် ဝင်လာသူတိုင်းကို အဓိက Dashboard/Overview တွေဆီ မရောက်စေဘဲ Verification မျက်နှာပြင်ဆီကို ဦးစွာ ပို့ဆောင်ပေးပြီး Admin အတည်ပြုချက်မရမချင်း Member Feature များကို ပိတ်ပင်ထားမည့် စနစ်ကို ထည့်သွင်းထားပါတယ်။
+
+Admin Panel ဖြင့် ချိတ်ဆက်ခြင်း: အသုံးပြုသူများ တင်သွင်းလာသည့် KYC အချက်အလက်များသည် Admin Panel ရဲ့ KYC Verification အပိုင်းထဲသို့ တိုက်ရိုက်ရောက်ရှိလာမည်ဖြစ်ပြီး Admin မှ [Approve] လုပ်မှသာ အကောင့်အပြည့်အဝ ပွင့်သွားမည် ဖြစ်သည်။
+
+Upload Size Restrictions များကို ဖြსှ်ပေးခြင်း: KYC Document ပုံများ (ID ကတ်၊ ፓတ်စပို့ စသည်ဖြင့်) တင်သွင်းသည့်အခါ File Size ကြီးမားနေခြင်းကြောင့် Validation Error မတက်စေရန် လွတ်လပ်စွာ တင်သွင်းနိုင်အောင် ပြုပြင်ပေးထားပြီး သင့်ရဲ့ Market Price နဲ့ အခြား Database ဒေတာများကို လုံးဝ မထိခိုက်စေရန် သီးသန့် ကာကွယ်ပေးထားပါတယ်။

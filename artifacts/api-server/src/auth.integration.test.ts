@@ -185,6 +185,25 @@ describe("member route authentication", () => {
     });
   });
 
+  it("blocks wallet features until KYC receives admin approval", async () => {
+    select.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ ...profile, verificationStatus: "unverified" }],
+        }),
+      }),
+    });
+
+    const response = await fetch(`${baseUrl}/api/portfolio`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      verificationStatus: "unverified",
+    });
+  });
+
   it("returns one 401 without invoking member data access when authentication is missing", async () => {
     const response = await fetch(`${baseUrl}/api/profile`);
 

@@ -389,7 +389,6 @@ async function ensureSeededUser(userId: string) {
   if (existing) {
     const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
     if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
-    if (existing.verificationStatus === "unverified") sampleProfileUpdate.verificationStatus = "verified";
     if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
     if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
 
@@ -425,7 +424,7 @@ async function ensureSeededUser(userId: string) {
       displayName,
       email,
       referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
-      verificationStatus: "verified",
+      verificationStatus: isDemoUser ? "verified" : "unverified",
       referralInvitedCount: 3,
       referralReward: "50.00",
     })
@@ -448,6 +447,34 @@ async function ensureSeededUser(userId: string) {
   await ensureDefaultPortfolio(userId);
 
   return profile;
+}
+
+function isKycExemptMemberPath(path: string) {
+  return [
+    "/profile",
+    "/kyc",
+    "/referral",
+    "/security",
+    "/sms",
+    "/support",
+  ].some((allowedPath) => path === allowedPath || path.startsWith(`${allowedPath}/`));
+}
+
+async function requireVerifiedMember(req: Request, res: Response, next: NextFunction) {
+  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path)) {
+    next();
+    return;
+  }
+
+  const profile = await ensureSeededUser(getUserId(req));
+  if (profile.verificationStatus !== "verified") {
+    res.status(403).json({
+      error: "KYC verification and admin approval are required before using member features.",
+      verificationStatus: profile.verificationStatus,
+    });
+    return;
+  }
+  next();
 }
 
 const MARKET_API_KEY = process.env.MARKET_API_KEY ?? "";
@@ -819,6 +846,9 @@ router.get("/markets/:symbol", async (req, res) => {
 // Everything after the public market endpoints belongs to the signed-in member
 // area. Admin routes opt out here and enforce their own admin secret below.
 router.use(requireMember);
+router.use((req, res, next) => {
+  void requireVerifiedMember(req, res, next).catch((error) => next(error));
+});
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
