@@ -351,7 +351,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   };
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/dashboard';
+  const isExemptRoute = location === '/settings' || location.startsWith('/settings');
   const gatedContent = (!isExemptRoute && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus ?? 'unverified'} /> : children;
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
@@ -2108,9 +2108,9 @@ export function Settings() {
                     <Field label="City / Town / State" name="city" placeholder="New York, NY" required data-testid="input-kyc-city" />
                     <Field label="Occupation / Employment" name="occupation" placeholder="Software Engineer" required data-testid="input-kyc-occupation" />
                     <SelectField label="Document type" name="documentType" defaultValue="passport" data-testid="select-kyc-document">
+                      <option value="national_id">ID</option>
                       <option value="passport">Passport</option>
-                      <option value="drivers_license">Driver's license</option>
-                      <option value="national_id">National ID</option>
+                      <option value="drivers_license">Driver License</option>
                     </SelectField>
                   </div>
 
@@ -2118,7 +2118,7 @@ export function Settings() {
                   <div className="grid gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, or PNG files are optimized automatically before secure submission.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload clear images of both sides of your ID. JFIF, JPG, JPEG, PNG, or WebP files are optimized automatically before secure submission.</p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
@@ -2219,6 +2219,23 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
   }
 
+  return children;
+}
+
+export function VerifiedRoute({ children }: { children: React.ReactNode }) {
+  const profile = useGetProfile({
+    query: { queryKey: getGetProfileQueryKey(), retry: false },
+  });
+
+  if (profile.isLoading) {
+    return <Shell><LoadingState lines={5} /></Shell>;
+  }
+  if (profile.isError || !profile.data) {
+    return <Shell><ErrorState retry={() => profile.refetch()} /></Shell>;
+  }
+  if (profile.data.verificationStatus !== 'verified') {
+    return <Shell><KycStatusScreen status={profile.data.verificationStatus ?? 'unverified'} /></Shell>;
+  }
   return children;
 }
 function TradingRoute() { return <Shell><TradingPage /></Shell>; }
@@ -2481,7 +2498,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><VerifiedRoute><Dashboard /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><VerifiedRoute><ActivityPage /></VerifiedRoute></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);

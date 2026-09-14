@@ -462,12 +462,7 @@ function isKycExemptMemberPath(path: string) {
 }
 
 async function requireVerifiedMember(req: Request, res: Response, next: NextFunction) {
-  const readOnlyOverviewPath = req.method === "GET" && [
-    "/portfolio",
-    "/activity",
-    "/notifications",
-  ].some((path) => req.path === path || req.path.startsWith(`${path}/`));
-  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path) || readOnlyOverviewPath) {
+  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path)) {
     next();
     return;
   }
@@ -2258,7 +2253,7 @@ router.patch("/admin/kyc/:id/reject", requireAdmin, async (req, res) => {
 // ─── Trading / Futures ────────────────────────────────────────────────────────
 
 const TRADING_FALLBACK: Record<string, number> = {
-  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52,
+  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52, GOLD: 2348.4,
 };
 
 async function getOrCreateTradingAccount(userId: string) {

@@ -38,8 +38,16 @@ const TIMEFRAMES = [
   { label: '30D', secs: 2592000 },
 ];
 
-const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP'];
+const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
 const PAYOUT_RATE = 0.85;
+const PRICE_FALLBACKS: Record<string, number> = {
+  BTC: 67000,
+  ETH: 3500,
+  BNB: 580,
+  SOL: 145,
+  XRP: 0.52,
+  GOLD: 2348.4,
+};
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
 
@@ -196,6 +204,7 @@ function TimeframeSheet({
           {TIMEFRAMES.map(tf => (
             <button
               key={tf.secs}
+              type="button"
               onClick={() => { onChange(tf.secs); onClose(); }}
               className={`rounded-xl py-3 text-sm font-bold transition active:scale-95 ${
                 value === tf.secs
@@ -208,6 +217,7 @@ function TimeframeSheet({
           ))}
         </div>
         <button
+          type="button"
           onClick={onClose}
           className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
         >
@@ -347,6 +357,7 @@ export function TradingPage() {
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
+  const [tradeError, setTradeError] = useState('');
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
@@ -357,8 +368,9 @@ export function TradingPage() {
   });
   const placeTradeHook = usePlaceTrade();
 
-  const marketAsset = market.find(m => m.symbol === asset);
-  const currentPrice = marketAsset?.price ?? 0;
+  const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
+  const marketAsset = market.find(m => m.symbol === marketSymbol);
+  const currentPrice = marketAsset?.price ?? PRICE_FALLBACKS[asset] ?? 0;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -387,13 +399,15 @@ export function TradingPage() {
   const handleTrade = async (direction: 'long' | 'short') => {
     if (placing || !currentPrice || insufficient) return;
     setPlacing(true);
+    setTradeError('');
     try {
       await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
       await refetchTrades();
       qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
       qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
-    } catch {
-      // error is surfaced via disabled state
+    } catch (error) {
+      const apiError = error as { data?: { error?: string }; message?: string };
+      setTradeError(apiError.data?.error || apiError.message || 'The trade could not be placed. Please try again.');
     } finally {
       setPlacing(false);
     }
@@ -474,6 +488,7 @@ export function TradingPage() {
           return (
             <button
               key={a}
+              type="button"
               onClick={() => setAsset(a)}
               className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
                 asset === a
@@ -534,6 +549,7 @@ export function TradingPage() {
               {[25, 50, 100, 250].map(v => (
                 <button
                   key={v}
+                  type="button"
                   onClick={() => setAmount(String(v))}
                   className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
                     Number(amount) === v
@@ -557,6 +573,7 @@ export function TradingPage() {
         <div className="mb-4">
           <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
           <button
+            type="button"
             onClick={() => setShowPicker(true)}
             className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
             data-testid="button-timeframe-picker"
@@ -590,6 +607,7 @@ export function TradingPage() {
         {/* Long / Short buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
+            type="button"
             onClick={() => handleTrade('long')}
             disabled={placing || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
@@ -600,6 +618,7 @@ export function TradingPage() {
             <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
           </button>
           <button
+            type="button"
             onClick={() => handleTrade('short')}
             disabled={placing || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
@@ -610,6 +629,11 @@ export function TradingPage() {
             <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
           </button>
         </div>
+        {tradeError && (
+          <p className="mt-3 flex items-center gap-2 text-sm font-semibold text-destructive" role="alert" data-testid="status-trade-error">
+            <AlertCircle size={15} />{tradeError}
+          </p>
+        )}
       </div>
 
       {/* ── Active Trades ── */}

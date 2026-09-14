@@ -8,6 +8,7 @@ import { memoryLocation } from "wouter/memory-location";
 const authState = vi.hoisted(() => ({
   isLoaded: false,
   isSignedIn: false,
+  verificationStatus: "verified",
 }));
 
 vi.mock("@clerk/react", async () => {
@@ -20,7 +21,7 @@ vi.mock("@clerk/react", async () => {
   };
 });
 
-import { ActivityPage, Dashboard, ProtectedRoute, Settings } from "./App";
+import { ActivityPage, Dashboard, ProtectedRoute, Settings, VerifiedRoute } from "./App";
 
 const protectedPaths = [
   "/api/portfolio",
@@ -37,7 +38,7 @@ function jsonFor(url: string) {
   if (url.includes("/activity") || url.includes("/notifications")) return [];
   if (url.includes("/fx-rates")) return { base: "USD", rates: {} };
   if (url.includes("/referral")) return { code: "TEST", totalReferrals: 0, rewardsEarned: 0, referrals: [] };
-  if (url.includes("/profile")) return { name: "Test Member", initials: "TM", verificationStatus: "verified" };
+  if (url.includes("/profile")) return { name: "Test Member", initials: "TM", verificationStatus: authState.verificationStatus };
   return {};
 }
 
@@ -63,6 +64,7 @@ describe("authenticated portfolio routes", () => {
   beforeEach(() => {
     authState.isLoaded = false;
     authState.isSignedIn = false;
+    authState.verificationStatus = "verified";
     localStorage.clear();
     fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -116,6 +118,21 @@ describe("authenticated portfolio routes", () => {
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     );
     expect(protectedCalls).toHaveLength(0);
+  });
+
+  it("does not mount protected page queries while an unverified member is gated", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    authState.verificationStatus = "unverified";
+
+    renderRoute(
+      <VerifiedRoute><div>Protected financial page</div></VerifiedRoute>,
+      "/dashboard",
+    );
+
+    expect(await screen.findByText("Complete Identity Verification")).toBeInTheDocument();
+    expect(screen.queryByText("Protected financial page")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/portfolio"))).toBe(false);
   });
 
   it.each([
