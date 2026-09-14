@@ -27,8 +27,25 @@ if (!basePath) {
   );
 }
 
+// The frontend is wired to authenticate against the same Clerk application
+// the backend verifies sessions against (CLERK_PUBLISHABLE_KEY), rather than
+// the separate VITE_CLERK_PUBLISHABLE_KEY value, so sign-in on the client and
+// session verification on the server point at one Clerk app instead of two.
+const serverClerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY;
+
+if (!serverClerkPublishableKey) {
+  throw new Error(
+    'CLERK_PUBLISHABLE_KEY environment variable is required but was not provided.',
+  );
+}
+
 export default defineConfig({
   base: basePath,
+  define: {
+    'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
+      serverClerkPublishableKey,
+    ),
+  },
   plugins: [
     react(),
     tailwindcss({ optimize: false }),

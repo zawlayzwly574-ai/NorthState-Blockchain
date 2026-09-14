@@ -249,9 +249,6 @@ function requireMember(req: Request, res: Response, next: NextFunction) {
 
   const userId = getAuth(req).userId;
   if (!userId) {
-    console.log(
-      `[auth-diag] 401 on ${req.method} ${req.path} | hasAuthHeader=${Boolean(req.headers.authorization)} authHeaderPrefix=${String(req.headers.authorization ?? "").slice(0, 12)} hasCookieHeader=${Boolean(req.headers.cookie)} cookieNames=${String(req.headers.cookie ?? "").split(";").map((c) => c.split("=")[0].trim()).filter(Boolean).join(",")}`,
-    );
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
