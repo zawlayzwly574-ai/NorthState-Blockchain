@@ -1234,7 +1234,14 @@ router.post("/referral", async (req, res) => {
 });
 
 router.post("/kyc", async (req, res) => {
-  const body = SubmitKycBody.parse(req.body);
+  const parsedBody = SubmitKycBody.safeParse(req.body);
+  if (!parsedBody.success) {
+    res.status(400).json({
+      error: "Check all personal details and upload two valid ID photos. The optimized document must be under 10 MB.",
+    });
+    return;
+  }
+  const body = parsedBody.data;
   const encodedDocument = body.documentImageBase64.slice("data:image/jpeg;base64,".length);
   const normalizedDocument = encodedDocument.replace(/=+$/, "");
   const documentBytes = Buffer.from(encodedDocument, "base64");
@@ -1249,20 +1256,24 @@ router.post("/kyc", async (req, res) => {
   }
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  const [submission] = await db.insert(kycSubmissionsTable).values({
-    clerkUserId: userId,
-    fullName: body.fullName,
-    country: body.country,
-    city: body.city,
-    occupation: body.occupation,
-    ssn: "",
-    documentType: body.documentType,
-    documentImageBase64: body.documentImageBase64,
-    status: "pending",
-  }).returning();
-  await db.update(walletProfilesTable)
-    .set({ verificationStatus: "pending" })
-    .where(eq(walletProfilesTable.clerkUserId, userId));
+  const submission = await db.transaction(async (transaction) => {
+    await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:KYC`}))`);
+    const [created] = await transaction.insert(kycSubmissionsTable).values({
+      clerkUserId: userId,
+      fullName: body.fullName,
+      country: body.country,
+      city: body.city,
+      occupation: body.occupation,
+      ssn: "",
+      documentType: body.documentType,
+      documentImageBase64: body.documentImageBase64,
+      status: "pending",
+    }).returning();
+    await transaction.update(walletProfilesTable)
+      .set({ verificationStatus: "pending" })
+      .where(eq(walletProfilesTable.clerkUserId, userId));
+    return created;
+  });
   res.status(201).json(SubmitKycResponse.parse({
     status: submission.status,
     submittedAt: submission.submittedAt.toISOString(),
@@ -1757,6 +1768,20 @@ router.get("/admin/stats", requireAdmin, async (_req, res) => {
 // ─── Admin: users ────────────────────────────────────────────────────────────
 
 router.get("/admin/users", requireAdmin, async (_req, res) => {
+  try {
+    let offset = 0;
+    const limit = 100;
+    while (true) {
+      const page = await clerkClient.users.getUserList({ limit, offset });
+      for (const user of page.data) {
+        await ensureSeededUser(user.id);
+      }
+      offset += page.data.length;
+      if (page.data.length < limit || offset >= page.totalCount) break;
+    }
+  } catch {
+    // Preserve availability of locally known users if Clerk is temporarily unavailable.
+  }
   const profiles = await db
     .select()
     .from(walletProfilesTable)
@@ -1959,12 +1984,15 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
 
   const totalHoldings = holdings.reduce((sum, h) => sum + asNumber(h.value), 0);
   const kyc = kycRows[0] ? await enrichKyc(kycRows[0]) : null;
+  const clerkInfo = await fetchClerkUserInfo(userId);
+  const displayName = clerkInfo.name || profile.displayName;
+  const email = clerkInfo.email || profile.email;
 
   res.json({
     id: String(profile.id),
     clerkUserId: profile.clerkUserId,
-    displayName: profile.displayName,
-    email: profile.email,
+    displayName,
+    email,
     verificationStatus: profile.verificationStatus,
     totalHoldings,
     createdAt: profile.createdAt.toISOString(),
@@ -1980,8 +2008,8 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
     transactions: transactions.map((tx) => ({
       id: String(tx.id),
       clerkUserId: tx.clerkUserId,
-      displayName: profile.displayName,
-      email: profile.email,
+      displayName,
+      email,
       type: tx.type,
       asset: tx.asset,
       amount: asNumber(tx.amount),
@@ -2026,91 +2054,110 @@ router.get("/admin/transactions", requireAdmin, async (_req, res) => {
 
 router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) => {
   const txId = Number(req.params.id);
-  const [tx] = await db
-    .update(transactionsTable)
-    .set({ status: "completed" })
-    .where(eq(transactionsTable.id, txId))
-    .returning();
-  if (!tx) {
+  const result = await db.transaction(async (databaseTx) => {
+    await databaseTx.execute(sql`
+      select id from ${transactionsTable}
+      where ${transactionsTable.id} = ${txId}
+      for update
+    `);
+    const [pendingTransaction] = await databaseTx
+      .select()
+      .from(transactionsTable)
+      .where(eq(transactionsTable.id, txId))
+      .limit(1);
+    if (!pendingTransaction) return { kind: "not_found" as const };
+    if (pendingTransaction.status !== "pending") return { kind: "processed" as const };
+
+    await databaseTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${pendingTransaction.clerkUserId}:TRADING_BALANCE`}))`);
+    await databaseTx.insert(tradingAccountsTable)
+      .values({ clerkUserId: pendingTransaction.clerkUserId })
+      .onConflictDoNothing();
+    await databaseTx.execute(sql`
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${pendingTransaction.clerkUserId}
+      for update
+    `);
+
+    if (pendingTransaction.type === "withdrawal") {
+      const [debitedAccount] = await databaseTx.update(tradingAccountsTable).set({
+        balance: sql`${tradingAccountsTable.balance} - ${pendingTransaction.amount}`,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId),
+        sql`${tradingAccountsTable.balance} >= ${pendingTransaction.amount}`,
+      )).returning();
+      if (!debitedAccount) return { kind: "insufficient" as const };
+    }
+
+    if (pendingTransaction.type === "deposit") {
+      await databaseTx.update(tradingAccountsTable).set({
+        balance: sql`${tradingAccountsTable.balance} + ${pendingTransaction.amount}`,
+        updatedAt: new Date(),
+      }).where(eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId));
+    }
+
+    await databaseTx.execute(sql`
+      select id from ${holdingsTable}
+      where ${holdingsTable.clerkUserId} = ${pendingTransaction.clerkUserId}
+        and ${holdingsTable.symbol} = ${pendingTransaction.asset}
+      for update
+    `);
+    const [existing] = await databaseTx.select().from(holdingsTable).where(and(
+      eq(holdingsTable.clerkUserId, pendingTransaction.clerkUserId),
+      eq(holdingsTable.symbol, pendingTransaction.asset),
+    )).limit(1);
+    const amount = asNumber(pendingTransaction.amount);
+
+    if (pendingTransaction.type === "deposit") {
+      if (existing) {
+        await databaseTx.update(holdingsTable).set({
+          amount: sql`${holdingsTable.amount} + ${pendingTransaction.amount}`,
+          value: sql`${holdingsTable.value} + ${pendingTransaction.amount}`,
+        }).where(eq(holdingsTable.id, existing.id));
+      } else {
+        const assetDef = marketDefinitions.find((market) => market.symbol === pendingTransaction.asset);
+        await databaseTx.insert(holdingsTable).values({
+          clerkUserId: pendingTransaction.clerkUserId,
+          symbol: pendingTransaction.asset,
+          name: assetDef?.name ?? pendingTransaction.asset,
+          amount: String(amount),
+          value: String(amount),
+          allocation: "0",
+          change24h: "0",
+          color: assetDef?.color ?? "#888888",
+        });
+      }
+    } else if (pendingTransaction.type === "withdrawal" && existing) {
+      await databaseTx.update(holdingsTable).set({
+        amount: sql`greatest(0, ${holdingsTable.amount} - ${pendingTransaction.amount})`,
+        value: sql`greatest(0, ${holdingsTable.value} - ${pendingTransaction.amount})`,
+      }).where(eq(holdingsTable.id, existing.id));
+    }
+
+    const [completed] = await databaseTx.update(transactionsTable)
+      .set({ status: "completed" })
+      .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
+      .returning();
+    if (!completed) throw new Error("Transaction approval claim was lost.");
+    await databaseTx.update(activitiesTable)
+      .set({ status: "completed" })
+      .where(eq(activitiesTable.transactionId, txId));
+    return { kind: "approved" as const, transaction: completed };
+  });
+
+  if (result.kind === "not_found") {
     res.status(404).json({ error: "Transaction not found" });
     return;
   }
-
-  // Update matching activity status
-  await db
-    .update(activitiesTable)
-    .set({ status: "completed" })
-    .where(eq(activitiesTable.transactionId, txId));
-
-  // For approved deposits: credit holdings AND trading account
-  if (tx.type === "deposit") {
-    const [existing] = await db
-      .select()
-      .from(holdingsTable)
-      .where(
-        and(
-          eq(holdingsTable.clerkUserId, tx.clerkUserId),
-          eq(holdingsTable.symbol, tx.asset),
-        ),
-      )
-      .limit(1);
-    const depositAmount = asNumber(tx.amount);
-
-    if (existing) {
-      const newAmount = asNumber(existing.amount) + depositAmount;
-      const newValue = asNumber(existing.value) + depositAmount; // approximate; price-adjusted later
-      await db
-        .update(holdingsTable)
-        .set({
-          amount: String(newAmount),
-          value: String(newValue),
-        })
-        .where(eq(holdingsTable.id, existing.id));
-    } else {
-      const assetDef = marketDefinitions.find((m) => m.symbol === tx.asset);
-      await db.insert(holdingsTable).values({
-        clerkUserId: tx.clerkUserId,
-        symbol: tx.asset,
-        name: assetDef?.name ?? tx.asset,
-        amount: String(depositAmount),
-        value: String(depositAmount),
-        allocation: "0",
-        change24h: "0",
-        color: assetDef?.color ?? "#888888",
-      });
-    }
-
-    // Credit the canonical account balance without a read-modify-write race.
-    await db.insert(tradingAccountsTable).values({ clerkUserId: tx.clerkUserId }).onConflictDoNothing();
-    await db.update(tradingAccountsTable).set({
-      balance: sql`${tradingAccountsTable.balance} + ${tx.amount}`,
-      updatedAt: new Date(),
-    }).where(eq(tradingAccountsTable.clerkUserId, tx.clerkUserId));
+  if (result.kind === "processed") {
+    res.status(409).json({ error: "Transaction has already been processed." });
+    return;
   }
-
-  // For approved withdrawals: debit holdings
-  if (tx.type === "withdrawal") {
-    const [existing] = await db
-      .select()
-      .from(holdingsTable)
-      .where(
-        and(
-          eq(holdingsTable.clerkUserId, tx.clerkUserId),
-          eq(holdingsTable.symbol, tx.asset),
-        ),
-      )
-      .limit(1);
-    if (existing) {
-      const newAmount = Math.max(0, asNumber(existing.amount) - asNumber(tx.amount));
-      const newValue = Math.max(0, asNumber(existing.value) - asNumber(tx.amount));
-      await db
-        .update(holdingsTable)
-        .set({ amount: String(newAmount), value: String(newValue) })
-        .where(eq(holdingsTable.id, existing.id));
-    }
+  if (result.kind === "insufficient") {
+    res.status(409).json({ error: "Insufficient canonical balance to approve this withdrawal." });
+    return;
   }
-
-  res.json(await enrichTransaction(tx));
+  res.json(await enrichTransaction(result.transaction));
 });
 
 router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) => {
@@ -2118,10 +2165,10 @@ router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) =>
   const [tx] = await db
     .update(transactionsTable)
     .set({ status: "failed" })
-    .where(eq(transactionsTable.id, txId))
+    .where(and(eq(transactionsTable.id, txId), eq(transactionsTable.status, "pending")))
     .returning();
   if (!tx) {
-    res.status(404).json({ error: "Transaction not found" });
+    res.status(409).json({ error: "Transaction was not found or has already been processed." });
     return;
   }
   await db
@@ -2166,37 +2213,45 @@ router.get("/admin/kyc", requireAdmin, async (_req, res) => {
 
 router.patch("/admin/kyc/:id/approve", requireAdmin, async (req, res) => {
   const kycId = Number(req.params.id);
-  const [kyc] = await db
-    .update(kycSubmissionsTable)
-    .set({ status: "verified" })
-    .where(eq(kycSubmissionsTable.id, kycId))
-    .returning();
+  const kyc = await db.transaction(async (transaction) => {
+    const [approved] = await transaction
+      .update(kycSubmissionsTable)
+      .set({ status: "verified" })
+      .where(and(eq(kycSubmissionsTable.id, kycId), eq(kycSubmissionsTable.status, "pending")))
+      .returning();
+    if (!approved) return null;
+    await transaction
+      .update(walletProfilesTable)
+      .set({ verificationStatus: "verified" })
+      .where(eq(walletProfilesTable.clerkUserId, approved.clerkUserId));
+    return approved;
+  });
   if (!kyc) {
-    res.status(404).json({ error: "KYC not found" });
+    res.status(409).json({ error: "KYC submission was not found or has already been reviewed." });
     return;
   }
-  await db
-    .update(walletProfilesTable)
-    .set({ verificationStatus: "verified" })
-    .where(eq(walletProfilesTable.clerkUserId, kyc.clerkUserId));
   res.json(await enrichKyc(kyc));
 });
 
 router.patch("/admin/kyc/:id/reject", requireAdmin, async (req, res) => {
   const kycId = Number(req.params.id);
-  const [kyc] = await db
-    .update(kycSubmissionsTable)
-    .set({ status: "rejected" })
-    .where(eq(kycSubmissionsTable.id, kycId))
-    .returning();
+  const kyc = await db.transaction(async (transaction) => {
+    const [rejected] = await transaction
+      .update(kycSubmissionsTable)
+      .set({ status: "rejected" })
+      .where(and(eq(kycSubmissionsTable.id, kycId), eq(kycSubmissionsTable.status, "pending")))
+      .returning();
+    if (!rejected) return null;
+    await transaction
+      .update(walletProfilesTable)
+      .set({ verificationStatus: "unverified" })
+      .where(eq(walletProfilesTable.clerkUserId, rejected.clerkUserId));
+    return rejected;
+  });
   if (!kyc) {
-    res.status(404).json({ error: "KYC not found" });
+    res.status(409).json({ error: "KYC submission was not found or has already been reviewed." });
     return;
   }
-  await db
-    .update(walletProfilesTable)
-    .set({ verificationStatus: "unverified" })
-    .where(eq(walletProfilesTable.clerkUserId, kyc.clerkUserId));
   res.json(await enrichKyc(kyc));
 });
 

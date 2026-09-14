@@ -1855,10 +1855,10 @@ export function Settings() {
     setDocUploadError('');
     setKycSubmitError('');
     const extension = file.name.split('.').pop()?.toLowerCase();
-    const supportedExtension = extension != null && ['jfif', 'jpg', 'jpeg', 'png'].includes(extension);
-    const supportedMime = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png'].includes(file.type.toLowerCase());
+    const supportedExtension = extension != null && ['jfif', 'jpg', 'jpeg', 'png', 'webp'].includes(extension);
+    const supportedMime = ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase());
     if (!supportedExtension && !supportedMime) {
-      setDocUploadError('Please upload a .jfif, .jpg, .jpeg, or .png image.');
+      setDocUploadError('Please upload a .jfif, .jpg, .jpeg, .png, or .webp image.');
       return;
     }
     try {
@@ -1870,8 +1870,8 @@ export function Settings() {
         setDocBackFileName(file.name);
         setDocBackPreview(preview);
       }
-    } catch {
-      setDocUploadError('We could not process that image. Please choose another file.');
+    } catch (error) {
+      setDocUploadError(error instanceof Error ? error.message : 'We could not process that image. Please choose another file.');
     }
   };
 
@@ -2133,7 +2133,7 @@ export function Settings() {
                               <p className="truncate text-sm font-semibold">{fileName || `Choose ${side} image`}</p>
                               <p className="text-xs text-muted-foreground">Image only</p>
                             </div>
-                            <input id={id} type="file" accept=".jfif,.jpg,.jpeg,.png,image/jpeg,image/png" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
+                            <input id={id} type="file" accept=".jfif,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => handleFileChange(event, side)} data-testid={testId} />
                           </label>
                           {preview && (
                             <div className="overflow-hidden rounded-xl border border-border">

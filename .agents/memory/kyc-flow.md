@@ -9,9 +9,11 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 - **Enum values** — `ProfileVerificationStatus` is `unverified | pending | verified | rejected`. `rejected` was added to the OpenAPI spec and must stay there; omitting it breaks TypeScript comparisons.
 - **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `documentType`, `documentImageBase64`. SSN is not collected in the user flow; the legacy admin-visible column is stored as an empty value.
 - **Document evidence** — Keep the legacy single-image storage contract; compose the two required ID sides before submission rather than changing the database schema.
+- **Upload contract** — Source files may be JFIF/JPG/JPEG/PNG/WebP; the browser normalizes both sides to one JPEG. The encoded API field has a finite 10 MB maximum under the 12 MB JSON parser limit.
 - **Shell KYC gate** — unverified users may open Settings and the read-only Overview; other protected member pages show the KYC status screen.
 - **Server KYC gate** — read-only Overview endpoints and profile/KYC/support settings remain available, while transaction and trading mutations deny unverified/pending/rejected users. Admin approval is the only normal path to financial access.
 - **Admin KYC panel** — expandable card per submission; SSN shown blurred with reveal toggle; image shown inline if base64 starts with `data:image`; approve/reject buttons in both row header and expanded footer.
+- **Admin population** — Admin user listing reconciles Clerk accounts into missing local profiles idempotently, then reads local users; Clerk outages fall back to already-known profiles.
 
 ## Where it lives
 

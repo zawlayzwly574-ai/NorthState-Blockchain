@@ -371,7 +371,7 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(portfolio?.totalValue ?? 0);
+  const balance = Number(account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;

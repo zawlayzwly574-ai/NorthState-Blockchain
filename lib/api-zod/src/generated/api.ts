@@ -390,7 +390,7 @@ export const submitKycBodyCountryMin = 2;
 
 
 export const submitKycBodyDocumentImageBase64Min = 100;
-export const submitKycBodyDocumentImageBase64Max = 1850000;
+export const submitKycBodyDocumentImageBase64Max = 10000000;
 
 
 export const submitKycBodyDocumentImageBase64RegExp = new RegExp('^data:image/jpeg;base64,');
