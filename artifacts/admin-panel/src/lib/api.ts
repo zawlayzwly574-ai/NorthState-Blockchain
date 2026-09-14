@@ -1,14 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export function getAdminKey() {
-  return sessionStorage.getItem('admin_key');
+  return localStorage.getItem('admin_key') ?? sessionStorage.getItem('admin_key');
 }
 
 export function setAdminKey(key: string) {
-  sessionStorage.setItem('admin_key', key);
+  localStorage.setItem('admin_key', key);
+  sessionStorage.removeItem('admin_key');
 }
 
 export function clearAdminKey() {
+  localStorage.removeItem('admin_key');
   sessionStorage.removeItem('admin_key');
   const base = import.meta.env.BASE_URL.replace(/\/$/, '') || '';
   window.location.href = `${base}/login`;
@@ -28,7 +30,6 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   });
 
   if (res.status === 401) {
-    clearAdminKey();
     throw new Error('Unauthorized');
   }
 

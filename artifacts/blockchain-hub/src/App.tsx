@@ -351,8 +351,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   };
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings');
-  const gatedContent = (!isExemptRoute && verificationStatus && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus} /> : children;
+  const isExemptRoute = location === '/settings' || location.startsWith('/settings') || location === '/dashboard';
+  const gatedContent = (!isExemptRoute && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus ?? 'unverified'} /> : children;
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
                 <Bell size={18} />
@@ -1369,7 +1369,7 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
   );
 }
 
-function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
+function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: (message?: string) => void; verificationStatus?: string }) {
   const [mode, setMode] = useState<'deposit' | 'send' | 'withdraw' | 'convert' | null>(null);
   const [asset, setAsset] = useState('BTC');
   const [toAsset, setToAsset] = useState('ETH');
@@ -1391,6 +1391,10 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDepositError('');
+    if (verificationStatus !== 'verified') {
+      setDepositError('Complete identity verification and wait for admin approval before making a deposit.');
+      return;
+    }
     const form = new FormData(event.currentTarget);
     deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
       onSuccess: () => {
@@ -1408,6 +1412,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
 
   const submitTransfer = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (verificationStatus !== 'verified') return;
     const form = new FormData(event.currentTarget);
     const data = { asset, amount: Number(form.get('amount')), destination: String(form.get('destination')) };
     const mutation = mode === 'send' ? send : withdrawal;
@@ -1444,6 +1449,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
       {mode === 'deposit' && (
         <Modal title="Add funds" eyebrow="Deposit" onClose={close}>
           <form className="grid gap-5" onSubmit={submitDeposit}>
+            {verificationStatus !== 'verified' && <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-sm font-semibold text-accent">KYC verification and admin approval are required before deposits can be submitted.</p>}
             <SelectField label="Asset" value={asset} onChange={(event) => setAsset(event.target.value)} data-testid="select-deposit-asset">
               {depositAssets.map((item) => (
                 <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.name}</option>
@@ -1461,7 +1467,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
             </div>
             <Field label={`Amount (${asset})`} name="amount" type="number" min="0.00000001" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
             <Field label="Transaction hash" name="txHash" type="text" placeholder="Paste the on-chain transaction hash" required data-testid="input-deposit-txhash" />
-            <Button type="submit" className="w-full" disabled={deposit.isPending} data-testid="button-submit-deposit">
+            <Button type="submit" className="w-full" disabled={deposit.isPending || verificationStatus !== 'verified'} data-testid="button-submit-deposit">
               {deposit.isPending ? 'Submitting deposit...' : 'Submit deposit proof'} <ArrowUpRight size={16} />
             </Button>
             {depositError && <p className="text-sm font-semibold text-destructive" data-testid="status-deposit-error">{depositError}</p>}
@@ -1473,6 +1479,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
       {(mode === 'send' || mode === 'withdraw') && (
         <Modal title={mode === 'send' ? 'Send funds' : 'Withdraw funds'} eyebrow={mode === 'send' ? 'Transfer' : 'Withdrawal'} onClose={close}>
           <form className="grid gap-5" onSubmit={submitTransfer}>
+            {verificationStatus !== 'verified' && <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-sm font-semibold text-accent">KYC verification and admin approval are required before funds can be transferred.</p>}
             <SelectField label="Asset" value={asset} onChange={(event) => setAsset(event.target.value)} data-testid="select-transfer-asset">
               {depositAssets.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.name}</option>)}
             </SelectField>
@@ -1481,7 +1488,7 @@ function WalletDialogs({ onDone }: { onDone: (message?: string) => void }) {
             <div className="rounded-xl border border-accent/20 bg-accent/7 p-3 text-xs leading-5 text-muted-foreground">
               <strong className="text-accent">Review carefully.</strong> Blockchain transfers cannot be reversed after confirmation.
             </div>
-            <Button type="submit" className="w-full" disabled={send.isPending || withdrawal.isPending} data-testid={`button-submit-${mode}`}>
+            <Button type="submit" className="w-full" disabled={send.isPending || withdrawal.isPending || verificationStatus !== 'verified'} data-testid={`button-submit-${mode}`}>
               {send.isPending || withdrawal.isPending ? 'Processing...' : `Confirm ${mode}`} <ArrowUpRight size={16} />
             </Button>
             {(send.isError || withdrawal.isError) && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">We could not process this request. Check the details and try again.</p>}
@@ -1538,6 +1545,7 @@ export function Dashboard() {
   const [notice, setNotice] = useState('');
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
+  const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled } });
 
   const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
   const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 60_000, placeholderData: (prev) => prev } });
@@ -1554,8 +1562,14 @@ export function Dashboard() {
   return (
     <Shell>
       <PageHeader eyebrow="Overview" title="Your portfolio" detail="A grounded view of everything you hold."
-        action={<WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
+        action={<WalletDialogs verificationStatus={profile.data?.verificationStatus} onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
       />
+      {profile.data?.verificationStatus !== 'verified' && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent">
+          <span>Overview is available in read-only mode. Complete KYC in Settings to enable deposits, withdrawals, and trading.</span>
+          <Link href="/settings" className="font-extrabold underline underline-offset-4">Open Settings</Link>
+        </div>
+      )}
       {notice && (
         <div className="mb-5 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-bold text-primary animate-rise" data-testid="status-wallet-success">
           <Check size={17} />{notice}

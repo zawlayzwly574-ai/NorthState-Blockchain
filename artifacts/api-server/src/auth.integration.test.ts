@@ -185,7 +185,7 @@ describe("member route authentication", () => {
     });
   });
 
-  it("blocks wallet features until KYC receives admin approval", async () => {
+  it("blocks wallet mutations until KYC receives admin approval", async () => {
     select.mockReturnValueOnce({
       from: () => ({
         where: () => ({
@@ -194,8 +194,17 @@ describe("member route authentication", () => {
       }),
     });
 
-    const response = await fetch(`${baseUrl}/api/portfolio`, {
-      headers: { cookie: "__session=restored" },
+    const response = await fetch(`${baseUrl}/api/transactions/withdraw`, {
+      method: "POST",
+      headers: {
+        cookie: "__session=restored",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        asset: "ETH",
+        amount: 0.1,
+        destination: "0x1234567890",
+      }),
     });
 
     expect(response.status).toBe(403);

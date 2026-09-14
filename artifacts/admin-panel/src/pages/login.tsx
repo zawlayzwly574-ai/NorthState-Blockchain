@@ -17,16 +17,19 @@ export default function Login() {
     setError('');
 
     try {
-      // Basic check via stats endpoint to verify key
-      const res = await fetch('/api/admin/stats', {
-        headers: { 'X-Admin-Key': key }
+      // Validate the environment-backed key without requiring database access.
+      const normalizedKey = key.trim();
+      const res = await fetch('/api/admin/auth/validate', {
+        headers: { 'X-Admin-Key': normalizedKey }
       });
       
       if (res.ok) {
-        setAdminKey(key);
+        setAdminKey(normalizedKey);
         setLocation('/dashboard');
-      } else {
+      } else if (res.status === 401) {
         setError('Invalid admin key');
+      } else {
+        setError('Admin service is temporarily unavailable. Please try again.');
       }
     } catch (err) {
       setError('Connection failed');

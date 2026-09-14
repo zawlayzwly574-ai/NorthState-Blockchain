@@ -452,6 +452,7 @@ async function ensureSeededUser(userId: string) {
 function isKycExemptMemberPath(path: string) {
   return [
     "/profile",
+    "/user",
     "/kyc",
     "/referral",
     "/security",
@@ -461,7 +462,12 @@ function isKycExemptMemberPath(path: string) {
 }
 
 async function requireVerifiedMember(req: Request, res: Response, next: NextFunction) {
-  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path)) {
+  const readOnlyOverviewPath = req.method === "GET" && [
+    "/portfolio",
+    "/activity",
+    "/notifications",
+  ].some((path) => req.path === path || req.path.startsWith(`${path}/`));
+  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path) || readOnlyOverviewPath) {
     next();
     return;
   }
@@ -851,6 +857,22 @@ router.use((req, res, next) => {
 });
 
 router.get("/profile", async (req, res) => {
+  const profile = await ensureSeededUser(getUserId(req));
+  res.json(GetProfileResponse.parse({
+    id: String(profile.id),
+    name: profile.displayName,
+    email: profile.email,
+    initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
+    verificationStatus: profile.verificationStatus,
+    referralCode: "NORTHSTAR-ALEX",
+    twoFactorEnabled: profile.twoFactorEnabled ?? false,
+    smsPhoneNumber: profile.smsPhoneNumber ?? null,
+    smsPhoneVerified: profile.smsPhoneVerified ?? false,
+  }));
+});
+
+// Backwards-compatible profile alias used by older clients.
+router.get("/user", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
   res.json(GetProfileResponse.parse({
     id: String(profile.id),
@@ -1699,6 +1721,11 @@ function requireAdmin(
   }
   next();
 }
+
+// Authentication-only endpoint: intentionally performs no database work.
+router.get("/admin/auth/validate", requireAdmin, (_req, res) => {
+  res.json({ authenticated: true });
+});
 
 // ─── Admin: stats ────────────────────────────────────────────────────────────
 
