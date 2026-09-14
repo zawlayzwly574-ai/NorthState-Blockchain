@@ -10,8 +10,8 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 - **KYC form fields** — `fullName`, `country`, `city`, `occupation`, `documentType`, `documentImageBase64`. SSN is not collected in the user flow; the legacy admin-visible column is stored as an empty value.
 - **Document evidence** — Keep the legacy single-image storage contract; compose the two required ID sides before submission rather than changing the database schema.
 - **Upload contract** — Source files may be JFIF/JPG/JPEG/PNG/WebP; the browser normalizes both sides to one JPEG. The encoded API field has a finite 10 MB maximum under the 12 MB JSON parser limit.
-- **Route KYC gate** — authenticated protected pages are not mounted until the profile query confirms `verified`; unverified/pending/rejected users see the KYC status screen. Only Settings remains accessible for submission and account support.
-- **Server KYC gate** — portfolio, activity, mining, trading, and transaction APIs deny unverified/pending/rejected users. Profile, KYC, referral, security, SMS, and support routes remain available. Admin approval is the only normal path to member access.
+- **Route KYC gate** — authenticated unverified/pending/rejected users may open Overview, Activity, and Settings without mounting a crash state. Markets, mining, and trading still require `verified`.
+- **Server KYC gate** — profile/user, portfolio, activity, notifications, KYC, referral, security, SMS, and support reads remain available to authenticated users. Financial mutations, mining, and trading require Admin-approved KYC.
 - **Admin KYC panel** — expandable card per submission; SSN shown blurred with reveal toggle; image shown inline if base64 starts with `data:image`; approve/reject buttons in both row header and expanded footer.
 - **Admin population** — Admin user listing reconciles Clerk accounts into missing local profiles idempotently, then reads local users; Clerk outages fall back to already-known profiles.
 
@@ -27,4 +27,4 @@ description: Full KYC submission, gating, and admin review pipeline — schema, 
 
 **Why:** Browser-optimize both document sides and keep the composed payload below the server's finite safety limit. This accepts large source photos without allowing unbounded request bodies.
 
-**Why:** Gate protected components before they mount so their data hooks cannot produce intermittent 401/403 crash screens while profile verification is loading.
+**Why:** Read-only member views and KYC submission must remain usable before verification; only balance-changing or restricted financial features should be blocked.

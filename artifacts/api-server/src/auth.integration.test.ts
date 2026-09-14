@@ -124,6 +124,27 @@ describe("member route authentication", () => {
     expect(select).toHaveBeenCalledTimes(1);
   });
 
+  it("returns the standard user profile for a logged-in unverified member", async () => {
+    select.mockReturnValue({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ ...profile, verificationStatus: "unverified" }],
+        }),
+      }),
+    });
+
+    const response = await fetch(`${baseUrl}/api/user`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "1",
+      name: "Alex Morgan",
+      verificationStatus: "unverified",
+    });
+  });
+
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {

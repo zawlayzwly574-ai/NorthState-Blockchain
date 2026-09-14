@@ -462,7 +462,13 @@ function isKycExemptMemberPath(path: string) {
 }
 
 async function requireVerifiedMember(req: Request, res: Response, next: NextFunction) {
-  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path)) {
+  const unverifiedReadPath = req.method === "GET" && [
+    "/portfolio",
+    "/activity",
+    "/notifications",
+  ].some((path) => req.path === path || req.path.startsWith(`${path}/`));
+
+  if (req.path.startsWith("/admin") || isKycExemptMemberPath(req.path) || unverifiedReadPath) {
     next();
     return;
   }

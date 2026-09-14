@@ -351,7 +351,11 @@ function Shell({ children }: { children: React.ReactNode }) {
   };
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
-  const isExemptRoute = location === '/settings' || location.startsWith('/settings');
+  const isExemptRoute = [
+    '/dashboard',
+    '/activity',
+    '/settings',
+  ].some((path) => location === path || location.startsWith(`${path}/`));
   const gatedContent = (!isExemptRoute && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus ?? 'unverified'} /> : children;
   return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
               <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
@@ -1555,7 +1559,15 @@ export function Dashboard() {
   const fxRate = (currency === 'USD' ? 1 : (fxQuery.data?.rates?.[currency] ?? 1));
   const cx = (usdValue: number) => usdValue * fxRate;
 
-  const data = portfolio.data;
+  const fallbackPortfolio = {
+    totalValue: 0,
+    dayChange: 0,
+    dayChangePercent: 0,
+    cashBalance: 0,
+    history: [],
+    holdings: [],
+  };
+  const data = portfolio.data ?? (portfolio.isError ? fallbackPortfolio : undefined);
   const recent = activity.data?.slice(0, 5) ?? [];
   const holdings = data?.holdings ?? [];
 
@@ -1576,7 +1588,6 @@ export function Dashboard() {
         </div>
       )}
       {portfolio.isLoading ? <LoadingState lines={5} />
-        : portfolio.isError ? <ErrorState retry={() => portfolio.refetch()} />
         : !data ? <EmptyState title="Your portfolio is ready for its first asset" detail="Make a deposit to see your balance and holdings here." />
         : (
           <>
@@ -1677,8 +1688,7 @@ export function Dashboard() {
                   <Link href="/activity" className="text-xs font-bold text-primary hover:underline" data-testid="link-see-all-activity">View all</Link>
                 </div>
                 {activity.isLoading ? <LoadingState lines={4} />
-                  : activity.isError ? <ErrorState retry={() => activity.refetch()} />
-                  : recent.length === 0 ? <EmptyState title="Nothing here yet" detail="Your first wallet action will show up in this timeline." />
+                  : recent.length === 0 ? <EmptyState title="Nothing here yet" detail={activity.isError ? "Activity is temporarily unavailable. Your portfolio remains safe." : "Your first wallet action will show up in this timeline."} />
                   : (
                     <div className="grid gap-1">
                       {recent.map((item) => (
@@ -1777,7 +1787,7 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
   const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn } }); const items = activity.data ?? [];
-  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : activity.isError ? <ErrorState retry={() => activity.refetch()} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, sends, and withdrawals will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
+  return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isLoading ? <LoadingState lines={7} /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail={activity.isError ? "Activity is temporarily unavailable. Please check again shortly." : "Deposits, sends, and withdrawals will appear here as they happen."} /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
 export function Settings() {
@@ -1801,7 +1811,7 @@ export function Settings() {
   const [editName, setEditName] = useState('');
   const profileData = profile.data;
   const referralData = referral.data;
-  const verStatus = profileData?.verificationStatus;
+  const verStatus = profileData?.verificationStatus ?? 'unverified';
 
   useEffect(() => {
     if (profileData?.name) setEditName(profileData.name);
@@ -2025,7 +2035,6 @@ export function Settings() {
                 </div>
               </div>
               {profile.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
-                : profile.isError ? <div className="mt-7"><ErrorState retry={() => profile.refetch()} /></div>
                 : (
                   <>
                     <div className="mt-7 grid gap-4 sm:grid-cols-2">
@@ -2498,7 +2507,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><VerifiedRoute><Dashboard /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><VerifiedRoute><ActivityPage /></VerifiedRoute></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);

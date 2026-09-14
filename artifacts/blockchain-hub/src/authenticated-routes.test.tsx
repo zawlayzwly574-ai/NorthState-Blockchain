@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React, { type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Router, Switch } from "wouter";
@@ -21,7 +21,7 @@ vi.mock("@clerk/react", async () => {
   };
 });
 
-import { ActivityPage, Dashboard, ProtectedRoute, Settings, VerifiedRoute } from "./App";
+import { ActivityPage, Dashboard, ProtectedRoute, Settings } from "./App";
 
 const protectedPaths = [
   "/api/portfolio",
@@ -120,19 +120,42 @@ describe("authenticated portfolio routes", () => {
     expect(protectedCalls).toHaveLength(0);
   });
 
-  it("does not mount protected page queries while an unverified member is gated", async () => {
+  it("loads the read-only Overview for an unverified member without a crash state", async () => {
     authState.isLoaded = true;
     authState.isSignedIn = true;
     authState.verificationStatus = "unverified";
 
-    renderRoute(
-      <VerifiedRoute><div>Protected financial page</div></VerifiedRoute>,
-      "/dashboard",
-    );
+    renderRoute(<Dashboard />, "/dashboard");
 
-    expect(await screen.findByText("Complete Identity Verification")).toBeInTheDocument();
-    expect(screen.queryByText("Protected financial page")).not.toBeInTheDocument();
-    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/portfolio"))).toBe(false);
+    expect(await screen.findByText("Overview is available in read-only mode. Complete KYC in Settings to enable deposits, withdrawals, and trading.")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/portfolio"))).toBe(true);
+    expect(screen.queryByText("We could not load this view")).not.toBeInTheDocument();
+  });
+
+  it("keeps the KYC form available when profile loading fails", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/profile")) {
+        return new Response(JSON.stringify({ error: "Temporarily unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(jsonFor(url)), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    renderRoute(<Settings />, "/settings");
+    fireEvent.click(await screen.findByTestId("button-settings-verification"));
+
+    expect(await screen.findByTestId("select-kyc-document")).toBeInTheDocument();
+    expect(screen.getByTestId("input-kyc-id-front")).toBeInTheDocument();
+    expect(screen.getByTestId("input-kyc-id-back")).toBeInTheDocument();
+    expect(screen.queryByText("We could not load this view")).not.toBeInTheDocument();
   });
 
   it.each([
