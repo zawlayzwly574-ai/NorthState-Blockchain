@@ -8,7 +8,7 @@ import { shadcn } from '@clerk/themes';
 import {
   ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowUpRight, BarChart3, Bell, Check, ChevronDown, ChevronRight,
   Clipboard, Copy, Eye, EyeOff, FileCheck2, Fingerprint, Home as HomeIcon, Landmark, LineChart,
-  Lock, Mail, Menu, MessageCircle, Phone, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
+  Lock, Mail, Menu, Phone, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
   Sparkles, TrendingDown, TrendingUp, Upload, Wallet, X, Zap,
 } from 'lucide-react';
 import {
@@ -20,7 +20,6 @@ import {
   useSetupTotp, useVerifyTotp, useDisableTotp,
   useListPasskeys, useBeginPasskeyRegistration, useFinishPasskeyRegistration, useDeletePasskey,
   useSendSmsOtp, useVerifySmsOtp,
-  useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
   useGetMiningPlace, useGetMiningInvestments, useCreateMiningInvestment,
 } from '@workspace/api-client-react';
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
@@ -2606,146 +2605,6 @@ function MiningPlaceDetail() {
 }
 
 function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
-function SupportChatWidget() {
-  const { isSignedIn, isLoaded } = useAuth();
-  const [open, setOpen] = useState(false);
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const qc = useQueryClient();
-  const profile = useGetProfile({
-    query: { queryKey: getGetProfileQueryKey(), enabled: isLoaded && !!isSignedIn },
-  });
-  const canUseSupport = !isSignedIn || profile.data?.verificationStatus === 'verified';
-
-  const { data, isLoading } = useGetSupportMessages({
-    query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn && canUseSupport, refetchInterval: open ? 5000 : false },
-  });
-  const sendMut = useSendSupportMessage();
-  const messages = data?.messages ?? [];
-
-  useEffect(() => {
-    if (open && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages.length, open]);
-
-  if (isSignedIn && !canUseSupport) return null;
-
-  const handleSend = async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setInput('');
-    try {
-      await sendMut.mutateAsync({ data: { content: text } });
-      qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey() });
-    } catch {
-      setInput(text);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_32px_hsl(var(--primary)/.4)] transition-transform hover:scale-105 active:scale-95"
-        aria-label="Customer support"
-        data-testid="button-support-chat"
-      >
-        {open ? <X size={22} /> : <MessageCircle size={22} />}
-      </button>
-
-      {open && (
-        <div className="fixed bottom-24 right-6 z-50 flex h-[480px] w-[360px] max-h-[calc(100dvh-120px)] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-border bg-[hsl(222_10%_9%)] shadow-[0_24px_80px_rgba(0,0,0,.55)]">
-          {/* Header */}
-          <div className="flex shrink-0 items-center gap-3 border-b border-border bg-[hsl(222_10%_11%)] px-4 py-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
-              <MessageCircle size={17} />
-            </div>
-            <div>
-              <p className="text-sm font-bold">North State Blockchain Support</p>
-              <p className="text-[11px] text-muted-foreground">We typically reply within a few hours</p>
-            </div>
-            <button type="button" onClick={() => setOpen(false)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label="Close chat">
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!isLoaded ? null : !isSignedIn ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
-                  <Lock size={20} />
-                </div>
-                <p className="text-sm font-bold">Sign in to chat with support</p>
-                <p className="text-xs leading-5 text-muted-foreground">Create an account or sign in to get personalised help from our team.</p>
-              </div>
-            ) : isLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <span className="text-xs text-muted-foreground">Loading…</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
-                  <MessageCircle size={20} />
-                </div>
-                <p className="text-sm font-bold">How can we help?</p>
-                <p className="text-xs leading-5 text-muted-foreground">Send us a message and our team will get back to you as soon as possible.</p>
-              </div>
-            ) : (
-              messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.senderRole === 'admin' && (
-                    <div className="mr-2 mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">N</div>
-                  )}
-                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 ${msg.senderRole === 'user' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-secondary/60 text-foreground'}`}>
-                    <p className="text-sm leading-5 whitespace-pre-wrap">{msg.content}</p>
-                    <p className={`mt-1 text-[10px] ${msg.senderRole === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          {isSignedIn && (
-            <div className="shrink-0 border-t border-border p-3">
-              <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex items-end gap-2">
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder="Type a message…"
-                  rows={1}
-                  className="min-h-[40px] max-h-[100px] flex-1 resize-none rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-sm leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
-                  data-testid="input-support-message"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || sending}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground transition disabled:opacity-40 hover:scale-105 active:scale-95"
-                  aria-label="Send message"
-                  data-testid="button-support-send"
-                >
-                  <Send size={16} />
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
-}
-
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();
@@ -2791,7 +2650,7 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 function App() { return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>; }
