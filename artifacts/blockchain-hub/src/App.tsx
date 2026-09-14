@@ -1972,10 +1972,6 @@ export function Settings() {
       setDocUploadError('Please upload a .jfif, .jpg, .jpeg, or .png image.');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setDocUploadError('Each ID image must be 5 MB or smaller.');
-      return;
-    }
     try {
       const preview = await compressDocumentImage(file);
       if (side === 'front') {
@@ -1998,28 +1994,38 @@ export function Settings() {
     const onLoad = () => {
       loaded += 1;
       if (loaded !== 2) return;
-      const width = Math.max(frontImage.width, backImage.width);
+      const sourceWidth = Math.max(frontImage.width, backImage.width);
       const gap = 32;
       const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = frontImage.height + gap + backImage.height;
       const context = canvas.getContext('2d');
       if (!context) {
         reject(new Error('The ID images could not be prepared.'));
         return;
       }
-      context.fillStyle = '#ffffff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(frontImage, (width - frontImage.width) / 2, 0);
-      context.drawImage(backImage, (width - backImage.width) / 2, frontImage.height + gap);
-      let quality = 0.74;
-      let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > 1_600_000 && quality > 0.42) {
-        quality -= 0.08;
+      let scale = 1;
+      let quality = 0.82;
+      let result = '';
+      do {
+        const width = Math.max(1, Math.round(sourceWidth * scale));
+        const frontWidth = Math.max(1, Math.round(frontImage.width * scale));
+        const frontHeight = Math.max(1, Math.round(frontImage.height * scale));
+        const backWidth = Math.max(1, Math.round(backImage.width * scale));
+        const backHeight = Math.max(1, Math.round(backImage.height * scale));
+        const scaledGap = Math.max(8, Math.round(gap * scale));
+        canvas.width = width;
+        canvas.height = frontHeight + scaledGap + backHeight;
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(frontImage, (width - frontWidth) / 2, 0, frontWidth, frontHeight);
+        context.drawImage(backImage, (width - backWidth) / 2, frontHeight + scaledGap, backWidth, backHeight);
         result = canvas.toDataURL('image/jpeg', quality);
-      }
-      if (result.length > 1_850_000) {
-        reject(new Error('The combined ID images are too large.'));
+        if (result.length > 1_600_000) {
+          if (quality > 0.5) quality -= 0.1;
+          else scale *= 0.8;
+        }
+      } while (result.length > 1_600_000 && canvas.width > 320);
+      if (result.length > 1_600_000) {
+        reject(new Error('The ID images could not be optimized for upload. Please try again.'));
         return;
       }
       resolve(result);
@@ -2058,7 +2064,7 @@ export function Settings() {
     } catch (error) {
       const apiError = error as { status?: number; data?: { error?: string } };
       if (apiError.status === 413) {
-        setKycSubmitError('The ID images are still too large. Please choose smaller images and try again.');
+        setKycSubmitError('The document upload could not be processed. Please retry the same images.');
       } else {
         setKycSubmitError(apiError.data?.error || 'We could not submit your details. Check your connection and try again.');
       }
