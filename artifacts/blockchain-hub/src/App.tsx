@@ -2624,13 +2624,13 @@ function SupportChatWidget() {
   const sendMut = useSendSupportMessage();
   const messages = data?.messages ?? [];
 
-  if (isSignedIn && !canUseSupport) return null;
-
   useEffect(() => {
     if (open && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages.length, open]);
+
+  if (isSignedIn && !canUseSupport) return null;
 
   const handleSend = async () => {
     const text = input.trim();
