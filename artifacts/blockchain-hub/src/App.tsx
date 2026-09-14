@@ -22,6 +22,7 @@ import {
   useSendSmsOtp, useVerifySmsOtp,
   useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
   useGetMiningPlace, useGetMiningInvestments, useCreateMiningInvestment,
+  setAuthTokenGetter,
 } from '@workspace/api-client-react';
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
@@ -2718,6 +2719,28 @@ function ClerkQueryClientCacheInvalidator() {
   return null;
 }
 
+// Attaches the active Clerk session token as an `Authorization: Bearer`
+// header on every API call. Cookie-based auth alone is not reliable here:
+// Clerk's Frontend API for dev instances lives on a separate
+// *.accounts.dev origin, so its real session cookie is never first-party on
+// this app's own domain (the Clerk proxy that makes it first-party only
+// runs in production — see clerkProxyMiddleware.ts). Without this, signed-in
+// users get spurious 401s from getAuth(req) on every protected endpoint
+// (KYC submission, passkeys, etc.) even though the frontend shows them as
+// logged in. `getToken` already returns null when signed out, so this is a
+// pure addition — cookies still flow via `credentials: "include"`; this only
+// adds a second, more reliable channel for the same session.
+function ClerkApiAuthSync() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
+  return null;
+}
+
 function ClerkApp() {
   const [, setLocation] = useLocation();
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
@@ -2745,7 +2768,7 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ClerkApiAuthSync /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 function App() { return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>; }
