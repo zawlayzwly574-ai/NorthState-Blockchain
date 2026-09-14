@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "IEchdirccrApuxCkdZFk2"
+uri = "file://north-state-blockchain-app.zip"
+type = "unspecified"
+title = "North State Blockchain App ZIP"
+description = "Complete source package for the web app and admin panel, including code, shared libraries, database/API schemas, generated files, uploaded assets, icons, and workspace configuration. Secrets, node_modules, build output, and Git metadata are excluded."
+logical_id = "1c0d0932-bf18-425b-988b-251368cda195"
+content_hash = "sha256:71d3f51e0685e518a867ead4be292bc72dc68ca14d11974a430d8c58fc3540df"
+size = 4302630
+mtime_ms = 1789366633432
+storage_uri = "gcs://replit-rams-assets-sisko/rams/assets/repl:f3514809-2fb5-4124-ba88-7e5f8c71d5b0/1c0d0932-bf18-425b-988b-251368cda195/af3aa46b-0844-495d-bbd4-4bb5f641194a"
+storage_version_token = "1789366640709960"
+content_type = "application/octet-stream"
