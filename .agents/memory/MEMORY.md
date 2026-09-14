@@ -11,3 +11,4 @@
 - [Disposable PostgreSQL](disposable-postgresql.md) — local validation clusters must place Unix sockets in their temporary directory because the default runtime socket directory is absent.
 - [Stable member views](stable-member-views.md) — Overview, Activity, and Settings keep cached or sample data mounted during background refreshes instead of restoring blocking states.
 - [Verified-email identity reconciliation](verified-email-identity-reconciliation.md) — Clerk ID changes may reuse one financial identity only through a unique, verified-email match; ambiguity must fail closed.
+- [Public demo preview](public-demo-preview.md) — signed-out or stale-session visitors see isolated sample data; real records and mutations remain authenticated.

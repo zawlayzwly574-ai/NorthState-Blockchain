@@ -85,9 +85,9 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
-// KYC submits two client-compressed ID sides in one backward-compatible image.
-// Keep the limit narrow while allowing that payload above Express's 100 KB default.
-app.use(express.json({ limit: "2mb" }));
+// Source KYC photos are accepted regardless of their original file size and
+// normalized in the browser before this backward-compatible JSON upload.
+app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Resolve publishable key from the incoming host so the same server can

@@ -360,13 +360,17 @@ export function TradingPage() {
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
   const { data: miningPlace } = useGetMiningPlace({ query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 30_000, placeholderData: (previous) => previous } });
-  const { data: miningInvestments } = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 30_000, placeholderData: (previous) => previous } });
-  const { data: account, isLoading: accountLoading, isError: accountError } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
-  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (previous) => previous } });
+  const { data: miningInvestments } = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 30_000, placeholderData: (previous) => previous } });
+  const { data: account, isLoading: accountLoading, isError: accountError } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (previous) => previous } });
+  const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (previous) => previous } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
-    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, placeholderData: (previous) => previous },
+    query: { queryKey: getGetTradesQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 3_000, placeholderData: (previous) => previous },
   });
   const placeTradeHook = usePlaceTrade();
+  const isDemoPreview = !isLoaded || !isSignedIn || accountError;
+  const displayAccount = account ?? (isDemoPreview
+    ? { balance: 12_500, totalTrades: 18, wins: 12, losses: 6 }
+    : undefined);
 
   const goldQuote = miningPlace?.assets.find(item => item.symbol === 'GOLD');
   const marketAsset = asset === 'GOLD' ? goldQuote : market.find(m => m.symbol === asset);
@@ -386,12 +390,12 @@ export function TradingPage() {
   const tradeAmt = Math.max(1, Number(amount) || 0);
   const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(account?.balance ?? 0);
+  const balance = Number(displayAccount?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
   const insufficient = tradeAmt > availableToTrade;
-  const winRate = account?.totalTrades
-    ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
+  const winRate = displayAccount?.totalTrades
+    ? Math.round(((displayAccount.wins ?? 0) / displayAccount.totalTrades) * 100)
     : null;
 
   const triggerFlash = (msg: string, type: 'win' | 'loss') => {
@@ -408,6 +412,10 @@ export function TradingPage() {
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
+    if (isDemoPreview) {
+      triggerFlash(`${direction === 'long' ? 'BUY LONG' : 'SELL SHORT'} preview ready — sign in to place it`, 'win');
+      return;
+    }
     if (placing || insufficient || !memberQueriesEnabled || accountLoading || accountError) return;
     setTradeError('');
     setPlacing(true);
@@ -466,7 +474,7 @@ export function TradingPage() {
         <div className="flex gap-4">
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
-            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
+            <p className="mt-0.5 font-mono font-bold">{displayAccount?.totalTrades ?? 0}</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>

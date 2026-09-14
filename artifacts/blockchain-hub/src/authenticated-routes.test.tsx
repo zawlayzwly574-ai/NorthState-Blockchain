@@ -120,7 +120,7 @@ describe("authenticated portfolio routes", () => {
     expect(protectedCalls).toHaveLength(0);
   });
 
-  it("shows a recoverable account message instead of a blank body when profile loading fails", async () => {
+  it("shows the demo preview instead of an account error when profile loading fails", async () => {
     authState.isLoaded = true;
     authState.isSignedIn = true;
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -139,12 +139,11 @@ describe("authenticated portfolio routes", () => {
 
     renderRoute(<Dashboard />, "/dashboard");
 
-    expect(await screen.findByText("We could not load your account")).toBeInTheDocument();
-    expect(screen.getByText("Retry")).toBeInTheDocument();
-    expect(screen.getByText("Sign in again")).toBeInTheDocument();
+    expect(await screen.findByText("Your portfolio")).toBeInTheDocument();
+    expect(screen.queryByText("We could not load your account")).not.toBeInTheDocument();
   });
 
-  it("refreshes a valid Clerk session once and loads the account without requiring sign-in again", async () => {
+  it("does not enter a session-refresh loop after an unauthorized profile response", async () => {
     authState.isLoaded = true;
     authState.isSignedIn = true;
     authState.session.reload.mockClear();
@@ -166,7 +165,8 @@ describe("authenticated portfolio routes", () => {
     renderRoute(<Dashboard />, "/dashboard");
 
     expect(await screen.findByText("Your portfolio")).toBeInTheDocument();
-    expect(authState.session.reload).toHaveBeenCalledTimes(1);
+    expect(authState.session.reload).not.toHaveBeenCalled();
+    expect(profileCalls).toBe(1);
     expect(screen.queryByText("We could not load your account")).not.toBeInTheDocument();
   });
 
@@ -176,7 +176,7 @@ describe("authenticated portfolio routes", () => {
     ["Trading", "/trading"],
     ["Mining Place", "/mining-place"],
     ["Settings", "/settings"],
-  ])("redirects signed-out visitors from %s to sign in without flashing account content", async (name, path) => {
+  ])("renders the %s demo preview for signed-out visitors without protected API calls", async (name, path) => {
     const memory = memoryLocation({ path, record: true });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: 0 } },
@@ -193,8 +193,7 @@ describe("authenticated portfolio routes", () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByTestId("protected-route-loading")).toBeInTheDocument();
-    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
+    expect(screen.getByText(`${name} account content`)).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) =>
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     )).toBe(false);
@@ -211,11 +210,8 @@ describe("authenticated portfolio routes", () => {
       </QueryClientProvider>,
     );
 
-    await waitFor(() => {
-      expect(memory.history?.at(-1)).toBe(`/sign-in?redirect_url=${encodeURIComponent(path)}`);
-    });
-    expect(screen.getByText("Sign in page")).toBeInTheDocument();
-    expect(screen.queryByText(`${name} account content`)).not.toBeInTheDocument();
+    expect(memory.history?.at(-1)).toBe(path);
+    expect(screen.getByText(`${name} account content`)).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) =>
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     )).toBe(false);

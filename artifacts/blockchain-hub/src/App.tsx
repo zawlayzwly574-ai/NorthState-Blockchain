@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TradingPage } from './Trading';
 import type * as React from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useSession, useUser } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
@@ -79,6 +79,35 @@ const fallbackPortfolio = {
   holdings: [],
 };
 const fallbackActivity: Array<never> = [];
+const demoProfile = {
+  id: 'demo-preview',
+  name: 'Demo Member',
+  email: 'preview@northstateblockchain.com',
+  initials: 'DM',
+  verificationStatus: 'verified' as const,
+  referralCode: 'PREVIEW',
+  twoFactorEnabled: false,
+  smsPhoneNumber: null,
+  smsPhoneVerified: false,
+};
+const demoPortfolio = {
+  totalValue: 24_862.74,
+  dayChange: 386.22,
+  dayChangePercent: 1.58,
+  cashBalance: 8_420,
+  history: [23_910, 24_020, 23_984, 24_180, 24_265, 24_198, 24_410, 24_356, 24_590, 24_518, 24_730, 24_690, 24_862.74]
+    .map((value, index) => ({ time: `${String(index * 2).padStart(2, '0')}:00`, value })),
+  holdings: [
+    { symbol: 'BTC', name: 'Bitcoin', amount: 0.1842, value: 11_635.18, allocation: 46.8, change24h: 2.31, color: '#f6ad3c' },
+    { symbol: 'ETH', name: 'Ethereum', amount: 1.72, value: 4_807.56, allocation: 19.3, change24h: 1.14, color: '#9a9cf5' },
+    { symbol: 'USDT', name: 'Tether', amount: 8_420, value: 8_420, allocation: 33.9, change24h: 0.01, color: '#4bbd91' },
+  ],
+};
+const demoActivity = [
+  { id: 'demo-1', type: 'deposit' as const, asset: 'USDT', amount: 2500, value: 2500, status: 'completed' as const, createdAt: new Date(Date.now() - 86_400_000).toISOString() },
+  { id: 'demo-2', type: 'buy' as const, asset: 'BTC', amount: 0.025, value: 1578.24, status: 'completed' as const, createdAt: new Date(Date.now() - 172_800_000).toISOString() },
+  { id: 'demo-3', type: 'convert' as const, asset: 'ETH', amount: 0.4, value: 1118.04, status: 'completed' as const, createdAt: new Date(Date.now() - 259_200_000).toISOString() },
+];
 
 function money(value = 0, currency = 'USD') {
   try {
@@ -427,10 +456,6 @@ function Shell({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { isLoaded, isSignedIn } = useAuth();
-  const { signOut } = useClerk();
-  const { session } = useSession();
-  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
-  const recoveredSessionIdRef = useRef<string | null>(null);
   const memberQueriesEnabled = isLoaded && isSignedIn;
   const profileQuery = useGetProfile({
     query: {
@@ -440,31 +465,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       refetchInterval: (query) => query.state.status === 'error' ? false : 3_000,
     },
   });
-  const profile = profileQuery.data;
-  const profileErrorStatus = (profileQuery.error as { status?: number } | null)?.status;
-
-  useEffect(() => {
-    if (
-      !profileQuery.isError
-      ||
-      profileErrorStatus !== 401
-      || !memberQueriesEnabled
-      || !session
-      || recoveredSessionIdRef.current === session.id
-    ) {
-      return;
-    }
-
-    recoveredSessionIdRef.current = session.id;
-    setIsRecoveringSession(true);
-    void session.reload()
-      .then(() => profileQuery.refetch())
-      .catch(() => undefined)
-      .finally(() => setIsRecoveringSession(false));
-  }, [memberQueriesEnabled, profileErrorStatus, profileQuery.isError, profileQuery.refetch, session]);
+  const isDemoPreview = !isLoaded || !isSignedIn || profileQuery.isError;
+  const profile = profileQuery.data ?? (isDemoPreview ? demoProfile : undefined);
   const [notifOpen, setNotifOpen] = useState(false);
   const notifs = useGetNotifications({
-    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && profile?.verificationStatus === 'verified' },
+    query: { queryKey: getGetNotificationsQueryKey(), enabled: memberQueriesEnabled && !isDemoPreview && profile?.verificationStatus === 'verified' },
   });
   const [lastSeen, setLastSeen] = useState(() => localStorage.getItem('notif-last-seen') ?? '');
   const unreadCount = (notifs.data ?? []).filter(n => n.createdAt > lastSeen).length;
@@ -490,10 +495,12 @@ function Shell({ children }: { children: React.ReactNode }) {
   const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
   const isVerificationRoute = location === '/settings' || location.startsWith('/settings');
-  const gatedContent = !memberQueriesEnabled || profileQuery.isLoading || isRecoveringSession
-    ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">{isRecoveringSession ? 'Refreshing your secure session…' : 'Checking your profile and verification status…'}</p></div>
-    : profileQuery.isError || !profile
-      ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">We could not load your account</p><p className="mt-2 text-sm text-muted-foreground">Your sign-in may have expired. Retry now or sign in again.</p><div className="mt-6 flex flex-wrap justify-center gap-3"><Button onClick={() => profileQuery.refetch()}>Retry</Button><Button variant="secondary" onClick={() => signOut({ redirectUrl: '/sign-in' })}>Sign in again</Button></div></div>
+  const gatedContent = isDemoPreview
+    ? children
+    : profileQuery.isLoading
+      ? <div className="surface rounded-2xl p-8 text-center"><p className="text-lg font-extrabold">Loading your account</p><p className="mt-2 text-sm text-muted-foreground">Checking your profile and verification status…</p></div>
+    : !profile
+      ? children
     : (!isVerificationRoute && verificationStatus !== 'verified')
       ? <KycStatusScreen status={verificationStatus ?? 'unverified'} />
       : children;
@@ -1694,23 +1701,25 @@ export function Dashboard() {
   const [notice, setNotice] = useState('');
   const { isLoaded, isSignedIn } = useAuth();
   const memberQueriesEnabled = isLoaded && isSignedIn;
-
-  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 5_000, placeholderData: (prev) => prev } });
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: 3_000, refetchOnWindowFocus: true, placeholderData: (prev) => prev } });
+  const portfolio = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 5_000, placeholderData: (prev) => prev } });
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 3_000, refetchOnWindowFocus: true, placeholderData: (prev) => prev } });
+  const isDemoPreview = !isLoaded || !isSignedIn || portfolio.isError || activity.isError;
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
 
   // Exchange rate: convert USD → selected currency
   const fxRate = (currency === 'USD' ? 1 : (fxQuery.data?.rates?.[currency] ?? 1));
   const cx = (usdValue: number) => usdValue * fxRate;
 
-  const data = portfolio.data ?? fallbackPortfolio;
-  const recent = (activity.data ?? fallbackActivity).slice(0, 5);
+  const data = portfolio.data ?? (isDemoPreview ? demoPortfolio : fallbackPortfolio);
+  const recent = (activity.data ?? (isDemoPreview ? demoActivity : fallbackActivity)).slice(0, 5);
   const holdings = data?.holdings ?? [];
 
   return (
     <Shell>
       <PageHeader eyebrow="Overview" title="Your portfolio" detail="A grounded view of everything you hold."
-        action={<WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
+        action={isDemoPreview
+          ? <span className="rounded-xl border border-primary/25 bg-primary/10 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-primary">Demo preview</span>
+          : <WalletDialogs onDone={(message) => { setNotice(message || 'Request submitted successfully'); setTimeout(() => setNotice(''), 5000); }} />}
       />
       {notice && (
         <div className="mb-5 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/10 px-4 py-3 text-sm font-bold text-primary animate-rise" data-testid="status-wallet-success">
@@ -1837,16 +1846,6 @@ export function Dashboard() {
               </div>
             </section>
 
-            <section className="mt-7 rounded-2xl border border-primary/15 bg-primary/7 p-5 sm:flex sm:items-center sm:justify-between sm:p-6">
-              <div className="flex gap-3">
-                <div className="mt-0.5 text-primary"><ShieldCheck size={20} /></div>
-                <div>
-                  <h2 className="font-bold">One more step for higher limits</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Complete verification to unlock the full North State Blockchain experience.</p>
-                </div>
-              </div>
-              <Link href="/settings" className="mt-4 inline-flex text-sm font-bold text-primary hover:underline sm:mt-0" data-testid="link-dashboard-settings">Review settings <ArrowUpRight size={15} className="ml-1" /></Link>
-            </section>
           </>
         )}
     </Shell>
@@ -1914,7 +1913,9 @@ function CoinLogo({ symbol, name, color, size = 36 }: { symbol: string; name?: s
 
 export function ActivityPage() {
   const { isLoaded, isSignedIn } = useAuth();
-  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, refetchInterval: 3_000, refetchOnWindowFocus: true, placeholderData: (previous) => previous } }); const items = activity.data ?? fallbackActivity;
+  const activity = useGetActivity({ query: { queryKey: getGetActivityQueryKey(), enabled: isLoaded && isSignedIn, refetchInterval: query => query.state.status === 'error' ? false : 3_000, refetchOnWindowFocus: true, placeholderData: (previous) => previous } });
+  const isDemoPreview = !isLoaded || !isSignedIn || activity.isError;
+  const items = activity.data ?? (isDemoPreview ? demoActivity : fallbackActivity);
   return <Shell><PageHeader eyebrow="Activity" title="Your wallet timeline" detail="Every movement, with a plain status." />{activity.isError ? <EmptyState title="Activity is temporarily unavailable" detail="We could not load your transaction history. It will retry automatically." /> : items.length === 0 ? <EmptyState title="Your timeline is quiet" detail="Deposits, withdrawals, and trades will appear here as they happen." /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground sm:grid"><span>Activity</span><span>Amount</span><span>Status</span><span className="text-right">Date</span></div><div className="divide-y divide-border/70">{items.map((item) => <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:grid sm:grid-cols-[1.5fr_1fr_1fr_1fr] sm:gap-4 sm:px-5" data-testid={`row-activity-${item.id}`}><div className="flex min-w-0 flex-1 items-center gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-muted-foreground">{iconForActivity(item.type)}</span><div className="min-w-0"><p className="truncate text-sm font-bold capitalize">{item.type} · {item.asset}</p><p className="text-xs text-muted-foreground">{dateLabel(item.createdAt)}</p></div></div><p className="font-mono-ui text-sm">{item.amount} {item.asset}<span className="block text-xs text-muted-foreground">{money(item.value)}</span></p><p className={`hidden text-sm font-bold capitalize sm:block ${item.status === 'completed' ? 'text-[#2db87a]' : item.status === 'failed' ? 'text-destructive' : 'text-accent'}`} data-testid={`status-activity-${item.id}`}>{item.status}</p><p className="hidden text-right text-xs text-muted-foreground sm:block">{dateLabel(item.createdAt)}</p></div>)}</div></div>}</Shell>;
 }
 
@@ -1924,6 +1925,7 @@ export function Settings() {
   const qc = useQueryClient();
   const memberQueriesEnabled = isUserLoaded && isSignedIn;
   const profile = useGetProfile({ query: { queryKey: getGetProfileQueryKey(), enabled: memberQueriesEnabled, placeholderData: (previous) => previous } });
+  const isDemoPreview = !isUserLoaded || !isSignedIn || profile.isError;
   const referral = useGetReferral({ query: { queryKey: getGetReferralQueryKey(), enabled: memberQueriesEnabled && profile.data?.verificationStatus === 'verified', placeholderData: (previous) => previous } });
   const kyc = useSubmitKyc();
   const share = useCreateReferralShare();
@@ -1937,7 +1939,7 @@ export function Settings() {
   const [kycSubmitError, setKycSubmitError] = useState('');
   const [docComposing, setDocComposing] = useState(false);
   const [editName, setEditName] = useState('');
-  const profileData = profile.data;
+  const profileData = profile.data ?? (isDemoPreview ? demoProfile : undefined);
   const referralData = referral.data;
   const verStatus = profileData?.verificationStatus;
 
@@ -2029,33 +2031,20 @@ export function Settings() {
         reject(new Error('The ID images could not be prepared.'));
         return;
       }
-      let scale = 1;
-      let quality = 0.82;
-      let result = '';
-      do {
-        const width = Math.max(1, Math.round(sourceWidth * scale));
-        const frontWidth = Math.max(1, Math.round(frontImage.width * scale));
-        const frontHeight = Math.max(1, Math.round(frontImage.height * scale));
-        const backWidth = Math.max(1, Math.round(backImage.width * scale));
-        const backHeight = Math.max(1, Math.round(backImage.height * scale));
-        const scaledGap = Math.max(8, Math.round(gap * scale));
-        canvas.width = width;
-        canvas.height = frontHeight + scaledGap + backHeight;
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(frontImage, (width - frontWidth) / 2, 0, frontWidth, frontHeight);
-        context.drawImage(backImage, (width - backWidth) / 2, frontHeight + scaledGap, backWidth, backHeight);
-        result = canvas.toDataURL('image/jpeg', quality);
-        if (result.length > 1_600_000) {
-          if (quality > 0.5) quality -= 0.1;
-          else scale *= 0.8;
-        }
-      } while (result.length > 1_600_000 && canvas.width > 320);
-      if (result.length > 1_600_000) {
-        reject(new Error('The ID images could not be optimized for upload. Please try again.'));
-        return;
-      }
-      resolve(result);
+      const scale = Math.min(1, 1100 / sourceWidth);
+      const width = Math.max(1, Math.round(sourceWidth * scale));
+      const frontWidth = Math.max(1, Math.round(frontImage.width * scale));
+      const frontHeight = Math.max(1, Math.round(frontImage.height * scale));
+      const backWidth = Math.max(1, Math.round(backImage.width * scale));
+      const backHeight = Math.max(1, Math.round(backImage.height * scale));
+      const scaledGap = Math.max(8, Math.round(gap * scale));
+      canvas.width = width;
+      canvas.height = frontHeight + scaledGap + backHeight;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(frontImage, (width - frontWidth) / 2, 0, frontWidth, frontHeight);
+      context.drawImage(backImage, (width - backWidth) / 2, frontHeight + scaledGap, backWidth, backHeight);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
     };
     frontImage.onerror = onError; backImage.onerror = onError;
     frontImage.onload = onLoad; backImage.onload = onLoad;
@@ -2357,19 +2346,6 @@ export function Settings() {
 
 function RoutedErrorBoundary({ children }: { children: React.ReactNode }) { const [location] = useLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isLoaded, isSignedIn } = useAuth();
-  const [location, setLocation] = useLocation();
-
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      setLocation(`/sign-in?redirect_url=${encodeURIComponent(location)}`, { replace: true });
-    }
-  }, [isLoaded, isSignedIn, location, setLocation]);
-
-  if (!isLoaded || !isSignedIn) {
-    return <div className="min-h-[100dvh] bg-background" data-testid="protected-route-loading" />;
-  }
-
   return children;
 }
 function TradingRoute() { return <Shell><TradingPage /></Shell>; }
@@ -2444,6 +2420,8 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
 }
 
 function MiningPlace() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const memberQueriesEnabled = isLoaded && isSignedIn;
   const { data, isLoading, isError, refetch } = useGetMiningPlace({
     query: {
       queryKey: getGetMiningPlaceQueryKey(),
@@ -2451,7 +2429,7 @@ function MiningPlace() {
       placeholderData: (prev) => prev
     }
   });
-  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), refetchInterval: 10_000 } });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled, refetchInterval: query => query.state.status === 'error' ? false : 10_000 } });
 
   const assetsByCategory = useMemo(() => {
     if (!data?.assets) return {};
@@ -2525,6 +2503,8 @@ function MiningPlace() {
 }
 
 function MiningPlaceDetail() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const memberQueriesEnabled = isLoaded && isSignedIn;
   const { symbol = '' } = useParams<{ symbol: string }>();
   const miningPlace = useGetMiningPlace({
     query: {
@@ -2533,7 +2513,7 @@ function MiningPlaceDetail() {
       placeholderData: (prev) => prev
     }
   });
-  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey() } });
+  const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), enabled: memberQueriesEnabled } });
   const createInvestment = useCreateMiningInvestment();
   const queryClient = useQueryClient();
   const [investmentAmount, setInvestmentAmount] = useState('');
@@ -2632,7 +2612,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/welcome" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={Markets} /><Route path="/markets/:symbol" component={MarketDetail} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><MiningPlaceDetail /></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><MiningPlace /></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><TradingRoute /></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
   const queryClient = useQueryClient();

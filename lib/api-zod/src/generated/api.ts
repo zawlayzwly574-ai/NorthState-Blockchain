@@ -390,7 +390,6 @@ export const submitKycBodyCountryMin = 2;
 
 
 export const submitKycBodyDocumentImageBase64Min = 100;
-export const submitKycBodyDocumentImageBase64Max = 1850000;
 
 
 export const submitKycBodyDocumentImageBase64RegExp = new RegExp('^data:image/jpeg;base64,');
@@ -402,7 +401,7 @@ export const SubmitKycBody = zod.object({
   "city": zod.string().min(1),
   "occupation": zod.string().min(1),
   "documentType": zod.enum(['passport', 'drivers_license', 'national_id']),
-  "documentImageBase64": zod.string().min(submitKycBodyDocumentImageBase64Min).max(submitKycBodyDocumentImageBase64Max).regex(submitKycBodyDocumentImageBase64RegExp)
+  "documentImageBase64": zod.string().min(submitKycBodyDocumentImageBase64Min).regex(submitKycBodyDocumentImageBase64RegExp)
 })
 
 export const SubmitKycResponse = zod.object({
