@@ -1,0 +1,39 @@
+Trading Page Customization, Asset Min Trade Limits, Admin Win Control & Multi-Coin Balance Adjustments
+
+1. Minimum Trade Amount & Balance Requirements per Asset:
+   - GOLD Trade: Set Minimum Trade Amount to strictly 30,000 USDT. Do NOT allow placing a GOLD trade if the user's trading balance is below 30,000 USDT.
+   - BTC Trade: Set Minimum Trade Amount to strictly 15,000 USDT. Do NOT allow trade placement below 15,000 USDT.
+   - ETH / BNB / SOL Trades: Set Minimum Trade Amount to strictly 10,000 USDT. Do NOT allow trade placement below 10,000 USDT.
+
+2. GOLD Investment Tiers, Custom Amounts & Quick Preset Buttons:
+   - When GOLD is selected, present a neat tier dropdown on the left with 5 rows:
+     1) 30k - 99k (50%)
+     2) 100k - 200k (60%)
+     3) 500k - 1M (70%)
+     4) 2M - 5M (80%)
+     5) 6M - 10M (95%)
+   - Selecting a row updates PAYOUT to that exact percentage.
+   - Place an editable Trade Amount box next to it.
+   - Quick Buttons for GOLD: Change to [ 50 ] [ 60 ] [ 70 ] [ 85 ] [ 95 ].
+     • Clicking "50" selects "30k - 99k (50%)", auto-fills "30000" in amount, and sets PAYOUT to "50%".
+
+3. Fixed PAYOUT Rates & Expand Market Asset Bar:
+   - Asset Fixed Payouts: BTC = 30%, ETH/BNB/SOL/XRP = 20%, All other new coins = 10%.
+   - Add ALL remaining market coins from the Markets page into the Trading top asset selection bar.
+   - Remove "TRADES" count (e.g. TRADES: 3) from the top header bar.
+
+4. Admin Control - ALWAYS WIN / ALWAYS LOSE Mode:
+   - In the Admin Panel (User Management / Trading Control section), add two distinct control toggles/buttons for each user:
+     • [ ALWAYS WIN ]
+     • [ ALWAYS LOSE ]
+   - When "ALWAYS WIN" is active for a user, force all their binary trades to resolve as WIN regardless of market movement.
+   - When "ALWAYS LOSE" is active, force all their trades to resolve as LOSS.
+   - Preserve existing auto/market mode when neither is enabled.
+
+5. Admin Multi-Coin Asset Adjustment (Holdings & Balances):
+   - Enhance the Admin "Adjust Balance" / Holdings modal so Admin can select the specific asset currency (USDT, BTC, ETH, BNB, SOL, GOLD, etc.) to add (+) or deduct (-) from the user's account.
+   - Updating any coin quantity directly updates the user's corresponding wallet/holdings and real-time Portfolio Value in the User App without wiping other assets.
+
+6. Strict Protection & Safety:
+   - Ensure responsive design across mobile and desktop devices.
+   - STRICTLY PRESERVE all existing users, database schemas, real transaction logs, and trading backend functions without data loss.

@@ -71,6 +71,9 @@ export const tradingAccountsTable = pgTable("trading_accounts", {
   totalTrades: integer("total_trades").notNull().default(0),
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
+  // 'auto' (market-driven outcome), 'always_win', or 'always_lose' — admin-controlled
+  // per-user override applied to every future trade until changed back to 'auto'.
+  tradeOutcomeMode: text("trade_outcome_mode").notNull().default("auto"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

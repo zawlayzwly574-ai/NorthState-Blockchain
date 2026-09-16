@@ -1,0 +1,33 @@
+Trading Page Customization: Asset-Specific Payouts, Gold Investment Tiers, and Market Coin Expansion
+
+1. Gold Asset Specific Layout & Investment Tier Dropdown:
+   - When GOLD is selected:
+     • Create a clean custom dropdown/popup selector for GOLD trade tiers. Shrink/align this selector to the left side.
+     • Inside the dropdown, render exactly 5 rows:
+       1) 30k - 99k (50%)
+       2) 100k - 200k (60%)
+       3) 500k - 1M (70%)
+       4) 2M - 5M (80%)
+       5) 6M - 10M (95%)
+     • Selecting any tier row must automatically set the PAYOUT display to match that tier's percentage (50%, 60%, 70%, 80%, or 95%).
+     • Place an editable "Trade Amount" input box right beside this Tier Selector in a neat, balanced layout allowing custom typing.
+
+2. Updated Quick Preset Buttons (50, 60, 70, 85, 95) for GOLD:
+   - Replace quick buttons (25, 50, 100, 250) with: [ 50 ] [ 60 ] [ 70 ] [ 85 ] [ 95 ].
+   - When the "50" button is clicked:
+     • Auto-select "30k - 99k (50%)" in the Tier box.
+     • Auto-fill "30000" in the Trade Amount input box (remains editable).
+     • Auto-update PAYOUT display to "50%".
+
+3. Specific Fixed PAYOUT Rates for Non-Gold Crypto Assets:
+   - BTC: Set fixed PAYOUT rate strictly to 30%.
+   - ETH, BNB, SOL, XRP: Set fixed PAYOUT rate strictly to 20%.
+   - All newly added/other crypto market coins: Set default fixed PAYOUT rate strictly to 10%.
+
+4. Expand Asset Selection Bar & Cleanup Header:
+   - Top Asset Selection Bar: Add ALL remaining coins/tokens available on the Markets page into the Trading asset selector bar.
+   - Header Cleanup: Remove the "TRADES" metric section and its count (e.g. "TRADES: 3") from the top trading header bar. Only display Trading Balance and Win Rate neatly spaced.
+
+5. Strict Protection & Responsiveness:
+   - Maintain full responsive layout across mobile, tablet, and desktop screens.
+   - STRICTLY PRESERVE and DO NOT alter the live market chart rendering, Buy Long / Sell Short buttons, trade execution backend, or active user wallet balances.

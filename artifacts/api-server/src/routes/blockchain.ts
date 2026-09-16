@@ -1790,6 +1790,7 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
         totalHoldings,
         createdAt: profile.createdAt.toISOString(),
         accountStatus,
+        tradeOutcomeMode: accountByUser.get(profile.clerkUserId)?.tradeOutcomeMode ?? "auto",
       };
     }),
   );
@@ -1849,13 +1850,11 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
   const direction = req.body?.direction;
   const rawAmount = String(req.body?.amount ?? "").trim();
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const asset = typeof req.body?.asset === "string" && req.body.asset.trim()
+    ? req.body.asset.trim().toUpperCase()
+    : "USDT";
   if (direction !== "credit" && direction !== "debit") {
     res.status(400).json({ error: "Balance adjustment direction must be credit or debit." });
-    return;
-  }
-  const amountString = normalizeStablecoinAmount(rawAmount);
-  if (!amountString) {
-    res.status(400).json({ error: "Balance adjustment must be between 0 and 1,000,000,000 USDT." });
     return;
   }
   if (reason.length < 3 || reason.length > 200) {
@@ -1870,6 +1869,86 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     .limit(1);
   if (!profile) {
     res.status(404).json({ error: "User not found." });
+    return;
+  }
+
+  // Non-USDT assets adjust the coin quantity directly in wallet_holdings,
+  // leaving every other holding and the USDT trading balance untouched.
+  if (asset !== "USDT") {
+    const coinAmount = Number(rawAmount);
+    if (!Number.isFinite(coinAmount) || coinAmount <= 0) {
+      res.status(400).json({ error: "Enter a positive coin quantity to adjust." });
+      return;
+    }
+    const meta = marketDefinitions.find(m => m.symbol === asset)
+      ?? miningPlaceDefinitions.find(d => d.symbol === asset);
+    let price = TRADING_FALLBACK[asset] ?? 0;
+    try {
+      const assets = await fetchMarketAssets(req);
+      const found = assets.find((a: { symbol: string; price: number }) => a.symbol === asset);
+      if (found?.price) price = found.price;
+    } catch {
+      // fall back to TRADING_FALLBACK / 0 below
+    }
+    if (asset === "GOLD") price = TRADING_FALLBACK.GOLD ?? price;
+
+    const holdingResult = await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:HOLDING:${asset}`}))`);
+      const [existing] = await tx.select().from(holdingsTable)
+        .where(and(eq(holdingsTable.clerkUserId, userId), eq(holdingsTable.symbol, asset))).limit(1);
+      const beforeAmount = existing ? Number(existing.amount) : 0;
+      const afterAmount = direction === "credit" ? beforeAmount + coinAmount : beforeAmount - coinAmount;
+      if (afterAmount < 0) {
+        return { error: `User only holds ${beforeAmount} ${asset}.` };
+      }
+      const afterValue = afterAmount * price;
+      if (existing) {
+        await tx.update(holdingsTable).set({
+          amount: String(afterAmount),
+          value: afterValue.toFixed(2),
+        }).where(eq(holdingsTable.id, existing.id));
+      } else {
+        await tx.insert(holdingsTable).values({
+          clerkUserId: userId,
+          symbol: asset,
+          name: meta?.name ?? asset,
+          amount: String(afterAmount),
+          value: afterValue.toFixed(2),
+          allocation: "0",
+          change24h: "0",
+          color: meta?.color ?? "#888888",
+        });
+      }
+      const [transaction] = await tx.insert(transactionsTable).values({
+        clerkUserId: userId,
+        type: direction === "credit" ? "deposit" : "withdrawal",
+        asset,
+        amount: String(coinAmount),
+        destination: `Admin balance adjustment (${direction}; ${beforeAmount} -> ${afterAmount} ${asset}): ${reason}`,
+        status: "completed",
+      }).returning();
+      await tx.insert(activitiesTable).values({
+        clerkUserId: userId,
+        type: direction === "credit" ? "deposit" : "withdrawal",
+        asset,
+        amount: String(coinAmount),
+        value: afterValue.toFixed(2),
+        status: "completed",
+        transactionId: transaction.id,
+      });
+      return { amount: afterAmount, value: afterValue };
+    });
+    if ("error" in holdingResult) {
+      res.status(409).json({ error: holdingResult.error });
+      return;
+    }
+    res.json({ userId, asset, direction, amount: coinAmount, holdingAmount: holdingResult.amount, holdingValue: holdingResult.value });
+    return;
+  }
+
+  const amountString = normalizeStablecoinAmount(rawAmount);
+  if (!amountString) {
+    res.status(400).json({ error: "Balance adjustment must be between 0 and 1,000,000,000 USDT." });
     return;
   }
 
@@ -2025,6 +2104,7 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
     verificationStatus: profile.verificationStatus,
     totalHoldings,
     createdAt: profile.createdAt.toISOString(),
+    tradeOutcomeMode: accountRows[0]?.tradeOutcomeMode ?? "auto",
     holdings: holdings.map((h) => ({
       symbol: h.symbol,
       name: h.name,
@@ -2290,6 +2370,54 @@ const TRADING_FALLBACK: Record<string, number> = {
   BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52, GOLD: 2348.4,
 };
 
+// ─── Per-asset minimum trade amount (USDT) ─────────────────────────────────────
+// A trade cannot be placed, and the account balance must already be at or
+// above this threshold, before a trade in that asset is allowed at all.
+const ASSET_MIN_TRADE: Record<string, number> = {
+  GOLD: 30000,
+  BTC: 15000,
+  ETH: 10000,
+  BNB: 10000,
+  SOL: 10000,
+};
+const DEFAULT_MIN_TRADE = 10000; // any other market coin not listed above
+
+function minTradeAmountFor(asset: string): number {
+  return ASSET_MIN_TRADE[asset] ?? DEFAULT_MIN_TRADE;
+}
+
+// ─── Fixed payout rates per asset ──────────────────────────────────────────────
+const ASSET_PAYOUT_RATE: Record<string, number> = {
+  BTC: 0.30,
+  ETH: 0.20, BNB: 0.20, SOL: 0.20, XRP: 0.20,
+};
+const DEFAULT_PAYOUT_RATE = 0.10; // any other new coin
+
+// ─── GOLD investment tiers (amount range → fixed payout %) ─────────────────────
+const GOLD_TIERS = [
+  { min: 30_000, max: 99_000, payout: 0.50 },
+  { min: 100_000, max: 200_000, payout: 0.60 },
+  { min: 500_000, max: 1_000_000, payout: 0.70 },
+  { min: 2_000_000, max: 5_000_000, payout: 0.80 },
+  { min: 6_000_000, max: 10_000_000, payout: 0.95 },
+] as const;
+
+function resolveGoldPayoutRate(amount: number): number {
+  // Exact range match first.
+  const exact = GOLD_TIERS.find(t => amount >= t.min && amount <= t.max);
+  if (exact) return exact.payout;
+  // Amount falls between tiers (or above the top tier) — use the highest
+  // tier whose minimum the amount clears, so a valid GOLD trade always
+  // resolves to a defined payout rate.
+  const applicable = [...GOLD_TIERS].reverse().find(t => amount >= t.min);
+  return applicable?.payout ?? GOLD_TIERS[0].payout;
+}
+
+function payoutRateFor(asset: string, amount: number): number {
+  if (asset === "GOLD") return resolveGoldPayoutRate(amount);
+  return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
+}
+
 async function getOrCreateTradingAccount(userId: string) {
   let [acct] = await db.select().from(tradingAccountsTable)
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
@@ -2340,9 +2468,18 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
         ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
         : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
     } else {
-      exitPrice = entry * (1 + (Math.random() * 0.04 - 0.02));
-      const priceRose = exitPrice > entry;
-      outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
+      const [tradeAccount] = await tx.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
+        .from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
+      if (tradeAccount?.tradeOutcomeMode === "always_win" || tradeAccount?.tradeOutcomeMode === "always_lose") {
+        outcome = tradeAccount.tradeOutcomeMode === "always_win" ? "win" : "loss";
+        exitPrice = outcome === "win"
+          ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
+          : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
+      } else {
+        exitPrice = entry * (1 + (Math.random() * 0.04 - 0.02));
+        const priceRose = exitPrice > entry;
+        outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
+      }
     }
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
@@ -2430,15 +2567,27 @@ router.post("/trading/trades", async (req, res) => {
   }
   const amountString = normalizeStablecoinAmount(String(amount));
   if (!amountString) { res.status(400).json({ error: "Amount must be a positive value with up to 8 decimal places." }); return; }
+  const assetSymbol = asset.toUpperCase();
+  const minTrade = minTradeAmountFor(assetSymbol);
+  const amountNumber = Number(amountString);
+  if (amountNumber < minTrade) {
+    res.status(400).json({ error: `Minimum trade amount for ${assetSymbol} is ${minTrade.toLocaleString()} USDT.` });
+    return;
+  }
   await ensureSeededUser(userId);
-  await getOrCreateTradingAccount(userId);
+  const tradingAccount = await getOrCreateTradingAccount(userId);
+  if (Number(tradingAccount.balance) < minTrade) {
+    res.status(400).json({ error: `Your trading balance must be at least ${minTrade.toLocaleString()} USDT to trade ${assetSymbol}.` });
+    return;
+  }
+  const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
   let entryPrice: number;
   try {
     const assets = await fetchMarketAssets(req);
-    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === asset.toUpperCase());
-    entryPrice = found?.price ?? TRADING_FALLBACK[asset.toUpperCase()] ?? 100;
+    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === assetSymbol);
+    entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
   } catch {
-    entryPrice = TRADING_FALLBACK[asset.toUpperCase()] ?? 100;
+    entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;
   }
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
@@ -2461,13 +2610,13 @@ router.post("/trading/trades", async (req, res) => {
     if (!availableAccount) return null;
     const [trade] = await tx.insert(tradesTable).values({
       clerkUserId: userId,
-      asset: asset.toUpperCase(),
+      asset: assetSymbol,
       direction,
       amount: amountString,
       timeframeSecs,
       entryPrice: String(entryPrice),
       expiresAt,
-      payoutRate: "0.85",
+      payoutRate: String(resolvedPayoutRate),
     }).returning();
     await tx.update(tradingAccountsTable).set({
       totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
@@ -2512,6 +2661,21 @@ router.get("/admin/trading/stats", requireAdmin, async (_req, res) => {
     losses: trades.filter(t => t.result === "loss").length,
     totalVolume: trades.reduce((s, t) => s + Number(t.amount), 0),
   });
+});
+
+router.patch("/admin/users/:userId/trading-mode", requireAdmin, async (req, res) => {
+  const userId = String(req.params.userId);
+  const mode = req.body?.mode;
+  if (!["auto", "always_win", "always_lose"].includes(mode)) {
+    res.status(400).json({ error: "mode must be 'auto', 'always_win', or 'always_lose'." });
+    return;
+  }
+  const [profile] = await db.select({ clerkUserId: walletProfilesTable.clerkUserId })
+    .from(walletProfilesTable).where(eq(walletProfilesTable.clerkUserId, userId)).limit(1);
+  if (!profile) { res.status(404).json({ error: "User not found." }); return; }
+  await db.insert(tradingAccountsTable).values({ clerkUserId: userId, tradeOutcomeMode: mode })
+    .onConflictDoUpdate({ target: tradingAccountsTable.clerkUserId, set: { tradeOutcomeMode: mode, updatedAt: new Date() } });
+  res.json({ userId, tradeOutcomeMode: mode });
 });
 
 router.patch("/admin/trading/trades/:id/outcome", requireAdmin, async (req, res) => {

