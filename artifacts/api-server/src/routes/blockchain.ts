@@ -2375,10 +2375,10 @@ const TRADING_FALLBACK: Record<string, number> = {
 // above this threshold, before a trade in that asset is allowed at all.
 const ASSET_MIN_TRADE: Record<string, number> = {
   GOLD: 30000,
-  BTC: 15000,
-  ETH: 10000,
-  BNB: 10000,
-  SOL: 10000,
+  BTC: 5000,
+  ETH: 1000,
+  BNB: 1000,
+  SOL: 1000,
 };
 const DEFAULT_MIN_TRADE = 10000; // any other market coin not listed above
 

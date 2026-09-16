@@ -50,10 +50,10 @@ const PRICE_FALLBACKS: Record<string, number> = {
 // ─── Per-asset minimum trade amount (USDT) — mirrors the backend enforcement ──
 const ASSET_MIN_TRADE: Record<string, number> = {
   GOLD: 30000,
-  BTC: 15000,
-  ETH: 10000,
-  BNB: 10000,
-  SOL: 10000,
+  BTC: 5000,
+  ETH: 1000,
+  BNB: 1000,
+  SOL: 1000,
 };
 const DEFAULT_MIN_TRADE = 10000;
 function minTradeAmountFor(asset: string): number {
