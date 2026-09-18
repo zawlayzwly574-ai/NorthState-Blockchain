@@ -400,7 +400,7 @@ export function TradingPage() {
   const [tradeError, setTradeError] = useState('');
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 30_000 } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
   const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
