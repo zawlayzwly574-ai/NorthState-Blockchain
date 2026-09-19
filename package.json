@@ -11,7 +11,8 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1"
+    "@replit/connectors-sdk": "^0.4.1",
+    "dotenv": "^18.0.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
