@@ -113,82 +113,6 @@ const marketDefinitions: MarketDefinition[] = [
   { symbol: "M", name: "MemeCore", id: "memecore", color: "#E85D75", rank: 35 },
 ];
 
-const seedPrices: Record<string, number> = {
-  bitcoin: 62987.32,
-  ethereum: 3124.77,
-  tether: 1,
-  binancecoin: 582.14,
-  "usd-coin": 1,
-  dai: 0.9998,
-  "first-digital-usd": 1,
-  ripple: 0.52,
-  solana: 145.2,
-  tron: 0.27,
-  hyperliquid: 24.4,
-  zcash: 42.1,
-  dogecoin: 0.13,
-  "leo-token": 8.9,
-  monero: 285,
-  chainlink: 14.7,
-  cardano: 0.44,
-  stellar: 0.23,
-  "bitcoin-cash": 510,
-  "canton-network": 0.12,
-  "usd1-wlfi": 1,
-  "ethena-usde": 1,
-  litecoin: 72,
-  "the-open-network": 3.1,
-  "hedera-hashgraph": 0.09,
-  "avalanche-2": 22,
-  sui: 1.6,
-  "shiba-inu": 0.000012,
-  uniswap: 7.4,
-  "paypal-usd": 1,
-  "crypto-com-chain": 0.11,
-  "tether-gold": 2900,
-  bittensor: 320,
-  near: 2.8,
-  memecore: 0.02,
-};
-
-const seedChanges: Record<string, number> = {
-  bitcoin: 2.84,
-  ethereum: 1.61,
-  tether: 0.02,
-  binancecoin: -0.44,
-  "usd-coin": 0.01,
-  dai: -0.03,
-  "first-digital-usd": 0.04,
-  ripple: 0.8,
-  solana: 1.2,
-  tron: 0.3,
-  hyperliquid: -0.6,
-  zcash: 0.5,
-  dogecoin: 1.1,
-  "leo-token": 0.2,
-  monero: -0.4,
-  chainlink: 1.4,
-  cardano: 0.7,
-  stellar: -0.2,
-  "bitcoin-cash": 0.5,
-  "canton-network": 0.9,
-  "usd1-wlfi": 0.01,
-  "ethena-usde": -0.02,
-  litecoin: 0.3,
-  "the-open-network": 1.6,
-  "hedera-hashgraph": 0.4,
-  "avalanche-2": -0.7,
-  sui: 1.3,
-  "shiba-inu": 0.9,
-  uniswap: 0.6,
-  "paypal-usd": 0.01,
-  "crypto-com-chain": 0.8,
-  "tether-gold": 0.2,
-  bittensor: -1.1,
-  near: 0.5,
-  memecore: 2.4,
-};
-
 const miningPlaceDefinitions: MiningPlaceDefinition[] = [
   { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", fallbackPrice: 2348.4, fallbackChange: 0.42, color: "#d6ad3b" },
   { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", fallbackPrice: 91.72, fallbackChange: 0.68, color: "#4dbb8a" },
@@ -569,19 +493,33 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
     }
   }
 
-  return marketDefinitions.map((definition) => {
+  const previousAssets = new Map(marketCache?.assets.map((asset) => [asset.symbol, asset]));
+
+  return marketDefinitions.flatMap((definition): MarketAsset[] => {
     const provider = liveData[definition.id];
-    const price = provider?.usd ?? seedPrices[definition.id];
-    return {
+    if (!isValidMarketQuote(provider)) {
+      const previous = previousAssets.get(definition.symbol);
+      return previous ? [previous] : [];
+    }
+
+    const price = Number(provider!.usd);
+    const previous = previousAssets.get(definition.symbol);
+    return [{
       symbol: definition.symbol,
       name: definition.name,
       price,
-      change24h: provider?.usd_24h_change ?? seedChanges[definition.id],
-      marketCap: provider?.usd_market_cap ?? price * (definition.rank === 1 ? 19_800_000 : 1_000_000),
-      volume24h: provider?.usd_24h_vol ?? price * (definition.rank === 1 ? 420_000 : 12_000),
+      change24h: Number.isFinite(provider.usd_24h_change)
+        ? provider.usd_24h_change!
+        : previous?.change24h ?? 0,
+      marketCap: Number.isFinite(provider.usd_market_cap)
+        ? provider.usd_market_cap!
+        : previous?.marketCap ?? 0,
+      volume24h: Number.isFinite(provider.usd_24h_vol)
+        ? provider.usd_24h_vol!
+        : previous?.volume24h ?? 0,
       rank: definition.rank,
       color: definition.color,
-    };
+    }];
   });
 }
 
