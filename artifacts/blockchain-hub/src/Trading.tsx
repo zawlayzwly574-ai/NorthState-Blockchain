@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -394,6 +394,11 @@ export function TradingPage() {
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
+  const [futuresPrice, setFuturesPrice] = useState('');
+  const [futuresMargin, setFuturesMargin] = useState('1000');
+  const [futuresLeverage, setFuturesLeverage] = useState(20);
+  const [futuresMarginType, setFuturesMarginType] = useState<'Cross' | 'Isolated'>('Cross');
+  const [futuresNotice, setFuturesNotice] = useState('');
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
@@ -461,6 +466,10 @@ export function TradingPage() {
     }
   };
 
+  const handleFuturesPreview = () => {
+    setFuturesNotice(`Futures ${futuresLeverage}x long preview ready — spot balance unchanged.`);
+  };
+
   // Flash result when a trade completes
   const prevActive = useRef<number[]>([]);
   useEffect(() => {
@@ -481,7 +490,7 @@ export function TradingPage() {
   }, [activeTrades.length, trades]);
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto max-w-5xl">
       {/* Win/Loss flash overlay */}
       {flash && (
         <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
@@ -576,7 +585,18 @@ export function TradingPage() {
       </div>
 
       {/* ── Order Panel ── */}
-      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+      <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="rounded-2xl border border-border/60 bg-card p-4">
+          <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Spot Trade</p>
+              <p className="mt-1 text-xs text-muted-foreground">Fixed-expiry position</p>
+            </div>
+            <span className="rounded-lg bg-secondary/60 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              {asset}/USDT
+            </span>
+          </div>
+
         {/* GOLD investment tier picker */}
         {isGold && (
           <div className="mb-3">
@@ -740,6 +760,118 @@ export function TradingPage() {
             <AlertCircle size={15} />{tradeError}
           </p>
         )}
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card p-4">
+          <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="flex items-center gap-2">
+              <Zap size={15} className="text-primary" />
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Futures Trade Box</p>
+                <p className="mt-1 text-xs text-muted-foreground">Separate preview controls</p>
+              </div>
+            </div>
+            <span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+              {asset}USDT Perp
+            </span>
+          </div>
+
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {(['Cross', 'Isolated'] as const).map(type => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setFuturesMarginType(type)}
+                className={`h-10 rounded-xl border text-xs font-bold transition ${
+                  futuresMarginType === type
+                    ? 'border-primary/60 bg-primary/10 text-primary'
+                    : 'border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid={`button-futures-margin-${type.toLowerCase()}`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-bold text-muted-foreground">Leverage Selector</label>
+            <div className="relative">
+              <select
+                value={futuresLeverage}
+                onChange={event => setFuturesLeverage(Number(event.target.value))}
+                className="h-10 w-full appearance-none rounded-xl border border-input bg-secondary/40 px-3 pr-9 font-mono text-sm font-bold outline-none transition focus:border-primary"
+                data-testid="select-futures-leverage"
+              >
+                {[1, 5, 10, 20, 25, 50, 100].map(value => (
+                  <option key={value} value={value}>{value}x Leverage</option>
+                ))}
+              </select>
+              <ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" />
+            </div>
+          </div>
+
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-bold text-muted-foreground">Order Price (USDT)</label>
+            <input
+              type="number"
+              value={futuresPrice || (currentPrice > 0 ? currentPrice.toFixed(2) : '')}
+              onChange={event => setFuturesPrice(event.target.value)}
+              min="0"
+              step="0.01"
+              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              data-testid="input-futures-order-price"
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-bold text-muted-foreground">Margin (USDT)</label>
+            <input
+              type="number"
+              value={futuresMargin}
+              onChange={event => setFuturesMargin(event.target.value)}
+              min="0"
+              step="1"
+              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+              data-testid="input-futures-margin"
+            />
+          </div>
+
+          <div className="mb-4 space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>Leverage Slider</span>
+              <span className="font-mono font-bold text-primary">{futuresLeverage}x</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              value={futuresLeverage}
+              onChange={event => setFuturesLeverage(Number(event.target.value))}
+              className="h-2 w-full cursor-pointer accent-primary"
+              aria-label="Futures leverage"
+              data-testid="input-futures-leverage-slider"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>1x</span>
+              <span>100x</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleFuturesPreview}
+            className="w-full rounded-2xl bg-primary/90 py-3.5 text-sm font-extrabold text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/.18)] transition hover:bg-primary active:scale-[.98]"
+            data-testid="button-open-futures-long"
+          >
+            OPEN {futuresLeverage}x LONG — {asset}/USDT
+          </button>
+          {futuresNotice && (
+            <p className="mt-3 text-center text-[11px] font-semibold text-primary" role="status" data-testid="status-futures-preview">
+              {futuresNotice}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* ── Active Trades ── */}
