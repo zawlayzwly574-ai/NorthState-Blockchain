@@ -394,10 +394,11 @@ export function TradingPage() {
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
-  const [futuresPrice, setFuturesPrice] = useState('');
+  const [futuresContractType, setFuturesContractType] = useState<'Perpetual' | 'Quarterly'>('Perpetual');
+  const [futuresSettlement, setFuturesSettlement] = useState<'USDT' | 'USDC'>('USDT');
+  const [futuresDirection, setFuturesDirection] = useState<'long' | 'short'>('long');
   const [futuresMargin, setFuturesMargin] = useState('1000');
   const [futuresLeverage, setFuturesLeverage] = useState(20);
-  const [futuresMarginType, setFuturesMarginType] = useState<'Cross' | 'Isolated'>('Cross');
   const [futuresNotice, setFuturesNotice] = useState('');
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
@@ -467,7 +468,7 @@ export function TradingPage() {
   };
 
   const handleFuturesPreview = () => {
-    setFuturesNotice(`Futures ${futuresLeverage}x long preview ready — spot balance unchanged.`);
+    setFuturesNotice(`Futures ${futuresLeverage}x ${futuresDirection === 'long' ? 'long' : 'short'} preview ready — spot balance unchanged.`);
   };
 
   // Flash result when a trade completes
@@ -768,103 +769,180 @@ export function TradingPage() {
               <Zap size={15} className="text-primary" />
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-primary">Futures Trade Box</p>
-                <p className="mt-1 text-xs text-muted-foreground">Separate preview controls</p>
+                <p className="mt-1 text-xs text-muted-foreground">Isolated futures preview</p>
               </div>
             </div>
-            <span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-              {asset}USDT Perp
-            </span>
+            <div className="relative">
+              <select
+                value={futuresLeverage}
+                onChange={event => setFuturesLeverage(Number(event.target.value))}
+                className="h-8 appearance-none rounded-lg border border-input bg-secondary/40 py-0 pl-3 pr-7 font-mono text-xs font-bold outline-none transition focus:border-primary"
+                data-testid="select-futures-leverage-dropdown"
+                aria-label="Leverage dropdown"
+              >
+                {[1, 2, 5, 10, 20, 50, 100].map(value => (
+                  <option key={value} value={value}>{value}x</option>
+                ))}
+              </select>
+              <ChevronDown size={12} className="pointer-events-none absolute right-2 top-2.5 text-muted-foreground" />
+            </div>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {(['Cross', 'Isolated'] as const).map(type => (
+          {/* Contract type & settlement toggles */}
+          <div className="mb-2.5 grid grid-cols-2 gap-2">
+            {(['Perpetual', 'Quarterly'] as const).map(type => (
               <button
                 key={type}
                 type="button"
-                onClick={() => setFuturesMarginType(type)}
-                className={`h-10 rounded-xl border text-xs font-bold transition ${
-                  futuresMarginType === type
+                onClick={() => setFuturesContractType(type)}
+                className={`h-9 rounded-xl border text-xs font-bold transition ${
+                  futuresContractType === type
                     ? 'border-primary/60 bg-primary/10 text-primary'
                     : 'border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground'
                 }`}
-                data-testid={`button-futures-margin-${type.toLowerCase()}`}
+                data-testid={`button-futures-contract-${type.toLowerCase()}`}
               >
                 {type}
               </button>
             ))}
           </div>
-
-          <div className="mb-3">
-            <label className="mb-1 block text-xs font-bold text-muted-foreground">Leverage Selector</label>
-            <div className="relative">
-              <select
-                value={futuresLeverage}
-                onChange={event => setFuturesLeverage(Number(event.target.value))}
-                className="h-10 w-full appearance-none rounded-xl border border-input bg-secondary/40 px-3 pr-9 font-mono text-sm font-bold outline-none transition focus:border-primary"
-                data-testid="select-futures-leverage"
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            {(['USDT', 'USDC'] as const).map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setFuturesSettlement(s)}
+                className={`h-9 rounded-xl border text-xs font-bold transition ${
+                  futuresSettlement === s
+                    ? 'border-primary/60 bg-primary/10 text-primary'
+                    : 'border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid={`button-futures-settlement-${s.toLowerCase()}`}
               >
-                {[1, 5, 10, 20, 25, 50, 100].map(value => (
-                  <option key={value} value={value}>{value}x Leverage</option>
-                ))}
-              </select>
-              <ChevronDown size={15} className="pointer-events-none absolute right-3 top-3 text-muted-foreground" />
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* Market stats grid */}
+          <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl bg-secondary/30 p-3 text-center">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Mark Price</p>
+              <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
+                {currentPrice > 0 ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Funding / 8h</p>
+              <p className="mt-1 font-mono text-sm font-bold text-primary">0.01%</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Expiry</p>
+              <p className="mt-1 font-mono text-sm font-bold">{futuresContractType === 'Perpetual' ? 'Never' : 'Mar 28, 2025'}</p>
             </div>
           </div>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-xs font-bold text-muted-foreground">Order Price (USDT)</label>
-            <input
-              type="number"
-              value={futuresPrice || (currentPrice > 0 ? currentPrice.toFixed(2) : '')}
-              onChange={event => setFuturesPrice(event.target.value)}
-              min="0"
-              step="0.01"
-              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
-              data-testid="input-futures-order-price"
-            />
+          {/* Long / Short toggle */}
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setFuturesDirection('long')}
+              className={`h-11 rounded-xl text-sm font-extrabold transition active:scale-[.98] ${
+                futuresDirection === 'long'
+                  ? 'bg-green-500 text-white shadow-[0_6px_16px_rgba(34,197,94,.35)]'
+                  : 'bg-secondary/40 text-muted-foreground hover:text-foreground'
+              }`}
+              data-testid="button-futures-direction-long"
+            >
+              Long
+            </button>
+            <button
+              type="button"
+              onClick={() => setFuturesDirection('short')}
+              className={`h-11 rounded-xl text-sm font-extrabold transition active:scale-[.98] ${
+                futuresDirection === 'short'
+                  ? 'bg-zinc-900 text-white ring-1 ring-white/10 shadow-[0_6px_16px_rgba(0,0,0,.5)]'
+                  : 'bg-secondary/40 text-muted-foreground hover:text-foreground'
+              }`}
+              data-testid="button-futures-direction-short"
+            >
+              Short
+            </button>
           </div>
 
+          {/* Leverage pills */}
           <div className="mb-4">
-            <label className="mb-1 block text-xs font-bold text-muted-foreground">Margin (USDT)</label>
-            <input
-              type="number"
-              value={futuresMargin}
-              onChange={event => setFuturesMargin(event.target.value)}
-              min="0"
-              step="1"
-              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
-              data-testid="input-futures-margin"
-            />
+            <label className="mb-1.5 block text-xs font-bold text-muted-foreground">Leverage</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 5, 10, 20, 50, 100].map(value => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFuturesLeverage(value)}
+                  className={`h-8 min-w-[42px] flex-1 rounded-lg border text-xs font-bold transition ${
+                    futuresLeverage === value
+                      ? 'border-primary/60 bg-primary/10 text-primary'
+                      : 'border-border/60 text-muted-foreground hover:text-foreground'
+                  }`}
+                  data-testid={`button-futures-leverage-${value}`}
+                >
+                  {value}x
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="mb-4 space-y-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>Leverage Slider</span>
-              <span className="font-mono font-bold text-primary">{futuresLeverage}x</span>
+          {/* Margin input */}
+          <div className="mb-4">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-bold text-muted-foreground">Margin ({futuresSettlement})</label>
+              <span className="text-[11px] text-muted-foreground">
+                Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
+              </span>
             </div>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={futuresLeverage}
-              onChange={event => setFuturesLeverage(Number(event.target.value))}
-              className="h-2 w-full cursor-pointer accent-primary"
-              aria-label="Futures leverage"
-              data-testid="input-futures-leverage-slider"
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>1x</span>
-              <span>100x</span>
+            <div className="relative">
+              <input
+                type="number"
+                value={futuresMargin}
+                onChange={event => setFuturesMargin(event.target.value)}
+                min="0"
+                step="1"
+                className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-3 pr-24 font-mono text-base font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+                data-testid="input-futures-margin"
+              />
+              <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setFuturesMargin(String(Math.floor(availableToTrade)))}
+                  className="rounded-lg bg-primary/15 px-2 py-1.5 text-[10px] font-extrabold text-primary transition hover:bg-primary/25"
+                  data-testid="button-futures-max"
+                >
+                  MAX
+                </button>
+                <span className="pr-1 text-xs font-bold text-muted-foreground">{futuresSettlement}</span>
+              </div>
             </div>
+          </div>
+
+          {/* Risk warning */}
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2.5">
+            <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-400" />
+            <p className="text-[11px] leading-4 text-amber-200/90">
+              Futures trading carries significant risk. Leverage amplifies both gains and losses. You may lose more than your initial margin. Trade responsibly.
+            </p>
           </div>
 
           <button
             type="button"
             onClick={handleFuturesPreview}
-            className="w-full rounded-2xl bg-primary/90 py-3.5 text-sm font-extrabold text-primary-foreground shadow-[0_8px_20px_hsl(var(--primary)/.18)] transition hover:bg-primary active:scale-[.98]"
-            data-testid="button-open-futures-long"
+            className={`w-full rounded-2xl py-3.5 text-sm font-extrabold transition active:scale-[.98] ${
+              futuresDirection === 'long'
+                ? 'bg-green-500 text-white shadow-[0_8px_20px_rgba(34,197,94,.25)] hover:bg-green-400'
+                : 'bg-zinc-900 text-white ring-1 ring-white/10 shadow-[0_8px_20px_rgba(0,0,0,.4)] hover:bg-zinc-800'
+            }`}
+            data-testid="button-open-futures-order"
           >
-            OPEN {futuresLeverage}x LONG — {asset}/USDT
+            Open {futuresLeverage}x {futuresDirection === 'long' ? 'Long' : 'Short'} — {asset}/{futuresSettlement}
           </button>
           {futuresNotice && (
             <p className="mt-3 text-center text-[11px] font-semibold text-primary" role="status" data-testid="status-futures-preview">
