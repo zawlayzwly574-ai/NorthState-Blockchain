@@ -1,0 +1,327 @@
+သဘောပေါက်ပါပြီခင်ဗျာ။ Replit Agent ကို ခေါ်ခိုင်းရတဲ့ Credit / Cost ကုန်ကျစရိတ်တွေ သက်သာစေဖို့အတွက် Agent Chat Box ကို အသုံးမပြုဘဲ **Code Editor ထဲတွင် တိုက်ရိုက် သွားရောက် ရေးသား/ပြင်ဆင်နိုင်မည့် Code အပြည့်အစုံ** ကို ပေးပို့ပေးလိုက်ပါတယ်ခင်ဗျာ။
+
+---
+
+### ၁။ ပြင်ဆင်ချက်များ ပါဝင်သည့် Component Code
+
+သင့် Project ၏ `src/components/` (သို့မဟုတ် တည်ရှိရာ Trading Component File) ထဲတွင် အောက်ပါ Code အပြည့်အစုံကို ကူးယူ၍ အစားထိုးလိုက်ပါခင်ဗျာ -
+
+```tsx
+import React, { useState } from 'react';
+import { ChevronDown, X, ShieldAlert } from 'lucide-react';
+
+interface TradingPanelProps {
+  symbol?: string;
+  currentPrice?: number;
+  availableBalance?: number;
+}
+
+export const TradingPanel: React.FC<TradingPanelProps> = ({
+  symbol = 'BTC/USDT',
+  currentPrice = 81276.01,
+  availableBalance = 378000,
+}) => {
+  // Spot Trade States
+  const [tradeAmount, setTradeAmount] = useState<string>('5000');
+  const [expiry, setExpiry] = useState<string>('60s');
+
+  // Futures Modal / State Isolation
+  const [isFuturesOpen, setIsFuturesOpen] = useState<boolean>(false);
+  const [futuresContractType, setFuturesContractType] = useState<'Perpetual' | 'Quarterly'>('Perpetual');
+  const [futuresSettlement, setFuturesSettlement] = useState<'USDT' | 'USDC'>('USDT');
+  const [futuresDirection, setFuturesDirection] = useState<'Long' | 'Short'>('Long');
+  const [futuresLeverage, setFuturesLeverage] = useState<number>(10);
+  const [futuresMargin, setFuturesMargin] = useState<string>('1000');
+
+  return (
+    <div className="w-full font-sans text-white">
+      
+      {/* ==================== SPOT TRADE CONTAINER ==================== */}
+      <div className="bg-[#12141D] p-5 rounded-2xl border border-slate-800 space-y-4 shadow-xl relative">
+        
+        {/* HEADER: SPOT TRADE -> Active Symbol Header & Futures Popup Button */}
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <div>
+            <h3 className="text-lg font-bold text-amber-400 tracking-wider uppercase">{symbol}</h3>
+            <p className="text-xs text-slate-400">Fixed-expiry position</p>
+          </div>
+
+          {/* Futures Trade Pop-up Launcher Button */}
+          <button
+            onClick={() => setIsFuturesOpen(true)}
+            className="px-4 py-2 bg-gradient-to-r from-amber-500/20 to-amber-600/30 hover:from-amber-500/30 hover:to-amber-600/40 text-amber-300 font-bold text-xs rounded-xl border border-amber-500/40 shadow-lg shadow-amber-500/10 transition-all flex items-center gap-1.5"
+          >
+            <span>Futures Trade</span>
+            <span className="bg-amber-500/30 text-amber-200 text-[10px] px-1.5 py-0.5 rounded">PRO</span>
+          </button>
+        </div>
+
+        {/* Trade Amount Field */}
+        <div>
+          <div className="flex justify-between text-xs text-slate-400 mb-1.5 font-medium">
+            <span>Trade Amount (USDT)</span>
+            <span>Available: <strong className="text-white">${availableBalance.toLocaleString()}</strong></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={tradeAmount}
+              onChange={(e) => setTradeAmount(e.target.value)}
+              className="w-full bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-amber-500/50"
+            />
+            <div className="grid grid-cols-2 gap-1.5">
+              {['5K', '10K', '25K', '50K'].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => setTradeAmount(amt.replace('K', '000'))}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#1A1D2A] border border-slate-700/60 hover:border-amber-500 text-slate-300 hover:text-white transition-all"
+                >
+                  {amt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1.5">
+            Minimum trade & balance for {symbol.split('/')[0]}: <strong className="text-slate-200">$5,000</strong>
+          </p>
+        </div>
+
+        {/* Expiry Timeframe Dropdown */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">Expiry Timeframe</label>
+          <div className="flex items-center justify-between bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer">
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <span>⏱</span>
+              <span>{expiry}</span>
+            </div>
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          </div>
+        </div>
+
+        {/* Payout Details */}
+        <div className="grid grid-cols-3 gap-2 bg-[#1A1D2A]/60 p-3 rounded-xl text-center text-xs">
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">PAYOUT</span>
+            <span className="font-bold text-amber-400">30%</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">IF WIN</span>
+            <span className="font-bold text-emerald-400">+$1500</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">IF LOSS</span>
+            <span className="font-bold text-rose-400">-$5000</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button className="py-3 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex flex-col items-center justify-center">
+            <span>BUY LONG</span>
+            <span className="text-[10px] font-normal text-emerald-200">Price will rise ↑</span>
+          </button>
+          <button className="py-3 bg-rose-600/90 hover:bg-rose-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-rose-600/20 transition-all flex flex-col items-center justify-center">
+            <span>SELL SHORT</span>
+            <span className="text-[10px] font-normal text-rose-200">Price will fall ↓</span>
+          </button>
+        </div>
+      </div>
+
+
+      {/* ==================== FUTURES TRADE POPUP / MODAL ==================== */}
+      {isFuturesOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12141D] w-full max-w-lg p-6 rounded-2xl border border-slate-700 space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95">
+            
+            {/* Modal Close Button */}
+            <button
+              onClick={() => setIsFuturesOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg bg-[#1A1D2A] border border-slate-700/60"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Title */}
+            <div className="pb-2 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white uppercase tracking-wider">Futures Trade Box</h3>
+              <p className="text-xs text-purple-400 font-semibold">{symbol.replace('/', '')} Perpetual</p>
+            </div>
+
+            {/* Contract Type & Settlement Switches */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[#1A1D2A] p-1 rounded-xl flex">
+                {(['Perpetual', 'Quarterly'] as const).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setFuturesContractType(type)}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      futuresContractType === type ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <div className="bg-[#1A1D2A] p-1 rounded-xl flex">
+                {(['USDT', 'USDC'] as const).map((settle) => (
+                  <button
+                    key={settle}
+                    onClick={() => setFuturesSettlement(settle)}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                      futuresSettlement === settle ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {settle}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Market Stats Grid */}
+            <div className="grid grid-cols-3 gap-2 bg-[#1A1D2A]/60 p-3 rounded-xl text-center text-xs">
+              <div>
+                <span className="text-slate-400 block text-[10px]">MARK PRICE</span>
+                <span className="font-bold text-white">${currentPrice.toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">FUNDING / 8H</span>
+                <span className="font-bold text-emerald-400">0.01%</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block text-[10px]">EXPIRY</span>
+                <span className="font-bold text-slate-300">Never</span>
+              </div>
+            </div>
+
+            {/* Long / Short Dual Toggle Switch */}
+            <div className="bg-[#1A1D2A] p-1 rounded-xl flex">
+              <button
+                onClick={() => setFuturesDirection('Long')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  futuresDirection === 'Long' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📈 Long
+              </button>
+              <button
+                onClick={() => setFuturesDirection('Short')}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  futuresDirection === 'Short' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📉 Short
+              </button>
+            </div>
+
+            {/* Leverage Pills Sync */}
+            <div>
+              <div className="flex justify-between items-center text-xs text-slate-400 mb-1.5">
+                <span>Leverage</span>
+                <select
+                  value={futuresLeverage}
+                  onChange={(e) => setFuturesLeverage(Number(e.target.value))}
+                  className="bg-[#1A1D2A] border border-slate-700/80 rounded-lg px-2 py-0.5 text-purple-400 font-bold focus:outline-none"
+                >
+                  {[1, 2, 5, 10, 20, 50, 100].map((l) => (
+                    <option key={l} value={l}>{l}x</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {[1, 2, 5, 10, 20, 50, 100].map((lev) => (
+                  <button
+                    key={lev}
+                    onClick={() => setFuturesLeverage(lev)}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                      futuresLeverage === lev
+                        ? 'bg-purple-600/30 border-purple-500 text-purple-300'
+                        : 'bg-[#1A1D2A] border-slate-700/60 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {lev}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Margin Input */}
+            <div>
+              <div className="flex justify-between text-xs text-slate-400 mb-1.5">
+                <span>Margin ({futuresSettlement})</span>
+                <div className="flex items-center gap-1.5">
+                  <span>Available: ${availableBalance.toLocaleString()}</span>
+                  <button
+                    onClick={() => setFuturesMargin(availableBalance.toString())}
+                    className="text-[10px] font-bold text-purple-400 bg-purple-500/20 px-1.5 py-0.5 rounded hover:bg-purple-500/30"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={futuresMargin}
+                  onChange={(e) => setFuturesMargin(e.target.value)}
+                  className="w-full bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-purple-500/50"
+                />
+                <span className="absolute right-4 top-3 text-xs font-bold text-slate-500">{futuresSettlement}</span>
+              </div>
+            </div>
+
+            {/* Risk Warning Box */}
+            <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl flex items-start gap-2.5 text-amber-300 text-[11px] leading-relaxed">
+              <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                Futures trading carries significant risk. Leverage amplifies both gains and losses. You may lose more than your initial margin.
+              </span>
+            </div>
+
+            {/* Dynamic Action Button */}
+            <button
+              className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-lg transition-all text-white ${
+                futuresDirection === 'Long'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20'
+                  : 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+              }`}
+            >
+              Open {futuresLeverage}x {futuresDirection} — {symbol.split('/')[0]}/{futuresSettlement}
+            </button>
+
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+```
+
+---
+
+### ၂။ Live Price ($66k မုသား/အဟောင်း) ပြဿနာကို မခေါ်ဘဲ ပြင်ဆင်နည်း
+
+$66k ပြန်ပြန်ကျသွားရသည့် အကြောင်းရင်းမှာ `useMarketPrice` သို့မဟုတ် State Hook ထဲတွင် Fallback Mock Value (66,362.71) ထည့်ထားသောကြောင့် ဖြစ်ပါသည်။
+
+သင့် **Price Polling / WebSocket File** (ဥပမာ- `src/hooks/useLivePrice.ts`) ထဲရှိ Code ကို ဝင်ရောက်ကြည့်ရှုပြီး အောက်ပါအတိုင်း ပြင်ပါ -
+
+1. Hardcoded ဖြစ်နေသော `$66362.71` သို့မဟုတ် `66362` ဂဏန်းပါသော လိုင်းများကို ရှာဖွေပြီး ဖျက်ပစ်ပါ။
+2. Error သို့မဟုတ် Connection ယာယီပြတ်ပါက Mock Value ထို့သို့ ပြန်မသွားစေဘဲ **နောက်ဆုံး ရရှိခဲ့သော Live Price (Previous State)** ကိုသာ ဆက်လက်ထိန်းထားရန် ပြင်ပါ -
+
+```typescript
+// ❌ မပြုလုပ်ရ ( hardcoded mock value )
+const [price, setPrice] = useState(66362.71); 
+
+// ✅ ဒီလိုမျိုး ပြောင်းလဲပါ ( real-time price initial state )
+const [price, setPrice] = useState<number | null>(null);
+
+// Error တက်ပါက 66k သို့ မပြန်ဘဲ လက်ရှိ price အဟောင်းကိုသာ ထန်းထားပါ
+catch (error) {
+  console.error("Price stream error", error);
+  // Do NOT reset price to 66k mock data
+}
+
+```
+
+ဤနည်းလမ်းအတိုင်း Replit ၏ Files Tab ထဲတွင် တိုက်ရိုက် ရေးသားပြင်ဆင်ပါက **Agent ခေါ်ခိုင်းစရာ မလိုဘဲ စရိတ်စက အကုန်အကျ သုည (Free)** ဖြင့် အပြည့်အဝ ပြီးစီးသွားမည် ဖြစ်ပါတယ်ခင်ဗျာ။
