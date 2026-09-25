@@ -6,6 +6,13 @@ description: How this project's database was moved from Replit's built-in Postgr
 ## Setup
 The app's `DATABASE_URL` secret now points to an external Neon Postgres instance instead of Replit's built-in database. This was a deliberate, explicit user request — do not revert it or treat the built-in Replit DB as the source of truth going forward.
 
+## Authoritative data
+Treat Neon's existing records as authoritative; do not restore or merge the older Replit-managed database into Neon merely because it still contains rows.
+
+**Why:** the user explicitly confirmed the Neon records are correct. A read-only comparison showed the older Replit records describe users already present in Neon, but serial IDs overlap with different users. A blind restore or merge could overwrite or misassociate accounts.
+
+**How to apply:** preserve Neon before future database changes, compare identities rather than numeric row IDs, and seek explicit direction before reintroducing records from the Replit-managed database.
+
 ## Neon pooler search_path quirk
 Right after pointing `DATABASE_URL` at Neon's pooled connection endpoint (`-pooler` hostname), some sessions came up with an **empty `search_path`** (`SHOW search_path;` returned blank, `source: session`) instead of the normal `"$user", public`. This broke every unqualified table reference (Drizzle/ORM queries like `select ... from "wallet_profiles"`), causing `relation "..." does not exist` / failed-query errors even though the tables and data were present under the `public` schema.
 
