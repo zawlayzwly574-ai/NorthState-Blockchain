@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  index,
   integer,
   numeric,
   pgTable,
@@ -81,6 +82,27 @@ export const tradingAccountsTable = pgTable("trading_accounts", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   check("trading_accounts_separate_balances_nonnegative", sql`${table.balance} >= 0 AND ${table.futuresBalance} >= 0`),
+]);
+
+export const futuresPositionsTable = pgTable("futures_positions", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  asset: text("asset").notNull(),
+  direction: text("direction").notNull(),
+  margin: numeric("margin", { precision: 20, scale: 8 }).notNull(),
+  leverage: integer("leverage").notNull(),
+  entryPrice: numeric("entry_price", { precision: 20, scale: 8 }).notNull(),
+  closePrice: numeric("close_price", { precision: 20, scale: 8 }),
+  realizedPnl: numeric("realized_pnl", { precision: 20, scale: 8 }),
+  status: text("status").notNull().default("active"),
+  openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+}, (table) => [
+  index("futures_positions_user_status_idx").on(table.clerkUserId, table.status),
+  check("futures_positions_margin_positive", sql`${table.margin} > 0`),
+  check("futures_positions_leverage_range", sql`${table.leverage} BETWEEN 1 AND 100`),
+  check("futures_positions_direction_valid", sql`${table.direction} IN ('long', 'short')`),
+  check("futures_positions_status_valid", sql`${table.status} IN ('active', 'closed', 'liquidated')`),
 ]);
 
 export const passkeysTable = pgTable("user_passkeys", {
@@ -194,6 +216,7 @@ export type KycSubmission = typeof kycSubmissionsTable.$inferSelect;
 export type Transaction = typeof transactionsTable.$inferSelect;
 export type MiningInvestment = typeof miningInvestmentsTable.$inferSelect;
 export type Passkey = typeof passkeysTable.$inferSelect;
+export type FuturesPosition = typeof futuresPositionsTable.$inferSelect;
 export type InsertWalletProfile = z.infer<typeof insertWalletProfileSchema>;
 export type InsertHolding = z.infer<typeof insertHoldingSchema>;
 export type InsertActivity = z.infer<typeof insertActivitySchema>;

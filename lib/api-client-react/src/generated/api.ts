@@ -36,6 +36,9 @@ import type {
   AdminUserDetail,
   CreateMiningInvestmentInput,
   DepositInput,
+  FuturesPosition,
+  FuturesPositionInput,
+  FuturesQuote,
   FxRates,
   HealthStatus,
   KycInput,
@@ -70,6 +73,7 @@ import type {
   Trade,
   TradingAccount,
   TradingBalanceTransferInput,
+  TradingChartPoint,
   Transaction,
   TransferInput,
   UpdateMiningInvestmentInput,
@@ -3649,6 +3653,379 @@ export const useTransferTradingBalance = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getTransferTradingBalanceMutationOptions(options));
+    }
+
+export const getGetFuturesQuoteUrl = (asset: string,) => {
+
+
+
+
+  return `/api/trading/futures/quote/${asset}`
+}
+
+/**
+ * @summary Get a provider-timestamped executable reference quote for a Futures asset
+ */
+export const getFuturesQuote = async (asset: string, options?: Parameters<typeof customFetch>[1]): Promise<FuturesQuote> => {
+
+  return customFetch<FuturesQuote>(getGetFuturesQuoteUrl(asset),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFuturesQuoteQueryKey = (asset: string,) => {
+    return [
+    `/api/trading/futures/quote/${asset}`
+    ] as const;
+    }
+
+
+export const getGetFuturesQuoteQueryOptions = <TData = Awaited<ReturnType<typeof getFuturesQuote>>, TError = ErrorType<unknown>>(asset: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuturesQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFuturesQuoteQueryKey(asset);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFuturesQuote>>> = ({ signal }) => getFuturesQuote(asset, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: asset !== null && asset !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFuturesQuote>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFuturesQuoteQueryResult = NonNullable<Awaited<ReturnType<typeof getFuturesQuote>>>
+export type GetFuturesQuoteQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a provider-timestamped executable reference quote for a Futures asset
+ */
+
+export function useGetFuturesQuote<TData = Awaited<ReturnType<typeof getFuturesQuote>>, TError = ErrorType<unknown>>(
+ asset: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuturesQuote>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFuturesQuoteQueryOptions(asset,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTradingChartUrl = (asset: string,) => {
+
+
+
+
+  return `/api/trading/chart/${asset}`
+}
+
+/**
+ * @summary Get real recent market prices for the trading chart
+ */
+export const getTradingChart = async (asset: string, options?: Parameters<typeof customFetch>[1]): Promise<TradingChartPoint[]> => {
+
+  return customFetch<TradingChartPoint[]>(getGetTradingChartUrl(asset),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTradingChartQueryKey = (asset: string,) => {
+    return [
+    `/api/trading/chart/${asset}`
+    ] as const;
+    }
+
+
+export const getGetTradingChartQueryOptions = <TData = Awaited<ReturnType<typeof getTradingChart>>, TError = ErrorType<unknown>>(asset: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTradingChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTradingChartQueryKey(asset);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTradingChart>>> = ({ signal }) => getTradingChart(asset, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: asset !== null && asset !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTradingChart>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTradingChartQueryResult = NonNullable<Awaited<ReturnType<typeof getTradingChart>>>
+export type GetTradingChartQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get real recent market prices for the trading chart
+ */
+
+export function useGetTradingChart<TData = Awaited<ReturnType<typeof getTradingChart>>, TError = ErrorType<unknown>>(
+ asset: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTradingChart>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTradingChartQueryOptions(asset,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetFuturesPositionsUrl = () => {
+
+
+
+
+  return `/api/trading/futures/positions`
+}
+
+/**
+ * @summary Get the current user's active and recently closed USDT perpetual positions with live marks
+ */
+export const getFuturesPositions = async ( options?: Parameters<typeof customFetch>[1]): Promise<FuturesPosition[]> => {
+
+  return customFetch<FuturesPosition[]>(getGetFuturesPositionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFuturesPositionsQueryKey = () => {
+    return [
+    `/api/trading/futures/positions`
+    ] as const;
+    }
+
+
+export const getGetFuturesPositionsQueryOptions = <TData = Awaited<ReturnType<typeof getFuturesPositions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuturesPositions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFuturesPositionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFuturesPositions>>> = ({ signal }) => getFuturesPositions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFuturesPositions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFuturesPositionsQueryResult = NonNullable<Awaited<ReturnType<typeof getFuturesPositions>>>
+export type GetFuturesPositionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the current user's active and recently closed USDT perpetual positions with live marks
+ */
+
+export function useGetFuturesPositions<TData = Awaited<ReturnType<typeof getFuturesPositions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFuturesPositions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFuturesPositionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getOpenFuturesPositionUrl = () => {
+
+
+
+
+  return `/api/trading/futures/positions`
+}
+
+/**
+ * @summary Open a USDT-margined perpetual position at a fresh market quote
+ */
+export const openFuturesPosition = async (futuresPositionInput: FuturesPositionInput, options?: Parameters<typeof customFetch>[1]): Promise<FuturesPosition> => {
+
+  return customFetch<FuturesPosition>(getOpenFuturesPositionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(futuresPositionInput)
+  }
+);}
+
+
+
+
+
+export const getOpenFuturesPositionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openFuturesPosition>>, TError,{data: BodyType<FuturesPositionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof openFuturesPosition>>, TError,{data: BodyType<FuturesPositionInput>}, TContext> => {
+
+const mutationKey = ['openFuturesPosition'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof openFuturesPosition>>, {data: BodyType<FuturesPositionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  openFuturesPosition(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OpenFuturesPositionMutationResult = NonNullable<Awaited<ReturnType<typeof openFuturesPosition>>>
+    export type OpenFuturesPositionMutationBody = BodyType<FuturesPositionInput>
+    export type OpenFuturesPositionMutationError = ErrorType<void>
+
+    /**
+ * @summary Open a USDT-margined perpetual position at a fresh market quote
+ */
+export const useOpenFuturesPosition = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof openFuturesPosition>>, TError,{data: BodyType<FuturesPositionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof openFuturesPosition>>,
+        TError,
+        {data: BodyType<FuturesPositionInput>},
+        TContext
+      > => {
+      return useMutation(getOpenFuturesPositionMutationOptions(options));
+    }
+
+export const getCloseFuturesPositionUrl = (positionId: number,) => {
+
+
+
+
+  return `/api/trading/futures/positions/${positionId}/close`
+}
+
+/**
+ * @summary Close the current user's active Futures position at a fresh market quote
+ */
+export const closeFuturesPosition = async (positionId: number, options?: Parameters<typeof customFetch>[1]): Promise<FuturesPosition> => {
+
+  return customFetch<FuturesPosition>(getCloseFuturesPositionUrl(positionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCloseFuturesPositionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeFuturesPosition>>, TError,{positionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof closeFuturesPosition>>, TError,{positionId: number}, TContext> => {
+
+const mutationKey = ['closeFuturesPosition'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof closeFuturesPosition>>, {positionId: number}> = (props) => {
+          const {positionId} = props ?? {};
+
+          return  closeFuturesPosition(positionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CloseFuturesPositionMutationResult = NonNullable<Awaited<ReturnType<typeof closeFuturesPosition>>>
+
+    export type CloseFuturesPositionMutationError = ErrorType<void>
+
+    /**
+ * @summary Close the current user's active Futures position at a fresh market quote
+ */
+export const useCloseFuturesPosition = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof closeFuturesPosition>>, TError,{positionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof closeFuturesPosition>>,
+        TError,
+        {positionId: number},
+        TContext
+      > => {
+      return useMutation(getCloseFuturesPositionMutationOptions(options));
     }
 
 export const getGetTradesUrl = () => {

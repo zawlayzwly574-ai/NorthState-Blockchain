@@ -3,6 +3,7 @@
 - [Local 2FA and passkeys](local-2fa-passkeys.md) — TOTP and WebAuthn stored in local DB; otplib v12 API; in-memory challenge Maps with TTL.
 - [Swap and FX features](swap-fx-features.md) — instant crypto swap route, fx-rates route (Frankfurter), multi-currency display, market auto-refresh, API key for CoinGecko.
 - [Market provider identity checks](market-provider-identity.md) — validate CoinGecko IDs and Binance base assets independently before adding market symbols.
+- [Futures pricing trust boundary](futures-pricing.md) — require provider-side trade timestamps for execution; a freshly fetched stale quote is not live.
 - [SMS OTP verification](sms-otp.md) — Twilio-backed phone verification; OTP store pattern, DB columns, codegen flow, trial-account caveat.
 - [Mining investment settlement](mining-investment-settlement.md) — pending requests reserve USDC logically; only admin approval atomically debits holdings and activates the position.
 - [User operational controls](user-operational-controls.md) — suspend/freeze state lives in Clerk private metadata; account deletion removes Clerk access while preserving local financial records.

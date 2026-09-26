@@ -19,6 +19,17 @@ import {
   getGetPortfolioQueryKey,
 } from '@workspace/api-client-react';
 import type { Trade } from '@workspace/api-client-react';
+import {
+  useGetFuturesPositions,
+  useGetFuturesQuote,
+  useGetTradingChart,
+  useOpenFuturesPosition,
+  getGetFuturesPositionsQueryKey,
+  getGetFuturesQuoteQueryKey,
+  getGetTradingChartQueryKey,
+} from '@workspace/api-client-react';
+import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
+import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -79,71 +90,57 @@ function payoutRateFor(asset: string, amount: number): number {
   return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
 }
 
-// ─── Price chart helpers ───────────────────────────────────────────────────────
-
-function generatePriceHistory(base: number, count: number) {
-  const pts: { t: number; price: number }[] = [];
-  let p = base * (1 - 0.008 * Math.random());
-  for (let i = count - 1; i >= 0; i--) {
-    p = p * (1 + (Math.random() - 0.497) * 0.0025);
-    pts.push({ t: Date.now() - i * 1500, price: p });
-  }
-  return pts;
-}
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PriceChart({
-  basePrice,
+  quote,
+  history,
   entryPrice,
-  assetKey,
 }: {
-  basePrice: number;
+  quote: { price: number | null; updatedAt: string | null } | undefined;
+  history: { t: number; price: number }[] | undefined;
   entryPrice?: number;
-  assetKey: string;
 }) {
   const [data, setData] = useState<{ t: number; price: number }[]>([]);
 
-  // Re-seed when asset or base price changes significantly
-  const basePriceRef = useRef(basePrice);
   useEffect(() => {
-    if (Math.abs(basePriceRef.current - basePrice) / basePrice > 0.01 || data.length === 0) {
-      basePriceRef.current = basePrice;
-      setData(generatePriceHistory(basePrice, 80));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assetKey, basePrice > 0]);
+    if (!history?.length) return;
+    setData(prev => {
+      const points = new Map([...history, ...prev].map(point => [point.t, point]));
+      return [...points.values()].sort((a, b) => a.t - b.t).slice(-80);
+    });
+  }, [history]);
 
+  // Keep the original chart and its live price badge, but plot only real,
+  // provider-timestamped prices. A repeated or stale response is not a tick.
   useEffect(() => {
-    if (basePrice <= 0) return;
-    const iv = setInterval(() => {
-      setData(prev => {
-        if (prev.length === 0) return prev;
-        const last = prev[prev.length - 1].price;
-        const next = last * (1 + (Math.random() - 0.497) * 0.0025);
-        return [...prev.slice(-79), { t: Date.now(), price: next }];
-      });
-    }, 1200);
-    return () => clearInterval(iv);
-  }, [basePrice]);
+    const time = Date.parse(quote?.updatedAt ?? '');
+    if (!quote?.price || !Number.isFinite(time) || Date.now() - time > 15_000) return;
+    setData(prev => {
+      if (prev.length && prev[prev.length - 1].t >= time) return prev;
+      // A flat starting line displays the first actual quote without inventing a move.
+      if (!prev.length) return [{ t: time - 1, price: quote.price! }, { t: time, price: quote.price! }];
+      return [...prev.slice(-79), { t: time, price: quote.price! }];
+    });
+  }, [quote?.price, quote?.updatedAt]);
 
   const prices = data.map(d => d.price);
-  const lo = Math.min(...prices) * 0.9992;
-  const hi = Math.max(...prices) * 1.0008;
-  const current = data[data.length - 1]?.price ?? basePrice;
-  const first = data[0]?.price ?? basePrice;
-  const isUp = current >= first;
+  const lo = prices.length ? Math.min(...prices) * 0.9992 : 0;
+  const hi = prices.length ? Math.max(...prices) * 1.0008 : 1;
+  const current = data[data.length - 1]?.price ?? quote?.price ?? null;
+  const first = data[0]?.price ?? current ?? 0;
+  const live = !!quote?.price && !!quote.updatedAt && Date.now() - Date.parse(quote.updatedAt) < 15_000;
+  const isUp = (current ?? first) >= first;
   const stroke = isUp ? '#22c55e' : '#ef4444';
 
   return (
     <div className="relative">
-      {/* Live price badge */}
       <div className="pointer-events-none absolute left-3 top-2 z-10 flex items-baseline gap-1.5">
-        <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }}>
-          ${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }} data-testid="text-live-chart-price">
+          {current === null ? 'Waiting for market price…' : `$${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
         </span>
-        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
-          {isUp ? '▲' : '▼'} LIVE
+        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${live ? (isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400') : 'bg-secondary text-muted-foreground'}`} data-testid="status-live-chart">
+          {live ? `${isUp ? '▲' : '▼'} LIVE` : 'PRICE UNAVAILABLE'}
         </span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -390,8 +387,8 @@ export function TradingPage() {
   const [futuresSettlement, setFuturesSettlement] = useState<'USDT' | 'USDC'>('USDT');
   const [futuresDirection, setFuturesDirection] = useState<'long' | 'short'>('long');
   const [futuresMargin, setFuturesMargin] = useState('1000');
-  const [futuresLeverage, setFuturesLeverage] = useState(20);
-  const [futuresNotice, setFuturesNotice] = useState('');
+  const [futuresLeverage, setFuturesLeverage] = useState<FuturesPositionInputLeverage>(20);
+  const [futuresNotice, setFuturesNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
@@ -399,12 +396,22 @@ export function TradingPage() {
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
-  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
+  const { data: account, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
     query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
   const placeTradeHook = usePlaceTrade();
+  const { data: futuresPositions, isLoading: futuresPositionsLoading, error: futuresPositionsError, refetch: refetchFuturesPositions } = useGetFuturesPositions({
+    query: { queryKey: getGetFuturesPositionsQueryKey(), refetchInterval: 3_000 },
+  });
+  const openFuturesPosition = useOpenFuturesPosition();
+  const { data: futuresQuote } = useGetFuturesQuote(asset, {
+    query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 3_000 },
+  });
+  const { data: tradingHistory } = useGetTradingChart(asset, {
+    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 60_000 },
+  });
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
@@ -427,6 +434,14 @@ export function TradingPage() {
   const balance = Number(account?.balance ?? 0);
   const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
   const availableToTrade = Math.max(0, balance - reservedBalance);
+  const futuresTotal = Number(account?.futuresBalance ?? 0);
+  const futuresReserved = (futuresPositions ?? []).filter(position => position.status === 'active').reduce((total, position) => total + Number(position.margin), 0);
+  const futuresAvailable = Math.max(0, futuresTotal - futuresReserved);
+  const marginValue = Number(futuresMargin);
+  const validFuturesMargin = /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/.test(futuresMargin) && Number.isFinite(marginValue) && marginValue >= 1 && marginValue <= 10_000_000 && marginValue <= futuresAvailable;
+  const supportedFuturesMode = futuresContractType === 'Perpetual' && futuresSettlement === 'USDT';
+  const freshFuturesQuote = !!futuresQuote?.price && !!futuresQuote.updatedAt && Date.now() - Date.parse(futuresQuote.updatedAt) < 15_000;
+  const canOpenFutures = supportedFuturesMode && validFuturesMargin && freshFuturesQuote && !!account && !accountError && !!futuresPositions && !futuresPositionsError && !openFuturesPosition.isPending;
   const belowMinTrade = tradeAmt < minTrade;
   const balanceBelowMin = balance < minTrade;
   const insufficient = tradeAmt > availableToTrade || belowMinTrade || balanceBelowMin;
@@ -459,8 +474,22 @@ export function TradingPage() {
     }
   };
 
-  const handleFuturesPreview = () => {
-    setFuturesNotice(`Futures ${futuresLeverage}x ${futuresDirection === 'long' ? 'long' : 'short'} preview ready — spot balance unchanged.`);
+  const handleOpenFutures = async () => {
+    if (!canOpenFutures) return;
+    setFuturesNotice(null);
+    try {
+      const position = await openFuturesPosition.mutateAsync({
+        data: { asset, direction: futuresDirection, margin: futuresMargin, leverage: futuresLeverage, contractType: 'Perpetual', settlement: 'USDT' },
+      });
+      setFuturesNotice({ kind: 'success', text: `${position.asset} ${position.direction} position #${position.id} opened at $${position.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}.` });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: getGetFuturesPositionsQueryKey() }),
+        qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() }),
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }),
+      ]);
+    } catch (cause) {
+      setFuturesNotice({ kind: 'error', text: futuresErrorMessage(cause, 'Could not open this position. Please try again.') });
+    }
   };
 
   useEffect(() => {
@@ -578,19 +607,7 @@ export function TradingPage() {
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
-        {currentPrice !== null && currentPrice > 0 ? (
-          <PriceChart
-            key={asset}
-            basePrice={currentPrice}
-            entryPrice={entryPrice}
-            assetKey={asset}
-          />
-        ) : (
-          <div className="flex h-[200px] items-center justify-center gap-2 text-xs text-muted-foreground">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-border border-t-primary" />
-            Loading market data…
-          </div>
-        )}
+        <PriceChart key={asset} quote={futuresQuote} history={tradingHistory} entryPrice={entryPrice} />
       </div>
 
       {/* ── Order Panel ── */}
@@ -599,12 +616,12 @@ export function TradingPage() {
           <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
             <div>
               <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
-              <p className="mt-1 text-xs text-muted-foreground">Fixed-expiry position</p>
+              <p className="mt-1 text-xs text-muted-foreground">Spot · fixed-expiry position</p>
             </div>
             <button
               type="button"
               onClick={() => {
-                setFuturesNotice('');
+                setFuturesNotice(null);
                 setShowFutures(true);
               }}
               className="group relative overflow-hidden rounded-xl border border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-amber-500/15 px-3.5 py-2 text-xs font-extrabold text-primary shadow-[0_0_20px_hsl(var(--primary)/.12)] transition hover:border-primary/70 hover:shadow-[0_0_26px_hsl(var(--primary)/.22)] active:scale-[.98]"
@@ -784,12 +801,19 @@ export function TradingPage() {
         </div>
       </div>
 
+      <FuturesPositions
+        positions={futuresPositions}
+        isLoading={futuresPositionsLoading}
+        error={futuresPositionsError}
+        onRetry={() => { void refetchFuturesPositions(); }}
+      />
+
       {/* ── Active Trades ── */}
       {activeTrades.length > 0 && (
         <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
             <Zap size={14} className="text-primary" />
-            Active Positions ({activeTrades.length})
+            Active Spot Trades ({activeTrades.length})
           </h3>
           <div className="space-y-2">
             {activeTrades.map(trade => {
@@ -837,7 +861,7 @@ export function TradingPage() {
         <div className="rounded-2xl border border-border/60 bg-card p-4">
           <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
             <Trophy size={14} className="text-muted-foreground" />
-            Recent History
+            Recent Spot History
           </h3>
           <div className="space-y-1.5">
             {history.map(trade => (
@@ -889,7 +913,7 @@ export function TradingPage() {
         </div>
       )}
 
-      {/* Futures trade modal — UI-only preview, isolated from spot execution */}
+      {/* Futures trade modal — execution is separate from spot orders */}
       {showFutures && (
         <>
           <div
@@ -964,16 +988,16 @@ export function TradingPage() {
 
             <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-border/40 bg-secondary/25 p-3 text-center">
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Mark Price</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Live reference</p>
                 <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
-                  {currentPrice !== null
-                    ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : 'Loading…'}
+                  {freshFuturesQuote && futuresQuote?.price
+                    ? `$${futuresQuote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
+                    : 'Unavailable'}
                 </p>
               </div>
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Funding / 8h</p>
-                <p className="mt-1 font-mono text-sm font-bold text-green-400">0.01%</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Funding</p>
+                <p className="mt-1 font-mono text-sm font-bold text-muted-foreground">Not charged</p>
               </div>
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Expiry</p>
@@ -1016,7 +1040,7 @@ export function TradingPage() {
                 <div className="relative">
                   <select
                     value={futuresLeverage}
-                    onChange={event => setFuturesLeverage(Number(event.target.value))}
+                    onChange={event => setFuturesLeverage(Number(event.target.value) as FuturesPositionInputLeverage)}
                     className="h-7 appearance-none rounded-lg border border-input bg-secondary/50 py-0 pl-2.5 pr-7 font-mono text-xs font-bold text-primary outline-none transition focus:border-primary"
                     data-testid="select-futures-leverage-dropdown"
                     aria-label="Leverage dropdown"
@@ -1033,7 +1057,7 @@ export function TradingPage() {
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setFuturesLeverage(value)}
+                    onClick={() => setFuturesLeverage(value as FuturesPositionInputLeverage)}
                     className={`h-8 min-w-[42px] flex-1 rounded-lg border text-xs font-bold transition ${
                       futuresLeverage === value
                         ? 'border-primary/60 bg-primary/12 text-primary'
@@ -1051,7 +1075,7 @@ export function TradingPage() {
               <div className="mb-1.5 flex items-center justify-between gap-3">
                 <label className="text-xs font-bold text-muted-foreground">Margin ({futuresSettlement})</label>
                 <span className="text-right text-[11px] text-muted-foreground">
-                  Available: <span className="font-mono font-bold text-foreground">${availableToTrade.toFixed(0)}</span>
+                  Available: <span className="font-mono font-bold text-foreground" data-testid="text-futures-available">{account && futuresPositions && !futuresPositionsError ? `$${futuresAvailable.toFixed(2)}` : '—'}</span>
                 </span>
               </div>
               <div className="relative">
@@ -1060,14 +1084,15 @@ export function TradingPage() {
                   value={futuresMargin}
                   onChange={event => setFuturesMargin(event.target.value)}
                   min="0"
-                  step="1"
+                  step="any"
                   className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-3 pr-24 font-mono text-base font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
                   data-testid="input-futures-margin"
                 />
                 <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setFuturesMargin(String(Math.floor(availableToTrade)))}
+                    onClick={() => setFuturesMargin(Math.min(futuresAvailable, 10_000_000).toFixed(8).replace(/\.?0+$/, ''))}
+                    disabled={!account || !futuresPositions || !!futuresPositionsError || !!accountError}
                     className="rounded-lg bg-primary/15 px-2 py-1.5 text-[10px] font-extrabold text-primary transition hover:bg-primary/25"
                     data-testid="button-futures-max"
                   >
@@ -1078,29 +1103,59 @@ export function TradingPage() {
               </div>
             </div>
 
+            <p className="mb-4 text-[11px] text-muted-foreground" data-testid="text-futures-balance">
+              Futures allocation: {account ? `$${futuresTotal.toFixed(2)}` : '—'} USDT · Reserved margin: {futuresPositions && !futuresPositionsError ? `$${futuresReserved.toFixed(2)}` : '—'} USDT. Spot funds are separate.
+            </p>
+            {!supportedFuturesMode && (
+              <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" role="status" data-testid="status-futures-unsupported">
+                {futuresContractType === 'Quarterly' ? 'Quarterly contracts' : 'USDC settlement'} cannot be opened yet. Select USDT Perpetual to trade.
+              </p>
+            )}
+            {supportedFuturesMode && !freshFuturesQuote && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-quote-unavailable">A provider-timestamped live quote is unavailable for {asset}. Opening is paused until a fresh trade arrives.</p>
+            )}
+            {supportedFuturesMode && futuresMargin && !validFuturesMargin && account && futuresPositions && !futuresPositionsError && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-margin">Enter 1–10,000,000 USDT, no more than your available Futures balance (up to 8 decimal places).</p>
+            )}
+            {(accountLoading || futuresPositionsLoading && !futuresPositions) && (
+              <p className="mb-4 text-xs text-muted-foreground" role="status" data-testid="status-futures-loading">Checking Futures balance and positions…</p>
+            )}
+            {(accountError || futuresPositionsError) && (
+              <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert" data-testid="status-futures-data-error">
+                <span>Futures balance or positions could not be loaded.</span>
+                <button type="button" className="font-bold underline" onClick={() => { void refetchAccount(); void refetchFuturesPositions(); }} data-testid="button-retry-futures-data">Retry</button>
+              </div>
+            )}
             <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
               <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
               <p className="text-[11px] leading-4 text-amber-200/90">
-                Futures trading carries significant risk. Leverage amplifies both gains and losses. You may lose more than your initial margin. Trade responsibly.
+                Leverage amplifies gains and losses. Loss per position is limited to its reserved margin. Positions settle inside this app using live reference prices, not on an external exchange. Funding and automatic liquidation are not enabled.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={handleFuturesPreview}
-              className={`w-full rounded-xl py-3.5 text-sm font-extrabold text-white transition active:scale-[.98] ${
+              onClick={handleOpenFutures}
+              disabled={!canOpenFutures}
+              className={`w-full rounded-xl py-3.5 text-sm font-extrabold text-white transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 ${
                 futuresDirection === 'long'
                   ? 'bg-green-600 shadow-[0_8px_22px_rgba(22,163,74,.25)] hover:bg-green-500'
                   : 'bg-red-600 shadow-[0_8px_22px_rgba(220,38,38,.22)] hover:bg-red-500'
               }`}
               data-testid="button-open-futures-order"
             >
-              Open {futuresLeverage}x {futuresDirection === 'long' ? 'Long' : 'Short'} — {asset}/{futuresSettlement}
+              {openFuturesPosition.isPending ? 'Opening position…' : `Open ${futuresLeverage}x ${futuresDirection === 'long' ? 'Long' : 'Short'} — ${asset}/${futuresSettlement}`}
             </button>
             {futuresNotice && (
-              <p className="mt-3 text-center text-[11px] font-semibold text-primary" role="status" data-testid="status-futures-preview">
-                {futuresNotice}
-              </p>
+              <div className={`mt-3 text-center text-[11px] font-semibold ${futuresNotice.kind === 'error' ? 'text-red-300' : 'text-green-300'}`} role={futuresNotice.kind === 'error' ? 'alert' : 'status'} data-testid="status-futures-order">
+                <p>{futuresNotice.text}</p>
+                {futuresNotice.kind === 'success' && (
+                  <button type="button" data-testid="button-view-futures-positions" className="mt-2 underline" onClick={() => {
+                    setShowFutures(false);
+                    requestAnimationFrame(() => document.getElementById('futures-positions-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}>View My Positions</button>
+                )}
+              </div>
             )}
           </div>
         </>

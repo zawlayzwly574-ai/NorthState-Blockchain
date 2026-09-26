@@ -986,6 +986,117 @@ export const TransferTradingBalanceResponse = zod.object({
 
 
 /**
+ * @summary Get a provider-timestamped executable reference quote for a Futures asset
+ */
+export const GetFuturesQuoteParams = zod.object({
+  "asset": zod.coerce.string()
+})
+
+export const GetFuturesQuoteResponse = zod.object({
+  "asset": zod.string(),
+  "price": zod.number().nullable(),
+  "updatedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Get real recent market prices for the trading chart
+ */
+export const GetTradingChartParams = zod.object({
+  "asset": zod.coerce.string()
+})
+
+export const GetTradingChartResponseItem = zod.object({
+  "t": zod.number(),
+  "price": zod.number()
+})
+export const GetTradingChartResponse = zod.array(GetTradingChartResponseItem)
+
+
+/**
+ * @summary Get the current user's active and recently closed USDT perpetual positions with live marks
+ */
+export const GetFuturesPositionsResponseItem = zod.object({
+  "id": zod.number(),
+  "asset": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "margin": zod.number(),
+  "leverage": zod.number(),
+  "entryPrice": zod.number(),
+  "markPrice": zod.number().nullable(),
+  "unrealizedPnl": zod.number().nullable(),
+  "realizedPnl": zod.number().nullable(),
+  "status": zod.enum(['active', 'closed', 'liquidated']),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullable(),
+  "closePrice": zod.number().nullable(),
+  "quoteUpdatedAt": zod.string().nullable()
+})
+export const GetFuturesPositionsResponse = zod.array(GetFuturesPositionsResponseItem)
+
+
+/**
+ * @summary Open a USDT-margined perpetual position at a fresh market quote
+ */
+export const openFuturesPositionBodyMarginRegExp = new RegExp('^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,8})?$');
+
+
+export const OpenFuturesPositionBody = zod.object({
+  "asset": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "margin": zod.string().regex(openFuturesPositionBodyMarginRegExp),
+  "leverage": zod.union([zod.literal(1),zod.literal(2),zod.literal(5),zod.literal(10),zod.literal(20),zod.literal(50),zod.literal(100)]),
+  "contractType": zod.enum(['Perpetual']),
+  "settlement": zod.enum(['USDT'])
+})
+
+export const OpenFuturesPositionResponse = zod.object({
+  "id": zod.number(),
+  "asset": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "margin": zod.number(),
+  "leverage": zod.number(),
+  "entryPrice": zod.number(),
+  "markPrice": zod.number().nullable(),
+  "unrealizedPnl": zod.number().nullable(),
+  "realizedPnl": zod.number().nullable(),
+  "status": zod.enum(['active', 'closed', 'liquidated']),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullable(),
+  "closePrice": zod.number().nullable(),
+  "quoteUpdatedAt": zod.string().nullable()
+})
+
+
+/**
+ * @summary Close the current user's active Futures position at a fresh market quote
+ */
+
+
+
+export const CloseFuturesPositionParams = zod.object({
+  "positionId": zod.coerce.number().min(1)
+})
+
+export const CloseFuturesPositionResponse = zod.object({
+  "id": zod.number(),
+  "asset": zod.string(),
+  "direction": zod.enum(['long', 'short']),
+  "margin": zod.number(),
+  "leverage": zod.number(),
+  "entryPrice": zod.number(),
+  "markPrice": zod.number().nullable(),
+  "unrealizedPnl": zod.number().nullable(),
+  "realizedPnl": zod.number().nullable(),
+  "status": zod.enum(['active', 'closed', 'liquidated']),
+  "openedAt": zod.string(),
+  "closedAt": zod.string().nullable(),
+  "closePrice": zod.number().nullable(),
+  "quoteUpdatedAt": zod.string().nullable()
+})
+
+
+/**
  * @summary Get trade history (auto-settles any expired active trades)
  */
 export const GetTradesResponseItem = zod.object({

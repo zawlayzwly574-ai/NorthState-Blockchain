@@ -191,6 +191,104 @@ export interface TradingBalanceTransferInput {
   amount: string;
 }
 
+export interface TradingChartPoint {
+  t: number;
+  price: number;
+}
+
+export interface FuturesQuote {
+  asset: string;
+  /** @nullable */
+  price: number | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export type FuturesPositionInputDirection = typeof FuturesPositionInputDirection[keyof typeof FuturesPositionInputDirection];
+
+
+export const FuturesPositionInputDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type FuturesPositionInputLeverage = typeof FuturesPositionInputLeverage[keyof typeof FuturesPositionInputLeverage];
+
+
+export const FuturesPositionInputLeverage = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_5: 5,
+  NUMBER_10: 10,
+  NUMBER_20: 20,
+  NUMBER_50: 50,
+  NUMBER_100: 100,
+} as const;
+
+export type FuturesPositionInputContractType = typeof FuturesPositionInputContractType[keyof typeof FuturesPositionInputContractType];
+
+
+export const FuturesPositionInputContractType = {
+  Perpetual: 'Perpetual',
+} as const;
+
+export type FuturesPositionInputSettlement = typeof FuturesPositionInputSettlement[keyof typeof FuturesPositionInputSettlement];
+
+
+export const FuturesPositionInputSettlement = {
+  USDT: 'USDT',
+} as const;
+
+export interface FuturesPositionInput {
+  asset: string;
+  direction: FuturesPositionInputDirection;
+  /** @pattern ^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$ */
+  margin: string;
+  leverage: FuturesPositionInputLeverage;
+  contractType: FuturesPositionInputContractType;
+  settlement: FuturesPositionInputSettlement;
+}
+
+export type FuturesPositionDirection = typeof FuturesPositionDirection[keyof typeof FuturesPositionDirection];
+
+
+export const FuturesPositionDirection = {
+  long: 'long',
+  short: 'short',
+} as const;
+
+export type FuturesPositionStatus = typeof FuturesPositionStatus[keyof typeof FuturesPositionStatus];
+
+
+export const FuturesPositionStatus = {
+  active: 'active',
+  closed: 'closed',
+  liquidated: 'liquidated',
+} as const;
+
+export interface FuturesPosition {
+  id: number;
+  asset: string;
+  direction: FuturesPositionDirection;
+  margin: number;
+  leverage: number;
+  entryPrice: number;
+  /** @nullable */
+  markPrice: number | null;
+  /** @nullable */
+  unrealizedPnl: number | null;
+  /** @nullable */
+  realizedPnl: number | null;
+  status: FuturesPositionStatus;
+  openedAt: string;
+  /** @nullable */
+  closedAt: string | null;
+  /** @nullable */
+  closePrice: number | null;
+  /** @nullable */
+  quoteUpdatedAt: string | null;
+}
+
 export interface Trade {
   id: number;
   asset: string;

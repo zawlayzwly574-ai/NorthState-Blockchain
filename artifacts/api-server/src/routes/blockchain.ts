@@ -6,6 +6,7 @@ import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, v
 import {
   db,
   activitiesTable,
+  futuresPositionsTable,
   holdingsTable,
   kycSubmissionsTable,
   miningInvestmentsTable,
@@ -17,6 +18,8 @@ import {
   transactionsTable,
   walletProfilesTable,
 } from "@workspace/db";
+import { createFuturesRouter } from "./futures";
+import { createFuturesQuoteFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -747,6 +750,11 @@ router.use(requireMember);
 router.use((req, res, next) => {
   void requireVerifiedMember(req, res, next).catch((error) => next(error));
 });
+
+router.use(createFuturesRouter(
+  createFuturesQuoteFetcher(marketDefinitions, binanceSymbols, marketHeaders),
+  createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders),
+));
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req));
@@ -2532,7 +2540,11 @@ router.post("/trading/transfer", async (req, res): Promise<void> => {
             where ${tradesTable.clerkUserId} = ${userId}
               and ${tradesTable.status} = 'active'
           ), 0) >= ${amount}::numeric`
-        : sql`${tradingAccountsTable.futuresBalance} >= ${amount}::numeric`,
+        : sql`${tradingAccountsTable.futuresBalance} - coalesce((
+            select sum(${futuresPositionsTable.margin}) from ${futuresPositionsTable}
+            where ${futuresPositionsTable.clerkUserId} = ${userId}
+              and ${futuresPositionsTable.status} = 'active'
+          ), 0) >= ${amount}::numeric`,
     )).returning();
     return updated;
   });

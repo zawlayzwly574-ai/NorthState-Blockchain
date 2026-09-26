@@ -746,6 +746,92 @@ paths:
               schema: { $ref: "#/components/schemas/TradingAccount" }
         "400":
           description: Invalid amount or insufficient available balance
+  /trading/futures/quote/{asset}:
+    get:
+      operationId: getFuturesQuote
+      tags: [trading]
+      summary: Get a provider-timestamped executable reference quote for a Futures asset
+      parameters:
+        - name: asset
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Fresh quote, or unavailable when no fresh provider trade exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FuturesQuote" }
+  /trading/chart/{asset}:
+    get:
+      operationId: getTradingChart
+      tags: [trading]
+      summary: Get real recent market prices for the trading chart
+      parameters:
+        - name: asset
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Recent real price observations, empty if market history is unavailable
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TradingChartPoint" }
+  /trading/futures/positions:
+    get:
+      operationId: getFuturesPositions
+      tags: [trading]
+      summary: Get the current user's active and recently closed USDT perpetual positions with live marks
+      responses:
+        "200":
+          description: Futures positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FuturesPosition" }
+    post:
+      operationId: openFuturesPosition
+      tags: [trading]
+      summary: Open a USDT-margined perpetual position at a fresh market quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FuturesPositionInput" }
+      responses:
+        "201":
+          description: Opened position
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FuturesPosition" }
+        "400":
+          description: Invalid order or insufficient unreserved Futures funds
+        "503":
+          description: Fresh price unavailable
+  /trading/futures/positions/{positionId}/close:
+    post:
+      operationId: closeFuturesPosition
+      tags: [trading]
+      summary: Close the current user's active Futures position at a fresh market quote
+      parameters:
+        - name: positionId
+          in: path
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Closed position with realized PnL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FuturesPosition" }
+        "404":
+          description: Position not found or no longer active
+        "503":
+          description: Fresh price unavailable
   /trading/trades:
     get:
       operationId: getTrades
@@ -952,6 +1038,47 @@ components:
       properties:
         direction: { type: string, enum: [spot_to_futures, futures_to_spot] }
         amount: { type: string, pattern: '^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$' }
+    TradingChartPoint:
+      type: object
+      required: [t, price]
+      properties:
+        t: { type: number }
+        price: { type: number }
+    FuturesQuote:
+      type: object
+      required: [asset, price, updatedAt]
+      properties:
+        asset: { type: string }
+        price: { type: ["number", "null"] }
+        updatedAt: { type: ["string", "null"] }
+    FuturesPositionInput:
+      type: object
+      required: [asset, direction, margin, leverage, contractType, settlement]
+      properties:
+        asset: { type: string }
+        direction: { type: string, enum: [long, short] }
+        margin: { type: string, pattern: '^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$' }
+        leverage: { type: number, enum: [1, 2, 5, 10, 20, 50, 100] }
+        contractType: { type: string, enum: [Perpetual] }
+        settlement: { type: string, enum: [USDT] }
+    FuturesPosition:
+      type: object
+      required: [id, asset, direction, margin, leverage, entryPrice, markPrice, unrealizedPnl, realizedPnl, status, openedAt, closedAt, closePrice, quoteUpdatedAt]
+      properties:
+        id: { type: number }
+        asset: { type: string }
+        direction: { type: string, enum: [long, short] }
+        margin: { type: number }
+        leverage: { type: number }
+        entryPrice: { type: number }
+        markPrice: { type: ["number", "null"] }
+        unrealizedPnl: { type: ["number", "null"] }
+        realizedPnl: { type: ["number", "null"] }
+        status: { type: string, enum: [active, closed, liquidated] }
+        openedAt: { type: string }
+        closedAt: { type: ["string", "null"] }
+        closePrice: { type: ["number", "null"] }
+        quoteUpdatedAt: { type: ["string", "null"] }
     Trade:
       type: object
       required: [id, asset, direction, amount, timeframeSecs, status, entryPrice, payoutRate, createdAt, expiresAt]
