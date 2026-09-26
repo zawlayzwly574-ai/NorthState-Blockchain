@@ -432,9 +432,16 @@ export function TradingPage() {
   const payoutRate = payoutRateFor(asset, tradeAmt);
   const potentialProfit = Math.floor(tradeAmt * payoutRate);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  const balance = Number(account?.futuresBalance ?? 0);
-  const spotBalance = Number(account?.spotBalance ?? 0);
-  const availableToTrade = Math.max(0, Number(account?.availableFuturesBalance ?? 0));
+  // Until the additive Neon migration is applied, the running API still
+  // returns the original single-balance shape. Do not expose controls that
+  // would call an unavailable transfer endpoint or hide that balance.
+  const allocationReady = !!account && typeof account.futuresBalance === 'number';
+  const balance = Number(allocationReady ? account.futuresBalance : account?.balance ?? 0);
+  const spotBalance = Number(allocationReady ? account.spotBalance : 0);
+  const legacyReserved = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
+  const availableToTrade = allocationReady
+    ? Math.max(0, Number(account.availableFuturesBalance))
+    : Math.max(0, balance - legacyReserved);
   const transferAvailable = transferDirection === 'spot_to_futures'
     ? Number(account?.availableSpotBalance ?? 0)
     : availableToTrade;
@@ -534,7 +541,7 @@ export function TradingPage() {
       {/* ── Header row ── */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Futures Balance</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{allocationReady ? 'Futures Balance' : 'Trading Balance'}</p>
           <p className="mt-0.5 font-mono text-xl font-extrabold" data-testid="text-futures-balance">
             {accountLoading ? 'Loading…' : `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`}
           </p>
@@ -550,7 +557,7 @@ export function TradingPage() {
       </div>
 
       {/* ── Spot / Futures allocation ── */}
-      <section className="mb-4 rounded-2xl border border-border/60 bg-card p-4" aria-label="Move funds between Spot and Futures">
+      {allocationReady && <section className="mb-4 rounded-2xl border border-border/60 bg-card p-4" aria-label="Move funds between Spot and Futures">
         <div className="mb-3 flex items-center gap-2">
           <ArrowLeftRight size={16} className="text-primary" />
           <h2 className="text-sm font-bold">Move funds</h2>
@@ -624,16 +631,18 @@ export function TradingPage() {
         {accountError && <p className="mt-3 text-xs text-destructive" role="alert">Balances could not be loaded. <button type="button" className="font-bold underline" onClick={() => void refetchAccount()} data-testid="button-retry-trading-balance">Try again</button></p>}
         {transferError && <p className="mt-3 text-xs font-semibold text-destructive" role="alert" data-testid="status-trading-transfer-error">{transferError}</p>}
         {transferSuccess && <p className="mt-3 text-xs font-semibold text-green-400" role="status" data-testid="status-trading-transfer-success">{transferSuccess}</p>}
-      </section>
+      </section>}
 
       {/* ── Deposit required banner (zero balance) ── */}
       {account && balance === 0 && (
         <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>
-            <p className="text-sm font-bold text-amber-300">No Futures balance</p>
+            <p className="text-sm font-bold text-amber-300">{allocationReady ? 'No Futures balance' : 'No trading balance'}</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              {spotBalance > 0
+              {!allocationReady
+                ? 'Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.'
+                : spotBalance > 0
                 ? 'Move available USDT from Spot to Futures above to start trading.'
                 : 'Make a deposit and wait for admin approval, then move USDT from Spot to Futures.'}
             </p>
