@@ -1,5 +1,6 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { tradesTable, tradingAccountsTable } from "@workspace/db";
 
 const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
@@ -290,5 +291,74 @@ describe("member route authentication", () => {
     expect(await response.json()).toEqual({ error: "Unauthorized" });
     expect(getUser).not.toHaveBeenCalled();
     expect(select).not.toHaveBeenCalled();
+  });
+
+  it("returns updated Spot and Futures allocations for both transfer directions", async () => {
+    select.mockImplementation(() => ({
+      from: (table: unknown) => ({
+        where: () => table === tradesTable
+          ? Promise.resolve([])
+          : { limit: async () => [profile] },
+      }),
+    }));
+    const account = {
+      id: 1, balance: "100.00000000", futuresBalance: "0.00000000",
+      totalTrades: 0, wins: 0, losses: 0,
+    };
+    const updatedBalances = ["40.00000000", "25.00000000"];
+    transaction.mockImplementation(async (callback) => callback({
+      execute: vi.fn(),
+      insert: () => ({
+        values: () => ({ onConflictDoNothing: async () => undefined }),
+      }),
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () => table === tradingAccountsTable
+            ? { limit: async () => [account] }
+            : Promise.resolve([{ spot: "0", futures: "0" }]),
+        }),
+      }),
+      update: () => ({
+        set: () => ({
+          where: () => ({
+            returning: async () => [{
+              ...account, futuresBalance: updatedBalances.shift(),
+            }],
+          }),
+        }),
+      }),
+    }));
+
+    for (const [direction, amount, spot, futures] of [
+      ["spot_to_futures", "40", 60, 40],
+      ["futures_to_spot", "15", 75, 25],
+    ] as const) {
+      const response = await fetch(`${baseUrl}/api/trading/transfer`, {
+        method: "POST",
+        headers: { cookie: "__session=restored", "content-type": "application/json" },
+        body: JSON.stringify({ direction, amount }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        balance: futures, spotBalance: spot, futuresBalance: futures,
+        availableSpotBalance: spot, availableFuturesBalance: futures, totalBalance: 100,
+      });
+    }
+  });
+
+  it("rejects malformed transfer amounts and requires authentication", async () => {
+    const headers = { cookie: "__session=restored", "content-type": "application/json" };
+    for (const amount of ["0", "1.000000001", "1e2", "1000000001"]) {
+      const response = await fetch(`${baseUrl}/api/trading/transfer`, {
+        method: "POST", headers,
+        body: JSON.stringify({ direction: "spot_to_futures", amount }),
+      });
+      expect(response.status).toBe(400);
+    }
+    const response = await fetch(`${baseUrl}/api/trading/transfer`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "spot_to_futures", amount: "1" }),
+    });
+    expect(response.status).toBe(401);
   });
 });
