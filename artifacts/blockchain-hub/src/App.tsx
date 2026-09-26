@@ -14,6 +14,7 @@ import {
 import {
   getGetActivityQueryKey, getGetFxRatesQueryKey, getGetMarketDetailQueryKey, getGetMarketSummaryQueryKey, getGetPortfolioQueryKey,
   getGetProfileQueryKey, getGetReferralQueryKey, getGetNotificationsQueryKey, getGetMiningPlaceQueryKey, getGetMiningInvestmentsQueryKey,
+  getGetTradingAccountQueryKey, useGetTradingAccount, useTransferTradingBalance,
   useCreateDeposit, useCreateReferralShare, useCreateSend, useCreateSwap, useCreateWithdrawal,
   useGetActivity, useGetFxRates, useGetMarketDetail, useGetMarketSummary, useGetNotifications, useGetPortfolio, useGetProfile,
   useGetReferral, useSubmitKyc, useUpdateProfile,
@@ -1385,6 +1386,9 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
 
 function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: (message?: string) => void; verificationStatus?: string }) {
   const [mode, setMode] = useState<'deposit' | 'send' | 'withdraw' | 'convert' | null>(null);
+  const [convertKind, setConvertKind] = useState<'swap' | 'balances'>('swap');
+  const [transferDirection, setTransferDirection] = useState<'spot_to_futures' | 'futures_to_spot'>('spot_to_futures');
+  const [balanceTransferError, setBalanceTransferError] = useState('');
   const [asset, setAsset] = useState('BTC');
   const [toAsset, setToAsset] = useState('ETH');
   const [copied, setCopied] = useState(false);
@@ -1397,10 +1401,14 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
   const send = useCreateSend();
   const withdrawal = useCreateWithdrawal();
   const swap = useCreateSwap();
+  const balanceTransfer = useTransferTradingBalance();
+  const tradingAccount = useGetTradingAccount({
+    query: { queryKey: getGetTradingAccountQueryKey(), enabled: mode === 'convert', refetchOnMount: 'always' },
+  });
 
   const address = asset === 'BTC' ? '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' : '0x45fa3421948a8a0372e0a172ab9a3725f785a1d2';
 
-  const close = () => { setMode(null); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); };
+  const close = () => { setMode(null); setConvertKind('swap'); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); setBalanceTransferError(''); };
 
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1447,6 +1455,29 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
         onDone();
       },
       onError: () => setSwapError('Insufficient balance or unsupported asset pair.'),
+    });
+  };
+
+  const submitBalanceTransfer = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBalanceTransferError('');
+    const amount = String(new FormData(event.currentTarget).get('amount') ?? '');
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/.test(amount) || Number(amount) <= 0) {
+      setBalanceTransferError('Enter a positive USDT amount with no more than 8 decimal places.');
+      return;
+    }
+    balanceTransfer.mutate({ data: { direction: transferDirection, amount } }, {
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+        close();
+        onDone(`Transferred ${amount} USDT ${transferDirection === 'spot_to_futures' ? 'from Spot to Futures' : 'from Futures to Spot'}.`);
+      },
+      onError: (error) => {
+        const apiError = error as { data?: { error?: string } };
+        setBalanceTransferError(apiError.data?.error || 'The transfer could not be completed. Please try again.');
+        qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
+      },
     });
   };
 
@@ -1513,7 +1544,32 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
       {/* ── Convert / Swap ── */}
       {mode === 'convert' && (
         <Modal title="Convert assets" eyebrow="Swap" onClose={close}>
-          {swapDone ? (
+          <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-secondary/50 p-1" role="group" aria-label="Conversion type">
+            <button type="button" onClick={() => { setConvertKind('swap'); setBalanceTransferError(''); }} aria-pressed={convertKind === 'swap'} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${convertKind === 'swap' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Swap assets</button>
+            <button type="button" onClick={() => { setConvertKind('balances'); setSwapError(''); }} aria-pressed={convertKind === 'balances'} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${convertKind === 'balances' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} data-testid="button-convert-balances">Spot ⇄ Futures</button>
+          </div>
+          {convertKind === 'balances' ? (
+            <form className="grid gap-5" onSubmit={submitBalanceTransfer}>
+              {tradingAccount.isError && <p className="text-sm text-destructive" role="alert">Balances could not be loaded. Try reopening Convert assets.</p>}
+              {tradingAccount.isLoading && <p className="text-sm text-muted-foreground">Loading balances…</p>}
+              {tradingAccount.data && (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl border border-border bg-secondary/30 p-3"><span className="block text-muted-foreground">Spot balance</span><strong className="mt-1 block font-mono-ui">{usdt(tradingAccount.data.balance)}</strong></div>
+                  <div className="rounded-xl border border-border bg-secondary/30 p-3"><span className="block text-muted-foreground">Futures balance</span><strong className="mt-1 block font-mono-ui">{usdt(tradingAccount.data.futuresBalance)}</strong></div>
+                </div>
+              )}
+              <SelectField label="Transfer direction" value={transferDirection} onChange={(event) => { setTransferDirection(event.target.value as typeof transferDirection); setBalanceTransferError(''); }} data-testid="select-balance-transfer-direction">
+                <option value="spot_to_futures">Spot → Futures</option>
+                <option value="futures_to_spot">Futures → Spot</option>
+              </SelectField>
+              <Field label="Amount (USDT)" name="amount" type="number" min="0.00000001" step="0.00000001" placeholder="0.00" required data-testid="input-balance-transfer-amount" />
+              <p className="text-xs leading-5 text-muted-foreground">Transfers are instant and 1:1 in USDT. Funds reserved for an active Spot trade cannot be moved.</p>
+              {balanceTransferError && <p className="text-sm font-semibold text-destructive" role="alert" data-testid="status-balance-transfer-error">{balanceTransferError}</p>}
+              <Button type="submit" className="w-full" disabled={balanceTransfer.isPending || !tradingAccount.data || tradingAccount.isError} data-testid="button-submit-balance-transfer">
+                {balanceTransfer.isPending ? 'Transferring...' : 'Transfer USDT'} <ArrowLeftRight size={16} />
+              </Button>
+            </form>
+          ) : swapDone ? (
             <div className="grid gap-5 text-center">
               <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary/15 text-primary"><ArrowLeftRight size={26} /></div>
               <div>

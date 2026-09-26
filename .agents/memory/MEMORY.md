@@ -7,5 +7,5 @@
 - [Mining investment settlement](mining-investment-settlement.md) — pending requests reserve USDC logically; only admin approval atomically debits holdings and activates the position.
 - [User operational controls](user-operational-controls.md) — suspend/freeze state lives in Clerk private metadata; account deletion removes Clerk access while preserving local financial records.
 - [Admin balance adjustments](admin-balance-adjustments.md) — admin-only USDT-denominated canonical balance credits/debits are atomic, audited, and respect active trade reservations.
-- [Canonical trading balance](canonical-trading-balance.md) — Overview and Trading read one account balance; active stakes reserve funds, then losses debit and wins credit earnings atomically.
+- [Spot and Futures allocation](canonical-trading-balance.md) — Overview totals both balances, while existing Spot trading uses Spot funds; migrate old combined-balance allocations once.
 - [External Neon DB migration](external-neon-db-migration.md) — moved off Replit's built-in Postgres to a user-supplied Neon URL; pooler connections can show a blank session search_path, breaking unqualified table queries.

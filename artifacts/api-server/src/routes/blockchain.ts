@@ -39,6 +39,8 @@ import {
   GetReferralResponse,
   SubmitKycBody,
   SubmitKycResponse,
+  TransferTradingBalanceBody,
+  TransferTradingBalanceResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -817,7 +819,8 @@ router.get("/portfolio", async (req, res) => {
   await autoSettleExpiredTrades(userId);
   const account = await getOrCreateTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
-  const value = asNumber(account.balance);
+  const spotValue = asNumber(account.balance);
+  const value = spotValue + asNumber(account.futuresBalance);
   const holdingsValue = holdings.reduce((total, holding) => total + asNumber(holding.value), 0);
   const dayChange = holdings.reduce(
     (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
@@ -828,7 +831,7 @@ router.get("/portfolio", async (req, res) => {
     totalValue: value,
     dayChange,
     dayChangePercent: value ? (dayChange / value) * 100 : 0,
-    cashBalance: Math.max(0, value - holdingsValue),
+    cashBalance: Math.max(0, spotValue - holdingsValue),
     history: historyMultipliers.map((multiplier, index) => ({
       time: `${String(index * 2).padStart(2, "0")}:00`,
       value: Number((value * multiplier).toFixed(2)),
@@ -1708,7 +1711,8 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
     profiles.map(async (profile) => {
       // Real, live trading balance — never a cached or seeded figure — matching
       // exactly what the user's own Dashboard/Wallet reads.
-      const totalHoldings = asNumber(accountByUser.get(profile.clerkUserId)?.balance ?? 0);
+      const account = accountByUser.get(profile.clerkUserId);
+      const totalHoldings = asNumber(account?.balance) + asNumber(account?.futuresBalance);
       const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
       const email = clerkInfo.email || profile.email;
       let accountStatus: AccountOperationalStatus | "deleted" = "active";
@@ -1777,6 +1781,7 @@ router.post("/admin/cleanup-legacy-balance-base", requireAdmin, async (_req, res
     .set({ balance: "0", updatedAt: new Date() })
     .where(and(
       eq(tradingAccountsTable.balance, LEGACY_DEMO_BALANCE_BASE),
+      eq(tradingAccountsTable.futuresBalance, "0"),
       eq(tradingAccountsTable.totalTrades, 0),
     ))
     .returning({ id: tradingAccountsTable.id });
@@ -2028,7 +2033,7 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
 
   // Real, live trading balance — never a cached or seeded figure — matching
   // exactly what the user's own Dashboard/Wallet reads.
-  const totalHoldings = asNumber(accountRows[0]?.balance ?? 0);
+  const totalHoldings = asNumber(accountRows[0]?.balance) + asNumber(accountRows[0]?.futuresBalance);
   const kyc = kycRows[0] ? await enrichKyc(kycRows[0]) : null;
   const clerkInfo = await fetchClerkUserInfo(userId);
   const displayName = clerkInfo.name || profile.displayName;
@@ -2480,7 +2485,62 @@ router.get("/trading/account", async (req, res) => {
   await ensureSeededUser(userId);
   await autoSettleExpiredTrades(userId);
   const acct = await getOrCreateTradingAccount(userId);
-  res.json({ balance: asNumber(acct.balance), totalTrades: acct.totalTrades, wins: acct.wins, losses: acct.losses });
+  res.json(tradingAccountResponse(acct));
+});
+
+function tradingAccountResponse(acct: typeof tradingAccountsTable.$inferSelect) {
+  return {
+    balance: asNumber(acct.balance),
+    futuresBalance: asNumber(acct.futuresBalance),
+    totalTrades: acct.totalTrades,
+    wins: acct.wins,
+    losses: acct.losses,
+  };
+}
+
+router.post("/trading/transfer", async (req, res): Promise<void> => {
+  const parsed = TransferTradingBalanceBody.safeParse(req.body);
+  const amount = parsed.success ? normalizeStablecoinAmount(parsed.data.amount) : null;
+  if (!parsed.success || !amount) {
+    res.status(400).json({ error: "Enter a positive USDT amount with up to 8 decimal places and choose a direction." });
+    return;
+  }
+  const userId = getUserId(req);
+  await ensureSeededUser(userId);
+  const toFutures = parsed.data.direction === "spot_to_futures";
+  const account = await db.transaction(async (tx) => {
+    // The same lock order as trade placement and settlement prevents a transfer
+    // from using funds reserved for an active Spot position.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:TRADING_BALANCE`}))`);
+    await tx.execute(sql`
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${userId} for update
+    `);
+    const [updated] = await tx.update(tradingAccountsTable).set({
+      balance: toFutures
+        ? sql`${tradingAccountsTable.balance} - ${amount}::numeric`
+        : sql`${tradingAccountsTable.balance} + ${amount}::numeric`,
+      futuresBalance: toFutures
+        ? sql`${tradingAccountsTable.futuresBalance} + ${amount}::numeric`
+        : sql`${tradingAccountsTable.futuresBalance} - ${amount}::numeric`,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(tradingAccountsTable.clerkUserId, userId),
+      toFutures
+        ? sql`${tradingAccountsTable.balance} - coalesce((
+            select sum(${tradesTable.amount}) from ${tradesTable}
+            where ${tradesTable.clerkUserId} = ${userId}
+              and ${tradesTable.status} = 'active'
+          ), 0) >= ${amount}::numeric`
+        : sql`${tradingAccountsTable.futuresBalance} >= ${amount}::numeric`,
+    )).returning();
+    return updated;
+  });
+  if (!account) {
+    res.status(400).json({ error: `Insufficient available ${toFutures ? "Spot" : "Futures"} USDT balance.` });
+    return;
+  }
+  res.json(TransferTradingBalanceResponse.parse(tradingAccountResponse(account)));
 });
 
 router.get("/trading/trades", async (req, res) => {

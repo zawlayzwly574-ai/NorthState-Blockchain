@@ -171,9 +171,24 @@ export interface Profile {
 
 export interface TradingAccount {
   balance: number;
+  futuresBalance: number;
   totalTrades: number;
   wins: number;
   losses: number;
+}
+
+export type TradingBalanceTransferInputDirection = typeof TradingBalanceTransferInputDirection[keyof typeof TradingBalanceTransferInputDirection];
+
+
+export const TradingBalanceTransferInputDirection = {
+  spot_to_futures: 'spot_to_futures',
+  futures_to_spot: 'futures_to_spot',
+} as const;
+
+export interface TradingBalanceTransferInput {
+  direction: TradingBalanceTransferInputDirection;
+  /** @pattern ^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$ */
+  amount: string;
 }
 
 export interface Trade {

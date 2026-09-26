@@ -954,10 +954,31 @@ export const AdminSupportReplyResponse = zod.object({
 
 
 /**
- * @summary Get the current user's demo trading account
+ * @summary Get the current user's Spot and Futures balances and trade statistics
  */
 export const GetTradingAccountResponse = zod.object({
   "balance": zod.number(),
+  "futuresBalance": zod.number(),
+  "totalTrades": zod.number(),
+  "wins": zod.number(),
+  "losses": zod.number()
+})
+
+
+/**
+ * @summary Transfer USDT between the current user's Spot and Futures balances
+ */
+export const transferTradingBalanceBodyAmountRegExp = new RegExp('^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,8})?$');
+
+
+export const TransferTradingBalanceBody = zod.object({
+  "direction": zod.enum(['spot_to_futures', 'futures_to_spot']),
+  "amount": zod.string().regex(transferTradingBalanceBodyAmountRegExp)
+})
+
+export const TransferTradingBalanceResponse = zod.object({
+  "balance": zod.number(),
+  "futuresBalance": zod.number(),
   "totalTrades": zod.number(),
   "wins": zod.number(),
   "losses": zod.number()

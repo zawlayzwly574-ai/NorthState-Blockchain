@@ -1,6 +1,8 @@
 import { createInsertSchema } from "drizzle-zod";
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   integer,
   numeric,
   pgTable,
@@ -68,6 +70,7 @@ export const tradingAccountsTable = pgTable("trading_accounts", {
   id: serial("id").primaryKey(),
   clerkUserId: text("clerk_user_id").notNull().unique(),
   balance: numeric("balance", { precision: 20, scale: 8 }).notNull().default("0"),
+  futuresBalance: numeric("futures_balance", { precision: 20, scale: 8 }).notNull().default("0"),
   totalTrades: integer("total_trades").notNull().default(0),
   wins: integer("wins").notNull().default(0),
   losses: integer("losses").notNull().default(0),
@@ -76,7 +79,9 @@ export const tradingAccountsTable = pgTable("trading_accounts", {
   tradeOutcomeMode: text("trade_outcome_mode").notNull().default("auto"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  check("trading_accounts_separate_balances_nonnegative", sql`${table.balance} >= 0 AND ${table.futuresBalance} >= 0`),
+]);
 
 export const passkeysTable = pgTable("user_passkeys", {
   id: serial("id").primaryKey(),

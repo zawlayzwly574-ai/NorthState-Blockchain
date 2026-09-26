@@ -8,6 +8,7 @@
 
 export interface TradingAccount {
   balance: number;
+  futuresBalance: number;
   totalTrades: number;
   wins: number;
   losses: number;

@@ -127,6 +127,68 @@ describe("member route authentication", () => {
     expect(select).toHaveBeenCalledTimes(1);
   });
 
+  it("returns updated Spot and Futures balances for a verified member's transfer", async () => {
+    let spot = 75;
+    let futures = 25;
+    const account = () => ({
+      clerkUserId: "user_restored",
+      balance: spot.toFixed(8),
+      futuresBalance: futures.toFixed(8),
+      totalTrades: 0,
+      wins: 0,
+      losses: 0,
+    });
+    const update = vi.fn();
+    transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        execute: async () => undefined,
+        select: () => ({ from: () => ({ where: () => ({ limit: async () => [account()] }) }) }),
+        update: (...args: unknown[]) => {
+          update(...args);
+          return {
+            set: () => ({
+              where: () => ({
+                returning: async () => [account()],
+              }),
+            }),
+          };
+        },
+      }),
+    );
+
+    for (const [direction, nextSpot, nextFutures] of [
+      ["spot_to_futures", 75, 25],
+      ["futures_to_spot", 90, 10],
+    ] as const) {
+      spot = nextSpot;
+      futures = nextFutures;
+      const response = await fetch(`${baseUrl}/api/trading/transfer`, {
+        method: "POST",
+        headers: { cookie: "__session=restored", "content-type": "application/json" },
+        body: JSON.stringify({ direction, amount: "15" }),
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ balance: spot, futuresBalance: futures });
+    }
+    expect(update).toHaveBeenCalledTimes(2);
+
+    const invalid = await fetch(`${baseUrl}/api/trading/transfer`, {
+      method: "POST",
+      headers: { cookie: "__session=restored", "content-type": "application/json" },
+      body: JSON.stringify({ direction: "spot_to_futures", amount: "0" }),
+    });
+    expect(invalid.status).toBe(400);
+    expect(update).toHaveBeenCalledTimes(2);
+
+    const anonymous = await fetch(`${baseUrl}/api/trading/transfer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ direction: "spot_to_futures", amount: "1" }),
+    });
+    expect(anonymous.status).toBe(401);
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
   it("returns the standard user profile for a logged-in unverified member", async () => {
     select.mockReturnValue({
       from: () => ({
