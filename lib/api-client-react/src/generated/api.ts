@@ -69,6 +69,7 @@ import type {
   TotpVerifyInput,
   Trade,
   TradingAccount,
+  TradingBalanceTransferInput,
   Transaction,
   TransferInput,
   UpdateMiningInvestmentInput,
@@ -3511,7 +3512,7 @@ export const getGetTradingAccountUrl = () => {
 }
 
 /**
- * @summary Get the current user's demo trading account
+ * @summary Get the current user's Spot and Futures balances
  */
 export const getTradingAccount = async ( options?: Parameters<typeof customFetch>[1]): Promise<TradingAccount> => {
 
@@ -3558,7 +3559,7 @@ export type GetTradingAccountQueryError = ErrorType<unknown>
 
 
 /**
- * @summary Get the current user's demo trading account
+ * @summary Get the current user's Spot and Futures balances
  */
 
 export function useGetTradingAccount<TData = Awaited<ReturnType<typeof getTradingAccount>>, TError = ErrorType<unknown>>(
@@ -3578,6 +3579,77 @@ export function useGetTradingAccount<TData = Awaited<ReturnType<typeof getTradin
 
 
 
+
+export const getTransferTradingBalanceUrl = () => {
+
+
+
+
+  return `/api/trading/transfer`
+}
+
+/**
+ * @summary Move available USDT between Spot and Futures without changing the total
+ */
+export const transferTradingBalance = async (tradingBalanceTransferInput: TradingBalanceTransferInput, options?: Parameters<typeof customFetch>[1]): Promise<TradingAccount> => {
+
+  return customFetch<TradingAccount>(getTransferTradingBalanceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(tradingBalanceTransferInput)
+  }
+);}
+
+
+
+
+
+export const getTransferTradingBalanceMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferTradingBalance>>, TError,{data: BodyType<TradingBalanceTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transferTradingBalance>>, TError,{data: BodyType<TradingBalanceTransferInput>}, TContext> => {
+
+const mutationKey = ['transferTradingBalance'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferTradingBalance>>, {data: BodyType<TradingBalanceTransferInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  transferTradingBalance(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransferTradingBalanceMutationResult = NonNullable<Awaited<ReturnType<typeof transferTradingBalance>>>
+    export type TransferTradingBalanceMutationBody = BodyType<TradingBalanceTransferInput>
+    export type TransferTradingBalanceMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Move available USDT between Spot and Futures without changing the total
+ */
+export const useTransferTradingBalance = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferTradingBalance>>, TError,{data: BodyType<TradingBalanceTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transferTradingBalance>>,
+        TError,
+        {data: BodyType<TradingBalanceTransferInput>},
+        TContext
+      > => {
+      return useMutation(getTransferTradingBalanceMutationOptions(options));
+    }
 
 export const getGetTradesUrl = () => {
 

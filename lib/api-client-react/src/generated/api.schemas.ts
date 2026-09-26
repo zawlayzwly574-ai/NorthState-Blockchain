@@ -170,10 +170,30 @@ export interface Profile {
 }
 
 export interface TradingAccount {
+  /** Futures balance (backward-compatible trading balance field) */
   balance: number;
+  spotBalance: number;
+  availableSpotBalance: number;
+  futuresBalance: number;
+  availableFuturesBalance: number;
+  totalBalance: number;
   totalTrades: number;
   wins: number;
   losses: number;
+}
+
+export type TradingBalanceTransferInputDirection = typeof TradingBalanceTransferInputDirection[keyof typeof TradingBalanceTransferInputDirection];
+
+
+export const TradingBalanceTransferInputDirection = {
+  spot_to_futures: 'spot_to_futures',
+  futures_to_spot: 'futures_to_spot',
+} as const;
+
+export interface TradingBalanceTransferInput {
+  direction: TradingBalanceTransferInputDirection;
+  /** Positive USDT amount with up to 8 decimal places */
+  amount: string;
 }
 
 export interface Trade {

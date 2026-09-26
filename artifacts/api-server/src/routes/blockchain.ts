@@ -37,8 +37,11 @@ import {
   GetPortfolioResponse,
   GetProfileResponse,
   GetReferralResponse,
+  GetTradingAccountResponse,
   SubmitKycBody,
   SubmitKycResponse,
+  TransferTradingBalanceBody,
+  TransferTradingBalanceResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -1839,6 +1842,7 @@ router.post("/admin/cleanup-legacy-balance-base", requireAdmin, async (_req, res
     .set({ balance: "0", updatedAt: new Date() })
     .where(and(
       eq(tradingAccountsTable.balance, LEGACY_DEMO_BALANCE_BASE),
+      eq(tradingAccountsTable.futuresBalance, "0"),
       eq(tradingAccountsTable.totalTrades, 0),
     ))
     .returning({ id: tradingAccountsTable.id });
@@ -1968,11 +1972,12 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     const balanceUpdate = direction === "credit"
       ? sql`${tradingAccountsTable.balance} + ${amountString}`
       : sql`${tradingAccountsTable.balance} - ${amountString}`;
-    const debitAvailability = sql`${tradingAccountsTable.balance} - coalesce((
+    const debitAvailability = sql`${tradingAccountsTable.balance} - ${tradingAccountsTable.futuresBalance} - coalesce((
       select sum(${tradesTable.amount})
       from ${tradesTable}
       where ${tradesTable.clerkUserId} = ${userId}
         and ${tradesTable.status} = 'active'
+        and ${tradesTable.balanceSource} = 'spot'
     ), 0) >= ${amountString}`;
     const [updatedAccount] = await tx
       .update(tradingAccountsTable)
@@ -2193,7 +2198,13 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
         updatedAt: new Date(),
       }).where(and(
         eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId),
-        sql`${tradingAccountsTable.balance} >= ${pendingTransaction.amount}`,
+        sql`${tradingAccountsTable.balance} - ${tradingAccountsTable.futuresBalance} - coalesce((
+          select sum(${tradesTable.amount})
+          from ${tradesTable}
+          where ${tradesTable.clerkUserId} = ${pendingTransaction.clerkUserId}
+            and ${tradesTable.status} = 'active'
+            and ${tradesTable.balanceSource} = 'spot'
+        ), 0) >= ${pendingTransaction.amount}`,
       )).returning();
       if (!debitedAccount) return { kind: "insufficient" as const };
     }
@@ -2429,6 +2440,34 @@ async function getOrCreateTradingAccount(userId: string) {
   return acct;
 }
 
+function mapTradingAccount(
+  account: typeof tradingAccountsTable.$inferSelect,
+  reserved: { spot: string; futures: string },
+) {
+  const totalBalance = asNumber(account.balance);
+  const futuresBalance = asNumber(account.futuresBalance);
+  const spotBalance = Number((totalBalance - futuresBalance).toFixed(8));
+  if (spotBalance < 0) throw new Error("Trading balance allocation exceeds the account total.");
+  return {
+    balance: futuresBalance,
+    spotBalance,
+    availableSpotBalance: Math.max(0, Number((spotBalance - asNumber(reserved.spot)).toFixed(8))),
+    futuresBalance,
+    availableFuturesBalance: Math.max(0, Number((futuresBalance - asNumber(reserved.futures)).toFixed(8))),
+    totalBalance,
+    totalTrades: account.totalTrades,
+    wins: account.wins,
+    losses: account.losses,
+  };
+}
+
+function activeTradingReservations() {
+  return {
+    spot: sql<string>`coalesce(sum(case when ${tradesTable.balanceSource} = 'spot' then ${tradesTable.amount} else 0 end), 0)::text`,
+    futures: sql<string>`coalesce(sum(case when ${tradesTable.balanceSource} = 'futures' then ${tradesTable.amount} else 0 end), 0)::text`,
+  };
+}
+
 function mapTrade(t: typeof tradesTable.$inferSelect) {
   return {
     id: t.id, asset: t.asset, direction: t.direction, amount: Number(t.amount),
@@ -2491,16 +2530,28 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     `);
     const [account] = await tx.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
+    const fromFutures = trade.balanceSource === "futures";
     const balanceUpdate = outcome === "win"
       ? sql`${tradingAccountsTable.balance} + (${trade.amount}::numeric * ${trade.payoutRate}::numeric)`
       : sql`${tradingAccountsTable.balance} - ${trade.amount}`;
+    const futuresBalanceUpdate = !fromFutures
+      ? sql`${tradingAccountsTable.futuresBalance}`
+      : outcome === "win"
+        ? sql`${tradingAccountsTable.futuresBalance} + (${trade.amount}::numeric * ${trade.payoutRate}::numeric)`
+        : sql`${tradingAccountsTable.futuresBalance} - ${trade.amount}`;
     const [updatedAccount] = await tx.update(tradingAccountsTable).set({
       balance: balanceUpdate,
+      futuresBalance: futuresBalanceUpdate,
       wins: outcome === "win" ? sql`${tradingAccountsTable.wins} + 1` : tradingAccountsTable.wins,
       losses: outcome === "loss" ? sql`${tradingAccountsTable.losses} + 1` : tradingAccountsTable.losses,
       updatedAt: now,
     }).where(outcome === "loss"
-      ? and(eq(tradingAccountsTable.id, account.id), sql`${tradingAccountsTable.balance} >= ${trade.amount}`)
+      ? and(
+          eq(tradingAccountsTable.id, account.id),
+          fromFutures
+            ? sql`${tradingAccountsTable.futuresBalance} >= ${trade.amount}`
+            : sql`${tradingAccountsTable.balance} - ${tradingAccountsTable.futuresBalance} >= ${trade.amount}`,
+        )
       : eq(tradingAccountsTable.id, account.id))
       .returning();
     if (!updatedAccount) {
@@ -2542,7 +2593,61 @@ router.get("/trading/account", async (req, res) => {
   await ensureSeededUser(userId);
   await autoSettleExpiredTrades(userId);
   const acct = await getOrCreateTradingAccount(userId);
-  res.json({ balance: asNumber(acct.balance), totalTrades: acct.totalTrades, wins: acct.wins, losses: acct.losses });
+  const [reserved] = await db.select(activeTradingReservations()).from(tradesTable)
+    .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
+  res.json(GetTradingAccountResponse.parse(mapTradingAccount(acct, reserved)));
+});
+
+router.post("/trading/transfer", async (req, res) => {
+  const parsed = TransferTradingBalanceBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a transfer direction and enter a USDT amount." });
+    return;
+  }
+  const amountString = normalizeStablecoinAmount(parsed.data.amount);
+  if (!amountString) {
+    res.status(400).json({ error: "Enter a positive USDT amount with up to 8 decimal places (maximum 1,000,000,000)." });
+    return;
+  }
+  const userId = getUserId(req);
+  await ensureSeededUser(userId);
+  await autoSettleExpiredTrades(userId);
+  const toFutures = parsed.data.direction === "spot_to_futures";
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:TRADING_BALANCE`}))`);
+    await tx.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
+    await tx.execute(sql`
+      select id from ${tradingAccountsTable}
+      where ${tradingAccountsTable.clerkUserId} = ${userId}
+      for update
+    `);
+    const reservedAmount = sql`coalesce((
+      select sum(${tradesTable.amount}) from ${tradesTable}
+      where ${tradesTable.clerkUserId} = ${userId}
+        and ${tradesTable.status} = 'active'
+        and ${tradesTable.balanceSource} = ${toFutures ? "spot" : "futures"}
+    ), 0)`;
+    const available = toFutures
+      ? sql`${tradingAccountsTable.balance} - ${tradingAccountsTable.futuresBalance} - ${reservedAmount} >= ${amountString}`
+      : sql`${tradingAccountsTable.futuresBalance} - ${reservedAmount} >= ${amountString}`;
+    const [account] = await tx.update(tradingAccountsTable).set({
+      futuresBalance: toFutures
+        ? sql`${tradingAccountsTable.futuresBalance} + ${amountString}`
+        : sql`${tradingAccountsTable.futuresBalance} - ${amountString}`,
+      updatedAt: new Date(),
+    }).where(and(eq(tradingAccountsTable.clerkUserId, userId), available)).returning();
+    if (!account) return null;
+    const [reserved] = await tx.select(activeTradingReservations()).from(tradesTable)
+      .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
+    return mapTradingAccount(account, reserved);
+  });
+  if (!result) {
+    res.status(409).json({ error: toFutures
+      ? "Insufficient available Spot balance."
+      : "Insufficient available Futures balance after active trade reservations." });
+    return;
+  }
+  res.json(TransferTradingBalanceResponse.parse(result));
 });
 
 router.get("/trading/trades", async (req, res) => {
@@ -2576,8 +2681,8 @@ router.post("/trading/trades", async (req, res) => {
   }
   await ensureSeededUser(userId);
   const tradingAccount = await getOrCreateTradingAccount(userId);
-  if (Number(tradingAccount.balance) < minTrade) {
-    res.status(400).json({ error: `Your trading balance must be at least ${minTrade.toLocaleString()} USDT to trade ${assetSymbol}.` });
+  if (Number(tradingAccount.futuresBalance) < minTrade) {
+    res.status(400).json({ error: `Move at least ${minTrade.toLocaleString()} USDT from Spot to Futures to trade ${assetSymbol}.` });
     return;
   }
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
@@ -2600,11 +2705,12 @@ router.post("/trading/trades", async (req, res) => {
     `);
     const [availableAccount] = await tx.select().from(tradingAccountsTable).where(and(
       eq(tradingAccountsTable.clerkUserId, userId),
-      sql`${tradingAccountsTable.balance} - coalesce((
+      sql`${tradingAccountsTable.futuresBalance} - coalesce((
         select sum(${tradesTable.amount})
         from ${tradesTable}
         where ${tradesTable.clerkUserId} = ${userId}
           and ${tradesTable.status} = 'active'
+          and ${tradesTable.balanceSource} = 'futures'
       ), 0) >= ${amountString}`,
     )).limit(1);
     if (!availableAccount) return null;
@@ -2617,12 +2723,13 @@ router.post("/trading/trades", async (req, res) => {
       entryPrice: String(entryPrice),
       expiresAt,
       payoutRate: String(resolvedPayoutRate),
+      balanceSource: "futures",
     }).returning();
     await tx.update(tradingAccountsTable).set({
       totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
       updatedAt: now,
     }).where(eq(tradingAccountsTable.clerkUserId, userId));
-    return { trade, balance: availableAccount.balance };
+    return { trade, balance: availableAccount.futuresBalance };
   });
   if (!result) {
     res.status(400).json({ error: "Insufficient available USDT balance after active trade reservations." });

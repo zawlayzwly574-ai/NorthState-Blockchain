@@ -10,7 +10,12 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+// Marks writers that understand the Spot/Futures allocation. The Neon migration
+// rejects older API writers on accounts with funded Futures balances.
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  application_name: "northstar-futures-v2",
+});
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
