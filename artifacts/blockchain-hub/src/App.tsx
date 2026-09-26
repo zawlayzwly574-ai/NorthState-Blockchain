@@ -23,6 +23,7 @@ import {
   useSendSmsOtp, useVerifySmsOtp,
   useGetSupportMessages, useSendSupportMessage, getGetSupportMessagesQueryKey,
   useGetMiningPlace, useGetMiningInvestments, useCreateMiningInvestment,
+  setAuthTokenGetter, setBaseUrl,
 } from '@workspace/api-client-react';
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
@@ -51,6 +52,8 @@ const clerkPubKey = publishableKeyFromHost(
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
 );
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
+setBaseUrl(apiBaseUrl || null);
 if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the workspace environment.');
 }
@@ -165,7 +168,32 @@ function Home() {
     <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
     <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
       <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />A calmer way to hold digital assets</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">Your money, with <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">Get started <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">Explore markets <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />Bank-grade controls</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />Transparent fees</span></div></div>
-      <div className="animate-rise-2 relative"><div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6"><div className="mb-5 flex items-center justify-between"><div><p className="eyebrow">Portfolio snapshot</p><p className="mt-1 text-xs text-muted-foreground">A clear view, at a glance</p></div><span className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 font-mono-ui text-[10px] font-medium text-primary">LIVE</span></div><div className="rounded-2xl border border-border/70 bg-background/55 p-5"><div className="flex items-end justify-between"><div><p className="text-xs font-semibold text-muted-foreground">Total balance</p><p className="mt-2 text-3xl font-extrabold tracking-[-.05em]">$24,680<span className="text-muted-foreground">.42</span></p></div><span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">+8.42%</span></div><div className="mt-7 h-28"><HeroChart /></div><div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>FEB 08</span><span>MAR 08</span><span>APR 08</span><span>MAY 08</span></div></div><div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#f6ad3c]" />BTC</div><p className="mt-2 font-mono-ui text-sm font-medium">$11,208.44</p></div><div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#9a9cf5]" />ETH</div><p className="mt-2 font-mono-ui text-sm font-medium">$6,892.10</p></div></div></div><div className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/20 bg-[#171209] p-4 shadow-xl sm:-left-10"><div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary"><ShieldCheck size={18} /></div><div><p className="text-xs font-bold">Protected by design</p><p className="mt-0.5 text-[10px] text-muted-foreground">Your keys. Your control.</p></div></div></div></div>
+      <div className="animate-rise-2 relative">
+        <div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="eyebrow">Illustrative portfolio preview</p>
+              <p className="mt-1 text-xs text-muted-foreground">Sample figures only — not live account data</p>
+            </div>
+            <span className="rounded-lg border border-accent/20 bg-accent/10 px-2 py-1 font-mono-ui text-[10px] font-medium text-accent">EXAMPLE</span>
+          </div>
+          <div className="rounded-2xl border border-border/70 bg-background/55 p-5">
+            <div className="flex items-end justify-between">
+              <div><p className="text-xs font-semibold text-muted-foreground">Example total balance</p><p className="mt-2 text-3xl font-extrabold tracking-[-.05em]">$24,680<span className="text-muted-foreground">.42</span></p></div>
+              <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">+8.42%</span>
+            </div>
+            <div className="mt-7 h-28"><HeroChart /></div>
+            <div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>FEB 08</span><span>MAR 08</span><span>APR 08</span><span>MAY 08</span></div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#f6ad3c]" />BTC</div><p className="mt-2 font-mono-ui text-sm font-medium">$11,208.44</p></div>
+            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#9a9cf5]" />ETH</div><p className="mt-2 font-mono-ui text-sm font-medium">$6,892.10</p></div>
+          </div>
+        </div>
+        <div className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/20 bg-[#171209] p-4 shadow-xl sm:-left-10">
+          <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary"><ShieldCheck size={18} /></div><div><p className="text-xs font-bold">Protected by design</p><p className="mt-0.5 text-[10px] text-muted-foreground">Your keys. Your control.</p></div></div>
+        </div>
+      </div>
     </div>
   </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><footer className="border-t border-border/70 px-5 py-8 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-xs text-muted-foreground sm:flex-row"><Logo /><span>North State Blockchain · Digital assets, made legible.</span></div></footer></main>;
 }
@@ -1650,24 +1678,13 @@ export function Dashboard() {
   const fxRate = (currency === 'USD' ? 1 : (fxQuery.data?.rates?.[currency] ?? 1));
   const cx = (usdValue: number) => usdValue * fxRate;
 
-  const fallbackPortfolio = {
-    totalValue: 0,
-    dayChange: 0,
-    dayChangePercent: 0,
-    cashBalance: 0,
-    history: [],
-    holdings: [],
-  };
   const data = portfolio.data
     ? {
-        ...fallbackPortfolio,
         ...portfolio.data,
         history: portfolio.data.history ?? [],
         holdings: portfolio.data.holdings ?? [],
       }
-    : portfolio.isError
-      ? fallbackPortfolio
-      : undefined;
+    : undefined;
   const recent = activity.data?.slice(0, 5) ?? [];
   const holdings = data?.holdings ?? [];
 
@@ -1687,7 +1704,14 @@ export function Dashboard() {
           <Check size={17} />{notice}
         </div>
       )}
+      {portfolio.isError && data && (
+        <div role="status" className="mb-5 rounded-xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent">
+          The latest portfolio refresh failed. The last successfully loaded database balance is still shown.
+          <Button variant="secondary" onClick={() => void portfolio.refetch()} className="ml-3" data-testid="button-retry-portfolio">Retry</Button>
+        </div>
+      )}
       {portfolio.isLoading ? <LoadingState lines={5} />
+        : portfolio.isError && !data ? <ErrorState retry={() => void portfolio.refetch()} />
         : !data ? <EmptyState title="Your portfolio is ready for its first asset" detail="Make a deposit to see your balance and holdings here." />
         : (
           <>
@@ -1718,7 +1742,11 @@ export function Dashboard() {
                   </div>
                   <span className="hidden rounded-xl border border-border bg-background/35 p-3 text-primary sm:block"><Wallet size={21} /></span>
                 </div>
-                <div className="mt-8 h-32"><Chart points={data.history} /></div>
+                <div className="mt-8 h-32">
+                  {data.history.length > 0
+                    ? <Chart points={data.history} />
+                    : <div role="status" className="grid h-full place-items-center rounded-xl border border-dashed border-border/70 text-xs text-muted-foreground">Historical balance snapshots are not available yet.</div>}
+                </div>
                 <div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground">
                   <span>09:00</span><span>12:00</span><span>15:00</span><span>NOW</span>
                 </div>
@@ -2483,9 +2511,14 @@ function MiningPlace() {
           <section className="surface rounded-2xl p-5 sm:p-6">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div><p className="eyebrow">Your investments</p><h2 className="mt-1 text-lg font-extrabold">Mining Place positions</h2></div>
-              <span className="font-mono-ui text-sm text-primary">Available: {money(investments.data?.availableUsdc ?? 0)} USDC</span>
+              <span className="font-mono-ui text-sm text-primary">
+                Available: {investments.data ? `${money(investments.data.availableUsdc)} USDC` : investments.isError ? 'Unavailable' : 'Loading…'}
+              </span>
             </div>
-            {investments.isLoading ? <div className="mt-4"><LoadingState lines={2} /></div> : !investments.data?.investments.length ? (
+            {investments.isError && <p role="alert" className="mt-4 text-sm text-destructive">Investment balances and history could not be refreshed.</p>}
+            {investments.isLoading && !investments.data ? <div className="mt-4"><LoadingState lines={2} /></div> : investments.isError && !investments.data ? (
+              <Button variant="secondary" onClick={() => void investments.refetch()} className="mt-4">Retry</Button>
+            ) : !investments.data?.investments.length ? (
               <p className="mt-4 text-sm text-muted-foreground">Open an asset to submit your first investment request.</p>
             ) : <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {investments.data.investments.map(investment => <div key={investment.id} className="rounded-xl border border-border bg-background/40 p-4">
@@ -2581,7 +2614,10 @@ function MiningPlaceDetail() {
               <p className="eyebrow">USDC investment request</p>
               <h2 className="mt-2 text-xl font-extrabold">Invest in {item.name}</h2>
               <p className="mt-2 text-sm text-muted-foreground">Your request remains pending until an administrator reviews it. USDC is deducted only after approval.</p>
-              <p className="mt-4 text-sm font-bold text-primary">Available: {money(investments.data?.availableUsdc ?? 0)} USDC</p>
+              <p className="mt-4 text-sm font-bold text-primary">
+                Available: {investments.data ? `${money(investments.data.availableUsdc)} USDC` : investments.isError ? 'Unavailable' : 'Loading…'}
+              </p>
+              {investments.isError && <p role="alert" className="mt-2 text-xs text-destructive">Your stored USDC balance could not be refreshed.</p>}
             </div>
             <form className="grid gap-3" onSubmit={(event) => {
               event.preventDefault();
@@ -2598,7 +2634,7 @@ function MiningPlaceDetail() {
               <Field label="Amount (USDC)" type="number" min="0.01" step="0.01" value={investmentAmount} onChange={event => setInvestmentAmount(event.target.value)} required data-testid="input-mining-investment-amount" />
               <p className="text-xs text-muted-foreground">Estimated units: {investmentAmount && Number(investmentAmount) > 0 ? (Number(investmentAmount) / item.price).toFixed(8) : '0.00000000'}</p>
               {investmentMessage && <p className="text-xs font-semibold text-primary" data-testid="status-mining-investment">{investmentMessage}</p>}
-              <Button type="submit" disabled={createInvestment.isPending} data-testid="button-submit-mining-investment">{createInvestment.isPending ? 'Submitting…' : 'Submit for review'}</Button>
+              <Button type="submit" disabled={createInvestment.isPending || !investments.data || !!investments.isError} data-testid="button-submit-mining-investment">{createInvestment.isPending ? 'Submitting…' : 'Submit for review'}</Button>
             </form>
           </div>
           <div className="surface mt-7 rounded-2xl p-5 sm:p-7">
@@ -2806,8 +2842,17 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
+
+function ApiAuthConfiguration() {
+  const { getToken } = useAuth();
+  // A separate Railway origin cannot receive a host-only Vercel session
+  // cookie. Send the active Clerk session as a bearer token in that setup.
+  setAuthTokenGetter(apiBaseUrl ? () => getToken() : null);
+  return null;
+}
+
 function App() { return <WouterRouter base={basePath}><ClerkApp /></WouterRouter>; }
 export default App;

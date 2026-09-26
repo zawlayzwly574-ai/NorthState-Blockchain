@@ -5,26 +5,16 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
-
-const port = Number(rawPort);
+const port = Number(process.env.PORT ?? 5173);
 
 if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
+  throw new Error("PORT must be a positive number.");
 }
 
-const basePath = process.env.BASE_PATH;
-
-if (!basePath) {
-  throw new Error(
-    'BASE_PATH environment variable is required but was not provided.',
-  );
+const basePath = process.env.BASE_PATH?.trim() || "/";
+const apiBaseUrl = process.env.VITE_API_BASE_URL?.trim();
+if (process.env.VERCEL && !apiBaseUrl) {
+  throw new Error("VITE_API_BASE_URL is required when building the Vercel admin panel.");
 }
 
 export default defineConfig({

@@ -398,9 +398,10 @@ export function TradingPage() {
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
   const { data: account, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
-  const { data: trades = [], refetch: refetchTrades } = useGetTrades({
+  const { data: tradesData, error: tradesError, refetch: refetchTrades } = useGetTrades({
     query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
+  const trades = tradesData ?? [];
   const placeTradeHook = usePlaceTrade();
   const { data: futuresPositions, isLoading: futuresPositionsLoading, error: futuresPositionsError, refetch: refetchFuturesPositions } = useGetFuturesPositions({
     query: { queryKey: getGetFuturesPositionsQueryKey(), refetchInterval: 3_000 },
@@ -443,8 +444,8 @@ export function TradingPage() {
   const freshFuturesQuote = !!futuresQuote?.price && !!futuresQuote.updatedAt && Date.now() - Date.parse(futuresQuote.updatedAt) < 15_000;
   const canOpenFutures = supportedFuturesMode && validFuturesMargin && freshFuturesQuote && !!account && !accountError && !!futuresPositions && !futuresPositionsError && !openFuturesPosition.isPending;
   const belowMinTrade = tradeAmt < minTrade;
-  const balanceBelowMin = balance < minTrade;
-  const insufficient = tradeAmt > availableToTrade || belowMinTrade || balanceBelowMin;
+  const balanceBelowMin = !!account && balance < minTrade;
+  const insufficient = !!account && (tradeAmt > availableToTrade || belowMinTrade || balanceBelowMin);
   const winRate = account?.totalTrades
     ? Math.round(((account.wins ?? 0) / account.totalTrades) * 100)
     : null;
@@ -458,7 +459,7 @@ export function TradingPage() {
   };
 
   const handleTrade = async (direction: 'long' | 'short') => {
-    if (placing || !currentPrice || insufficient) return;
+    if (placing || !account || accountError || !tradesData || tradesError || !currentPrice || insufficient) return;
     setPlacing(true);
     setTradeError('');
     try {
@@ -545,7 +546,7 @@ export function TradingPage() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
           <p className="mt-0.5 font-mono text-xl font-extrabold">
-            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {account ? `$${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
           </p>
         </div>
         <div className="flex gap-4">
@@ -558,8 +559,26 @@ export function TradingPage() {
         </div>
       </div>
 
+      {(accountError || tradesError) && (
+        <div role="alert" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <span>
+            Trading account or trade history could not be refreshed. Orders are disabled until the stored state is available.
+            {account && ' The last successfully loaded account balance remains visible.'}
+          </span>
+          <div className="flex gap-2">
+            {accountError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchAccount()} data-testid="button-retry-trading-account">Retry account</button>}
+            {tradesError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchTrades()} data-testid="button-retry-trades">Retry trades</button>}
+          </div>
+        </div>
+      )}
+      {accountLoading && !account && (
+        <p role="status" className="mb-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-sm text-muted-foreground">
+          Loading your stored trading account…
+        </p>
+      )}
+
       {/* ── Deposit required banner (zero balance) ── */}
-      {balance === 0 && (
+      {account && !accountError && balance === 0 && (
         <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>
@@ -680,7 +699,7 @@ export function TradingPage() {
           <div className="mb-1 flex items-center justify-between">
             <label className="text-xs font-bold text-muted-foreground">Trade Amount (USDT)</label>
             <span className="text-[11px] text-muted-foreground">
-              Available: <span className="font-mono font-bold">${availableToTrade.toFixed(0)}</span>
+              Available: <span className="font-mono font-bold">{account && !accountError ? `$${availableToTrade.toFixed(0)}` : '—'}</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -773,7 +792,7 @@ export function TradingPage() {
           <button
             type="button"
             onClick={() => handleTrade('long')}
-            disabled={placing || !currentPrice || insufficient}
+            disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-buy-long"
           >
@@ -784,7 +803,7 @@ export function TradingPage() {
           <button
             type="button"
             onClick={() => handleTrade('short')}
-            disabled={placing || !currentPrice || insufficient}
+            disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
             className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
             data-testid="button-sell-short"
           >

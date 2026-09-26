@@ -15,3 +15,10 @@ Right after pointing `DATABASE_URL` at Neon's pooled connection endpoint (`-pool
 
 ## Migration method used
 Dumped the Replit-internal Postgres with `pg_dump --no-owner --no-privileges --format=custom` over the discrete `PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE` env vars (using `sslmode=disable` — the internal DB's proxy does not support SSL), then restored with `pg_restore --no-owner --no-privileges -d "$NEON_URL"`. All 11 tables and row counts were verified to match post-restore.
+
+## Test isolation
+API route tests must not read or write through the workspace `DATABASE_URL`; it points to the authoritative Neon account database, not a disposable test database. Mock every persistence operation a route exercises, including transaction locks, selects, inserts, and updates.
+
+**Why:** a test failure or fixture mismatch must never cause an accidental read or write to real member financial records.
+
+**How to apply:** use in-memory DB mocks or an explicitly disposable test database for route tests. Never rely on the workspace Neon URL as a test database.

@@ -1,11 +1,25 @@
 import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
+import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
-router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
+router.get("/healthz", async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        to_regclass('public.wallet_profiles') AS wallet_profiles,
+        to_regclass('public.trading_accounts') AS trading_accounts,
+        to_regclass('public.futures_positions') AS futures_positions
+    `);
+    const schema = result.rows[0];
+    if (!schema?.wallet_profiles || !schema?.trading_accounts || !schema?.futures_positions) {
+      res.status(503).json({ status: "not_ready", database: "schema_incomplete" });
+      return;
+    }
+    res.json({ status: "ok", database: "ok" });
+  } catch {
+    res.status(503).json({ status: "not_ready", database: "unavailable" });
+  }
 });
 
 export default router;

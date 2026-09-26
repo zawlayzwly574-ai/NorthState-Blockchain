@@ -1,7 +1,6 @@
 -- Apply before publishing the Futures execution API.
 -- Positions reserve margin within futures_balance; opening does not debit
 -- the account, and closing changes it by realized PnL only.
-BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
@@ -25,4 +24,3 @@ CREATE TABLE IF NOT EXISTS public.futures_positions (
 );
 CREATE INDEX IF NOT EXISTS futures_positions_user_status_idx
   ON public.futures_positions (clerk_user_id, status);
-COMMIT;

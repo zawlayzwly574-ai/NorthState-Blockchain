@@ -136,7 +136,14 @@ const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
 function getUserId(req: Request) {
-  return getAuth(req).userId!;
+  const userId = getAuth(req).userId;
+  if (!userId) throw new Error("Authentication required.");
+  if (userId === "demo_user" && process.env.NODE_ENV === "production") {
+    const error = new Error("Demo identities are disabled in production.");
+    (error as Error & { status: number }).status = 403;
+    throw error;
+  }
+  return userId;
 }
 
 type AccountOperationalStatus = "active" | "suspended" | "frozen";
@@ -220,13 +227,10 @@ function emailPrefix(email: string) {
 }
 
 const DEFAULT_PORTFOLIO_BALANCE = "0";
-const portfolioSeededUsers = new Set<string>();
 
 // New accounts start with zero balance and no holdings/activity — everything
 // after this point must come from a real, admin-approved deposit.
-async function ensureDefaultPortfolio(userId: string) {
-  if (portfolioSeededUsers.has(userId)) return;
-
+async function ensureDefaultPortfolio(userId: string, allowCreate: boolean) {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${userId}))`);
 
@@ -237,15 +241,19 @@ async function ensureDefaultPortfolio(userId: string) {
       .limit(1);
 
     if (!existingAccount) {
-      // Repairs an interrupted first sign-in that never got its starter
-      // trading-account row; never assigns a non-zero starting balance.
+      if (!allowCreate) {
+        throw new Error(
+          "This member is missing a persisted trading account. Reconcile the imported account before creating a balance.",
+        );
+      }
+      // A newly created profile gets a persisted zero-balance account. Older
+      // profiles are never assigned a synthetic balance during a normal read.
       await tx.insert(tradingAccountsTable).values({
         clerkUserId: userId,
         balance: DEFAULT_PORTFOLIO_BALANCE,
       }).onConflictDoNothing();
     }
   });
-  portfolioSeededUsers.add(userId);
 }
 
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
@@ -255,7 +263,7 @@ async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
     return { email, name };
   } catch {
-    return { email: "", name: "" };
+    throw new Error("Unable to retrieve the authenticated member profile from Clerk.");
   }
 }
 
@@ -267,46 +275,49 @@ async function ensureSeededUser(userId: string) {
     .limit(1);
 
   if (existing) {
-    const sampleProfileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (existing.displayName === "North State Blockchain Member") sampleProfileUpdate.displayName = "Alex Morgan";
-    if (existing.referralInvitedCount === 0) sampleProfileUpdate.referralInvitedCount = 3;
-    if (asNumber(existing.referralReward) === 0) sampleProfileUpdate.referralReward = "50.00";
-
-    // Keep the signed-in email, but replace legacy fallback data with the sample profile.
-    if (userId !== "demo_user" && existing.email === "member@northstateblockchain.app") {
+    const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
+    if (
+      userId !== "demo_user" &&
+      (existing.email === "member@northstateblockchain.app" ||
+        existing.displayName === "North State Blockchain Member")
+    ) {
       const { email, name } = await fetchClerkUserInfo(userId);
-      if (email) sampleProfileUpdate.email = email;
-      if (name && existing.displayName !== "North State Blockchain Member") sampleProfileUpdate.displayName = name;
+      if (!email) throw new Error("The authenticated member has no email address in Clerk.");
+      if (existing.email === "member@northstateblockchain.app") profileUpdate.email = email;
+      if (existing.displayName === "North State Blockchain Member") {
+        profileUpdate.displayName = name || emailPrefix(email);
+      }
     }
-    if (Object.keys(sampleProfileUpdate).length) {
-      await db.update(walletProfilesTable).set(sampleProfileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
-      await ensureDefaultPortfolio(userId);
-      return { ...existing, ...sampleProfileUpdate };
+    if (Object.keys(profileUpdate).length) {
+      await db.update(walletProfilesTable).set(profileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
     }
-    await ensureDefaultPortfolio(userId);
-    return existing;
+    const accountRepairWindowMs = 24 * 60 * 60 * 1000;
+    const recentlyCreated = Date.now() - existing.createdAt.getTime() <= accountRepairWindowMs;
+    await ensureDefaultPortfolio(userId, recentlyCreated);
+    return { ...existing, ...profileUpdate };
   }
 
   const isDemoUser = userId === "demo_user";
-
-  const displayName = "Alex Morgan";
-  let email = isDemoUser ? "alex@example.com" : "member@northstateblockchain.app";
-
-  if (!isDemoUser) {
-    const info = await fetchClerkUserInfo(userId);
-    if (info.email) email = info.email;
+  if (isDemoUser && process.env.NODE_ENV === "production") {
+    const error = new Error("Demo identities are disabled in production.");
+    (error as Error & { status: number }).status = 403;
+    throw error;
   }
+  const info = isDemoUser
+    ? { email: "demo@example.invalid", name: "Demo User" }
+    : await fetchClerkUserInfo(userId);
+  if (!info.email) throw new Error("The authenticated member has no email address in Clerk.");
 
   const [profile] = await db
     .insert(walletProfilesTable)
     .values({
       clerkUserId: userId,
-      displayName,
-      email,
-      referralCode: isDemoUser ? "NORTHSTAR-ALEX" : `NORTHSTAR-ALEX-${userId.slice(-6).toUpperCase()}`,
+      displayName: info.name || emailPrefix(info.email),
+      email: info.email,
+      referralCode: isDemoUser ? "NORTHSTAR-DEMO" : `NORTHSTAR-${userId.slice(-10).toUpperCase()}`,
       verificationStatus: isDemoUser ? "verified" : "unverified",
-      referralInvitedCount: 3,
-      referralReward: "50.00",
+      referralInvitedCount: 0,
+      referralReward: "0",
     })
     .onConflictDoNothing()
     .returning();
@@ -319,12 +330,13 @@ async function ensureSeededUser(userId: string) {
       .where(eq(walletProfilesTable.clerkUserId, userId))
       .limit(1);
     if (fetched) {
-      await ensureDefaultPortfolio(userId);
+      const recentlyCreated = Date.now() - fetched.createdAt.getTime() <= 24 * 60 * 60 * 1000;
+      await ensureDefaultPortfolio(userId, recentlyCreated);
       return fetched;
     }
   }
 
-  await ensureDefaultPortfolio(userId);
+  await ensureDefaultPortfolio(userId, true);
 
   return profile;
 }
@@ -825,7 +837,7 @@ router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
   await autoSettleExpiredTrades(userId);
-  const account = await getOrCreateTradingAccount(userId);
+  const account = await requireTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
   const spotValue = asNumber(account.balance);
   const value = spotValue + asNumber(account.futuresBalance);
@@ -834,16 +846,14 @@ router.get("/portfolio", async (req, res) => {
     (total, holding) => total + (asNumber(holding.value) * asNumber(holding.change24h)) / 100,
     0,
   );
-  const historyMultipliers = [0.938, 0.944, 0.941, 0.956, 0.963, 0.958, 0.972, 0.968, 0.981, 0.977, 0.989, 0.986, 1];
   res.json(GetPortfolioResponse.parse({
     totalValue: value,
     dayChange,
     dayChangePercent: value ? (dayChange / value) * 100 : 0,
     cashBalance: Math.max(0, spotValue - holdingsValue),
-    history: historyMultipliers.map((multiplier, index) => ({
-      time: `${String(index * 2).padStart(2, "0")}:00`,
-      value: Number((value * multiplier).toFixed(2)),
-    })),
+    // No portfolio snapshot table exists yet. Do not manufacture history from
+    // the current balance; only persisted snapshots may populate this chart.
+    history: [],
     holdings: holdings.map((holding) => ({
       symbol: holding.symbol,
       name: holding.name,
@@ -1905,7 +1915,6 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
 
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:TRADING_BALANCE`}))`);
-    await tx.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}
       where ${tradingAccountsTable.clerkUserId} = ${userId}
@@ -1916,6 +1925,9 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
       .from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, userId))
       .limit(1);
+    if (!account) {
+      return { error: "Persisted trading account is missing. Reconcile the member's balance before adjusting it." };
+    }
     const balanceUpdate = direction === "credit"
       ? sql`${tradingAccountsTable.balance} + ${amountString}`
       : sql`${tradingAccountsTable.balance} - ${amountString}`;
@@ -2129,14 +2141,16 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
     if (pendingTransaction.status !== "pending") return { kind: "processed" as const };
 
     await databaseTx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${pendingTransaction.clerkUserId}:TRADING_BALANCE`}))`);
-    await databaseTx.insert(tradingAccountsTable)
-      .values({ clerkUserId: pendingTransaction.clerkUserId })
-      .onConflictDoNothing();
     await databaseTx.execute(sql`
       select id from ${tradingAccountsTable}
       where ${tradingAccountsTable.clerkUserId} = ${pendingTransaction.clerkUserId}
       for update
     `);
+    const [persistedAccount] = await databaseTx.select({ id: tradingAccountsTable.id })
+      .from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, pendingTransaction.clerkUserId))
+      .limit(1);
+    if (!persistedAccount) return { kind: "missing_account" as const };
 
     if (pendingTransaction.type === "withdrawal") {
       const [debitedAccount] = await databaseTx.update(tradingAccountsTable).set({
@@ -2215,6 +2229,10 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
   }
   if (result.kind === "insufficient") {
     res.status(409).json({ error: "Insufficient canonical balance to approve this withdrawal." });
+    return;
+  }
+  if (result.kind === "missing_account") {
+    res.status(409).json({ error: "The member's persisted trading account is missing. Reconcile it before approving this transaction." });
     return;
   }
   res.json(await enrichTransaction(result.transaction));
@@ -2369,13 +2387,13 @@ function payoutRateFor(asset: string, amount: number): number {
   return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
 }
 
-async function getOrCreateTradingAccount(userId: string) {
-  let [acct] = await db.select().from(tradingAccountsTable)
+async function requireTradingAccount(userId: string) {
+  const [acct] = await db.select().from(tradingAccountsTable)
     .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
   if (!acct) {
-    await db.insert(tradingAccountsTable).values({ clerkUserId: userId }).onConflictDoNothing();
-    [acct] = await db.select().from(tradingAccountsTable)
-      .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
+    throw new Error(
+      "This member has no persisted trading account. Reconcile the account before displaying or changing balances.",
+    );
   }
   return acct;
 }
@@ -2434,7 +2452,6 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     }
 
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
-    await tx.insert(tradingAccountsTable).values({ clerkUserId: trade.clerkUserId }).onConflictDoNothing();
     await tx.execute(sql`
       select id from ${tradingAccountsTable}
       where ${tradingAccountsTable.clerkUserId} = ${trade.clerkUserId}
@@ -2442,6 +2459,9 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     `);
     const [account] = await tx.select().from(tradingAccountsTable)
       .where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
+    if (!account) {
+      throw new Error("Cannot settle a trade without its persisted trading account.");
+    }
     const balanceUpdate = outcome === "win"
       ? sql`${tradingAccountsTable.balance} + (${trade.amount}::numeric * ${trade.payoutRate}::numeric)`
       : sql`${tradingAccountsTable.balance} - ${trade.amount}`;
@@ -2492,7 +2512,7 @@ router.get("/trading/account", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
   await autoSettleExpiredTrades(userId);
-  const acct = await getOrCreateTradingAccount(userId);
+  const acct = await requireTradingAccount(userId);
   res.json(tradingAccountResponse(acct));
 });
 
@@ -2585,7 +2605,7 @@ router.post("/trading/trades", async (req, res) => {
     return;
   }
   await ensureSeededUser(userId);
-  const tradingAccount = await getOrCreateTradingAccount(userId);
+  const tradingAccount = await requireTradingAccount(userId);
   if (Number(tradingAccount.balance) < minTrade) {
     res.status(400).json({ error: `Your trading balance must be at least ${minTrade.toLocaleString()} USDT to trade ${assetSymbol}.` });
     return;
@@ -2683,8 +2703,16 @@ router.patch("/admin/users/:userId/trading-mode", requireAdmin, async (req, res)
   const [profile] = await db.select({ clerkUserId: walletProfilesTable.clerkUserId })
     .from(walletProfilesTable).where(eq(walletProfilesTable.clerkUserId, userId)).limit(1);
   if (!profile) { res.status(404).json({ error: "User not found." }); return; }
-  await db.insert(tradingAccountsTable).values({ clerkUserId: userId, tradeOutcomeMode: mode })
-    .onConflictDoUpdate({ target: tradingAccountsTable.clerkUserId, set: { tradeOutcomeMode: mode, updatedAt: new Date() } });
+  const [account] = await db.select({ id: tradingAccountsTable.id })
+    .from(tradingAccountsTable)
+    .where(eq(tradingAccountsTable.clerkUserId, userId))
+    .limit(1);
+  if (!account) {
+    res.status(409).json({ error: "The member's persisted trading account is missing. Reconcile it before changing trade controls." });
+    return;
+  }
+  await db.update(tradingAccountsTable).set({ tradeOutcomeMode: mode, updatedAt: new Date() })
+    .where(eq(tradingAccountsTable.clerkUserId, userId));
   res.json({ userId, tradeOutcomeMode: mode });
 });
 

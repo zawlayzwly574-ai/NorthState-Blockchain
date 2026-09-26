@@ -3,7 +3,6 @@
 -- Earlier allocation builds stored Spot + Futures in balance and used
 -- futures_balance as a subset. Convert those rows to two separate balances
 -- exactly once, identified by the old allocation constraint.
-BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 SET LOCAL application_name = 'northstar-futures-v2';
@@ -56,5 +55,3 @@ $migration$;
 DROP TRIGGER IF EXISTS guard_futures_account_updates ON public.trading_accounts;
 DROP TRIGGER IF EXISTS guard_legacy_trade_inserts ON public.trades;
 DROP FUNCTION IF EXISTS public.guard_futures_allocation_writes();
-
-COMMIT;

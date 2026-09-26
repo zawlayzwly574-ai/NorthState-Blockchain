@@ -75,6 +75,7 @@ const profile = {
   twoFactorEnabled: false,
   smsPhoneNumber: null,
   smsPhoneVerified: false,
+  createdAt: new Date(),
 };
 
 describe("member route authentication", () => {
@@ -217,6 +218,17 @@ describe("member route authentication", () => {
     const submittedAt = new Date("2026-09-14T00:00:00.000Z");
     transaction.mockImplementation(async (callback) => callback({
       execute: vi.fn(),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [{
+              clerkUserId: "user_restored",
+              balance: "100",
+              futuresBalance: "0",
+            }],
+          }),
+        }),
+      }),
       insert: () => ({
         values: () => ({
           returning: async () => [{ status: "pending", submittedAt }],
@@ -259,6 +271,14 @@ describe("member route authentication", () => {
   it("keeps Clerk authentication when submitting deposit proof", async () => {
     const insertedValues: Array<Record<string, unknown>> = [];
     transaction.mockImplementation(async (callback: (tx: {
+      execute: (...args: unknown[]) => Promise<void>;
+      select: () => {
+        from: () => {
+          where: (...args: unknown[]) => {
+            limit: () => Promise<Array<Record<string, unknown>>>;
+          };
+        };
+      };
       insert: () => {
         values: (values: Record<string, unknown>) => Promise<void> | {
           returning: () => Promise<Array<Record<string, unknown>>>;
@@ -267,6 +287,18 @@ describe("member route authentication", () => {
     }) => Promise<unknown>) => {
       let insertCount = 0;
       return callback({
+        execute: async () => undefined,
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              limit: async () => [{
+                clerkUserId: "user_restored",
+                balance: "100",
+                futuresBalance: "0",
+              }],
+            }),
+          }),
+        }),
         insert: () => ({
           values: (values) => {
             insertedValues.push(values);
