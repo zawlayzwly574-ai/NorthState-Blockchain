@@ -954,36 +954,10 @@ export const AdminSupportReplyResponse = zod.object({
 
 
 /**
- * @summary Get the current user's Spot and Futures balances
+ * @summary Get the current user's demo trading account
  */
 export const GetTradingAccountResponse = zod.object({
-  "balance": zod.number().describe('Futures balance (backward-compatible trading balance field)'),
-  "spotBalance": zod.number(),
-  "availableSpotBalance": zod.number(),
-  "futuresBalance": zod.number(),
-  "availableFuturesBalance": zod.number(),
-  "totalBalance": zod.number(),
-  "totalTrades": zod.number(),
-  "wins": zod.number(),
-  "losses": zod.number()
-})
-
-
-/**
- * @summary Move available USDT between Spot and Futures without changing the total
- */
-export const TransferTradingBalanceBody = zod.object({
-  "direction": zod.enum(['spot_to_futures', 'futures_to_spot']),
-  "amount": zod.string().describe('Positive USDT amount with up to 8 decimal places')
-})
-
-export const TransferTradingBalanceResponse = zod.object({
-  "balance": zod.number().describe('Futures balance (backward-compatible trading balance field)'),
-  "spotBalance": zod.number(),
-  "availableSpotBalance": zod.number(),
-  "futuresBalance": zod.number(),
-  "availableFuturesBalance": zod.number(),
-  "totalBalance": zod.number(),
+  "balance": zod.number(),
   "totalTrades": zod.number(),
   "wins": zod.number(),
   "losses": zod.number()

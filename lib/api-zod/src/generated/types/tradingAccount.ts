@@ -7,13 +7,7 @@
  */
 
 export interface TradingAccount {
-  /** Futures balance (backward-compatible trading balance field) */
   balance: number;
-  spotBalance: number;
-  availableSpotBalance: number;
-  futuresBalance: number;
-  availableFuturesBalance: number;
-  totalBalance: number;
   totalTrades: number;
   wins: number;
   losses: number;

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, ArrowLeftRight, Zap, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -12,7 +12,6 @@ import {
   useGetPortfolio,
   useGetTrades,
   usePlaceTrade,
-  useTransferTradingBalance,
   useGetMarketSummary,
   getGetMarketSummaryQueryKey,
   getGetTradingAccountQueryKey,
@@ -399,20 +398,15 @@ export function TradingPage() {
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const [tradeError, setTradeError] = useState('');
-  const [transferDirection, setTransferDirection] = useState<'spot_to_futures' | 'futures_to_spot'>('spot_to_futures');
-  const [transferAmount, setTransferAmount] = useState('');
-  const [transferError, setTransferError] = useState('');
-  const [transferSuccess, setTransferSuccess] = useState('');
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
-  const { data: account, isLoading: accountLoading, isError: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
+  const { data: account } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: trades = [], refetch: refetchTrades } = useGetTrades({
     query: { queryKey: getGetTradesQueryKey(), refetchInterval: 3_000 },
   });
   const placeTradeHook = usePlaceTrade();
-  const transferHook = useTransferTradingBalance();
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
@@ -432,19 +426,9 @@ export function TradingPage() {
   const payoutRate = payoutRateFor(asset, tradeAmt);
   const potentialProfit = Math.floor(tradeAmt * payoutRate);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
-  // Until the additive Neon migration is applied, the running API still
-  // returns the original single-balance shape. Do not expose controls that
-  // would call an unavailable transfer endpoint or hide that balance.
-  const allocationReady = !!account && typeof account.futuresBalance === 'number';
-  const balance = Number(allocationReady ? account.futuresBalance : account?.balance ?? 0);
-  const spotBalance = Number(allocationReady ? account.spotBalance : 0);
-  const legacyReserved = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
-  const availableToTrade = allocationReady
-    ? Math.max(0, Number(account.availableFuturesBalance))
-    : Math.max(0, balance - legacyReserved);
-  const transferAvailable = transferDirection === 'spot_to_futures'
-    ? Number(account?.availableSpotBalance ?? 0)
-    : availableToTrade;
+  const balance = Number(account?.balance ?? 0);
+  const reservedBalance = activeTrades.reduce((total, trade) => total + Number(trade.amount), 0);
+  const availableToTrade = Math.max(0, balance - reservedBalance);
   const belowMinTrade = tradeAmt < minTrade;
   const balanceBelowMin = balance < minTrade;
   const insufficient = tradeAmt > availableToTrade || belowMinTrade || balanceBelowMin;
@@ -474,35 +458,6 @@ export function TradingPage() {
       setTradeError(apiError.data?.error || apiError.message || 'The trade could not be placed. Please try again.');
     } finally {
       setPlacing(false);
-    }
-  };
-
-  const handleTransfer = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setTransferError('');
-    setTransferSuccess('');
-    const rawAmount = transferAmount.trim();
-    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/.test(rawAmount)
-      || !Number.isFinite(Number(rawAmount))
-      || Number(rawAmount) <= 0
-      || Number(rawAmount) > 1_000_000_000) {
-      setTransferError('Enter a positive USDT amount with up to 8 decimal places.');
-      return;
-    }
-    if (Number(rawAmount) > transferAvailable) {
-      setTransferError(`Only ${transferAvailable.toFixed(2)} USDT is available to move.`);
-      return;
-    }
-    try {
-      const updated = await transferHook.mutateAsync({ data: { direction: transferDirection, amount: rawAmount } });
-      qc.setQueryData(getGetTradingAccountQueryKey(), updated);
-      void qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
-      void qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
-      setTransferAmount('');
-      setTransferSuccess(`Moved ${Number(rawAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })} USDT to ${transferDirection === 'spot_to_futures' ? 'Futures' : 'Spot'}.`);
-    } catch (error) {
-      const apiError = error as { data?: { error?: string }; message?: string };
-      setTransferError(apiError.data?.error || apiError.message || 'The transfer could not be completed. Please try again.');
     }
   };
 
@@ -541,9 +496,9 @@ export function TradingPage() {
       {/* ── Header row ── */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{allocationReady ? 'Futures Balance' : 'Trading Balance'}</p>
-          <p className="mt-0.5 font-mono text-xl font-extrabold" data-testid="text-futures-balance">
-            {accountLoading ? 'Loading…' : `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`}
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
+          <p className="mt-0.5 font-mono text-xl font-extrabold">
+            ${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
         <div className="flex gap-4">
@@ -556,95 +511,14 @@ export function TradingPage() {
         </div>
       </div>
 
-      {/* ── Spot / Futures allocation ── */}
-      {allocationReady && <section className="mb-4 rounded-2xl border border-border/60 bg-card p-4" aria-label="Move funds between Spot and Futures">
-        <div className="mb-3 flex items-center gap-2">
-          <ArrowLeftRight size={16} className="text-primary" />
-          <h2 className="text-sm font-bold">Move funds</h2>
-        </div>
-        <div className="mb-3 grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-xl bg-secondary/30 p-3">
-            <p className="text-muted-foreground">Spot</p>
-            <p className="mt-1 font-mono text-base font-bold" data-testid="text-spot-balance">{accountLoading ? 'Loading…' : `${spotBalance.toFixed(2)} USDT`}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground" data-testid="text-available-spot">Available: {Number(account?.availableSpotBalance ?? 0).toFixed(2)} USDT</p>
-          </div>
-          <div className="rounded-xl bg-secondary/30 p-3">
-            <p className="text-muted-foreground">Futures</p>
-            <p className="mt-1 font-mono text-base font-bold">{accountLoading ? 'Loading…' : `${balance.toFixed(2)} USDT`}</p>
-            <p className="mt-1 text-[11px] text-muted-foreground" data-testid="text-available-futures">Available: {availableToTrade.toFixed(2)} USDT</p>
-          </div>
-        </div>
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          {([
-            ['spot_to_futures', 'Spot → Futures'],
-            ['futures_to_spot', 'Futures → Spot'],
-          ] as const).map(([direction, label]) => (
-            <button
-              key={direction}
-              type="button"
-              aria-pressed={transferDirection === direction}
-              onClick={() => { setTransferDirection(direction); setTransferAmount(''); setTransferError(''); setTransferSuccess(''); }}
-              className={`rounded-xl border px-2 py-2.5 text-xs font-bold transition ${transferDirection === direction ? 'border-primary/60 bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground hover:text-foreground'}`}
-              data-testid={`button-transfer-${direction}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <form onSubmit={handleTransfer}>
-          <label htmlFor="trading-transfer-amount" className="mb-1 block text-xs font-bold text-muted-foreground">
-            Amount from {transferDirection === 'spot_to_futures' ? 'Spot' : 'Futures'} (USDT)
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="trading-transfer-amount"
-              type="number"
-              min="0.00000001"
-              step="any"
-              inputMode="decimal"
-              required
-              value={transferAmount}
-              onChange={event => { setTransferAmount(event.target.value); setTransferError(''); setTransferSuccess(''); }}
-              placeholder="0.00"
-              className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm outline-none focus:border-primary"
-              data-testid="input-transfer-trading-amount"
-            />
-            <button
-              type="button"
-              onClick={() => setTransferAmount(transferAvailable.toFixed(8).replace(/\.?0+$/, ''))}
-              disabled={!account || transferAvailable <= 0 || transferHook.isPending}
-              className="rounded-xl border border-border/60 px-3 text-xs font-bold text-primary disabled:opacity-40"
-              data-testid="button-transfer-max"
-            >
-              Max
-            </button>
-          </div>
-          <button
-            type="submit"
-            disabled={!account || transferHook.isPending}
-            className="mt-3 w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-            data-testid="button-submit-trading-transfer"
-          >
-            {transferHook.isPending ? 'Moving funds…' : `Move to ${transferDirection === 'spot_to_futures' ? 'Futures' : 'Spot'}`}
-          </button>
-        </form>
-        {accountError && <p className="mt-3 text-xs text-destructive" role="alert">Balances could not be loaded. <button type="button" className="font-bold underline" onClick={() => void refetchAccount()} data-testid="button-retry-trading-balance">Try again</button></p>}
-        {transferError && <p className="mt-3 text-xs font-semibold text-destructive" role="alert" data-testid="status-trading-transfer-error">{transferError}</p>}
-        {transferSuccess && <p className="mt-3 text-xs font-semibold text-green-400" role="status" data-testid="status-trading-transfer-success">{transferSuccess}</p>}
-      </section>}
-
       {/* ── Deposit required banner (zero balance) ── */}
-      {account && balance === 0 && (
+      {balance === 0 && (
         <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>
-            <p className="text-sm font-bold text-amber-300">{allocationReady ? 'No Futures balance' : 'No trading balance'}</p>
+            <p className="text-sm font-bold text-amber-300">No trading balance</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-              {!allocationReady
-                ? 'Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.'
-                : spotBalance > 0
-                ? 'Move available USDT from Spot to Futures above to start trading.'
-                : 'Make a deposit and wait for admin approval, then move USDT from Spot to Futures.'}
+              Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.
             </p>
           </div>
         </div>

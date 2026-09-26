@@ -74,8 +74,6 @@ export * from './totpSetupResult';
 export * from './totpVerifyInput';
 export * from './trade';
 export * from './tradingAccount';
-export * from './tradingBalanceTransferInput';
-export * from './tradingBalanceTransferInputDirection';
 export * from './transaction';
 export * from './transactionStatus';
 export * from './transactionType';

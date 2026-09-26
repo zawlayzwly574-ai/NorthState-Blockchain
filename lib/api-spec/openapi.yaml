@@ -721,26 +721,10 @@ paths:
     get:
       operationId: getTradingAccount
       tags: [trading]
-      summary: Get the current user's Spot and Futures balances
+      summary: Get the current user's demo trading account
       responses:
         "200":
           description: Trading account
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/TradingAccount" }
-  /trading/transfer:
-    post:
-      operationId: transferTradingBalance
-      tags: [trading]
-      summary: Move available USDT between Spot and Futures without changing the total
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/TradingBalanceTransferInput" }
-      responses:
-        "200":
-          description: Updated account balances
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TradingAccount" }
@@ -937,23 +921,12 @@ components:
         smsPhoneVerified: { type: boolean }
     TradingAccount:
       type: object
-      required: [balance, spotBalance, availableSpotBalance, futuresBalance, availableFuturesBalance, totalBalance, totalTrades, wins, losses]
+      required: [balance, totalTrades, wins, losses]
       properties:
-        balance: { type: number, description: "Futures balance (backward-compatible trading balance field)" }
-        spotBalance: { type: number }
-        availableSpotBalance: { type: number }
-        futuresBalance: { type: number }
-        availableFuturesBalance: { type: number }
-        totalBalance: { type: number }
+        balance: { type: number }
         totalTrades: { type: number }
         wins: { type: number }
         losses: { type: number }
-    TradingBalanceTransferInput:
-      type: object
-      required: [direction, amount]
-      properties:
-        direction: { type: string, enum: [spot_to_futures, futures_to_spot] }
-        amount: { type: string, description: "Positive USDT amount with up to 8 decimal places" }
     Trade:
       type: object
       required: [id, asset, direction, amount, timeframeSecs, status, entryPrice, payoutRate, createdAt, expiresAt]
