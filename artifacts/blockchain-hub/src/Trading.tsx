@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -37,15 +37,6 @@ const TIMEFRAMES = [
   { label: '15D', secs: 1296000 },
   { label: '30D', secs: 2592000 },
 ];
-
-const PRICE_FALLBACKS: Record<string, number> = {
-  BTC: 67000,
-  ETH: 3500,
-  BNB: 580,
-  SOL: 145,
-  XRP: 0.52,
-  GOLD: 2348.4,
-};
 
 // ─── Per-asset minimum trade amount (USDT) — mirrors the backend enforcement ──
 const ASSET_MIN_TRADE: Record<string, number> = {
@@ -394,6 +385,13 @@ export function TradingPage() {
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [showPicker, setShowPicker] = useState(false);
+  const [showFutures, setShowFutures] = useState(false);
+  const [futuresContractType, setFuturesContractType] = useState<'Perpetual' | 'Quarterly'>('Perpetual');
+  const [futuresSettlement, setFuturesSettlement] = useState<'USDT' | 'USDC'>('USDT');
+  const [futuresDirection, setFuturesDirection] = useState<'long' | 'short'>('long');
+  const [futuresMargin, setFuturesMargin] = useState('1000');
+  const [futuresLeverage, setFuturesLeverage] = useState(20);
+  const [futuresNotice, setFuturesNotice] = useState('');
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
@@ -410,7 +408,7 @@ export function TradingPage() {
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
-  const currentPrice = marketAsset?.price ?? PRICE_FALLBACKS[asset] ?? 0;
+  const currentPrice = marketAsset?.price ?? null;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -461,6 +459,26 @@ export function TradingPage() {
     }
   };
 
+  const handleFuturesPreview = () => {
+    setFuturesNotice(`Futures ${futuresLeverage}x ${futuresDirection === 'long' ? 'long' : 'short'} preview ready — spot balance unchanged.`);
+  };
+
+  useEffect(() => {
+    if (!showFutures) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowFutures(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [showFutures]);
+
   // Flash result when a trade completes
   const prevActive = useRef<number[]>([]);
   useEffect(() => {
@@ -481,7 +499,7 @@ export function TradingPage() {
   }, [activeTrades.length, trades]);
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto max-w-5xl">
       {/* Win/Loss flash overlay */}
       {flash && (
         <div className={`fixed inset-x-0 top-20 z-50 mx-auto w-fit rounded-2xl px-6 py-3 text-center text-sm font-extrabold shadow-2xl animate-in slide-in-from-top-4 fade-in ${
@@ -560,7 +578,7 @@ export function TradingPage() {
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
-        {currentPrice > 0 ? (
+        {currentPrice !== null && currentPrice > 0 ? (
           <PriceChart
             key={asset}
             basePrice={currentPrice}
@@ -576,7 +594,30 @@ export function TradingPage() {
       </div>
 
       {/* ── Order Panel ── */}
-      <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
+      <div className="mb-3">
+        <div className="rounded-2xl border border-border/60 bg-card p-4">
+          <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+            <div>
+              <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
+              <p className="mt-1 text-xs text-muted-foreground">Fixed-expiry position</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFuturesNotice('');
+                setShowFutures(true);
+              }}
+              className="group relative overflow-hidden rounded-xl border border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-amber-500/15 px-3.5 py-2 text-xs font-extrabold text-primary shadow-[0_0_20px_hsl(var(--primary)/.12)] transition hover:border-primary/70 hover:shadow-[0_0_26px_hsl(var(--primary)/.22)] active:scale-[.98]"
+              data-testid="button-open-futures-modal"
+            >
+              <span className="relative z-10 flex items-center gap-1.5">
+                <Zap size={13} />
+                Futures Trade
+                <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[9px] tracking-wider">PRO</span>
+              </span>
+            </button>
+          </div>
+
         {/* GOLD investment tier picker */}
         {isGold && (
           <div className="mb-3">
@@ -740,6 +781,7 @@ export function TradingPage() {
             <AlertCircle size={15} />{tradeError}
           </p>
         )}
+        </div>
       </div>
 
       {/* ── Active Trades ── */}
@@ -845,6 +887,223 @@ export function TradingPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Futures trade modal — UI-only preview, isolated from spot execution */}
+      {showFutures && (
+        <>
+          <div
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm"
+            onClick={() => setShowFutures(false)}
+            aria-hidden="true"
+          />
+          <div
+            className="fixed inset-x-3 top-1/2 z-50 max-h-[calc(100dvh-1.5rem)] -translate-y-1/2 overflow-y-auto rounded-3xl border border-primary/25 bg-[hsl(222_10%_8%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,.65),0_0_40px_hsl(var(--primary)/.08)] sm:left-1/2 sm:right-auto sm:w-[min(32rem,calc(100vw-2rem))] sm:-translate-x-1/2 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="futures-modal-title"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-border/60 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-xl border border-primary/30 bg-primary/10 text-primary shadow-[0_0_18px_hsl(var(--primary)/.12)]">
+                  <Zap size={18} />
+                </div>
+                <div>
+                  <h2 id="futures-modal-title" className="text-base font-extrabold uppercase tracking-wider">
+                    Futures Trade Box
+                  </h2>
+                  <p className="mt-1 text-xs font-semibold text-primary">{asset}{futuresSettlement} {futuresContractType}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFutures(false)}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-secondary/60 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                aria-label="Close futures trade"
+                data-testid="button-close-futures-modal"
+              >
+                <X size={17} />
+              </button>
+            </div>
+
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {(['Perpetual', 'Quarterly'] as const).map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setFuturesContractType(type)}
+                  className={`h-9 rounded-xl border text-xs font-bold transition ${
+                    futuresContractType === type
+                      ? 'border-primary/60 bg-primary/12 text-primary shadow-[0_0_16px_hsl(var(--primary)/.08)]'
+                      : 'border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground'
+                  }`}
+                  data-testid={`button-futures-contract-${type.toLowerCase()}`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              {(['USDT', 'USDC'] as const).map(settlement => (
+                <button
+                  key={settlement}
+                  type="button"
+                  onClick={() => setFuturesSettlement(settlement)}
+                  className={`h-9 rounded-xl border text-xs font-bold transition ${
+                    futuresSettlement === settlement
+                      ? 'border-sky-500/60 bg-sky-500/12 text-sky-300'
+                      : 'border-border/60 bg-secondary/30 text-muted-foreground hover:text-foreground'
+                  }`}
+                  data-testid={`button-futures-settlement-${settlement.toLowerCase()}`}
+                >
+                  {settlement}
+                </button>
+              ))}
+            </div>
+
+            <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-border/40 bg-secondary/25 p-3 text-center">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Mark Price</p>
+                <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
+                  {currentPrice !== null
+                    ? `$${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : 'Loading…'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Funding / 8h</p>
+                <p className="mt-1 font-mono text-sm font-bold text-green-400">0.01%</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Expiry</p>
+                <p className="mt-1 font-mono text-sm font-bold">
+                  {futuresContractType === 'Perpetual' ? 'Never' : 'Quarterly'}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-secondary/25 p-1">
+              <button
+                type="button"
+                onClick={() => setFuturesDirection('long')}
+                className={`h-10 rounded-lg text-sm font-extrabold transition active:scale-[.98] ${
+                  futuresDirection === 'long'
+                    ? 'bg-green-500 text-white shadow-[0_5px_16px_rgba(34,197,94,.28)]'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="button-futures-direction-long"
+              >
+                Long
+              </button>
+              <button
+                type="button"
+                onClick={() => setFuturesDirection('short')}
+                className={`h-10 rounded-lg text-sm font-extrabold transition active:scale-[.98] ${
+                  futuresDirection === 'short'
+                    ? 'bg-red-500 text-white shadow-[0_5px_16px_rgba(239,68,68,.24)]'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                data-testid="button-futures-direction-short"
+              >
+                Short
+              </button>
+            </div>
+
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="text-xs font-bold text-muted-foreground">Leverage</label>
+                <div className="relative">
+                  <select
+                    value={futuresLeverage}
+                    onChange={event => setFuturesLeverage(Number(event.target.value))}
+                    className="h-7 appearance-none rounded-lg border border-input bg-secondary/50 py-0 pl-2.5 pr-7 font-mono text-xs font-bold text-primary outline-none transition focus:border-primary"
+                    data-testid="select-futures-leverage-dropdown"
+                    aria-label="Leverage dropdown"
+                  >
+                    {[1, 2, 5, 10, 20, 50, 100].map(value => (
+                      <option key={value} value={value}>{value}x</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={11} className="pointer-events-none absolute right-2 top-2 text-muted-foreground" />
+                </div>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {[1, 2, 5, 10, 20, 50, 100].map(value => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setFuturesLeverage(value)}
+                    className={`h-8 min-w-[42px] flex-1 rounded-lg border text-xs font-bold transition ${
+                      futuresLeverage === value
+                        ? 'border-primary/60 bg-primary/12 text-primary'
+                        : 'border-border/60 bg-secondary/25 text-muted-foreground hover:text-foreground'
+                    }`}
+                    data-testid={`button-futures-leverage-${value}`}
+                  >
+                    {value}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="text-xs font-bold text-muted-foreground">Margin ({futuresSettlement})</label>
+                <span className="text-right text-[11px] text-muted-foreground">
+                  Available: <span className="font-mono font-bold text-foreground">${availableToTrade.toFixed(0)}</span>
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={futuresMargin}
+                  onChange={event => setFuturesMargin(event.target.value)}
+                  min="0"
+                  step="1"
+                  className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-3 pr-24 font-mono text-base font-bold outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  data-testid="input-futures-margin"
+                />
+                <div className="absolute right-1.5 top-1.5 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setFuturesMargin(String(Math.floor(availableToTrade)))}
+                    className="rounded-lg bg-primary/15 px-2 py-1.5 text-[10px] font-extrabold text-primary transition hover:bg-primary/25"
+                    data-testid="button-futures-max"
+                  >
+                    MAX
+                  </button>
+                  <span className="pr-1 text-xs font-bold text-muted-foreground">{futuresSettlement}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
+              <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+              <p className="text-[11px] leading-4 text-amber-200/90">
+                Futures trading carries significant risk. Leverage amplifies both gains and losses. You may lose more than your initial margin. Trade responsibly.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleFuturesPreview}
+              className={`w-full rounded-xl py-3.5 text-sm font-extrabold text-white transition active:scale-[.98] ${
+                futuresDirection === 'long'
+                  ? 'bg-green-600 shadow-[0_8px_22px_rgba(22,163,74,.25)] hover:bg-green-500'
+                  : 'bg-red-600 shadow-[0_8px_22px_rgba(220,38,38,.22)] hover:bg-red-500'
+              }`}
+              data-testid="button-open-futures-order"
+            >
+              Open {futuresLeverage}x {futuresDirection === 'long' ? 'Long' : 'Short'} — {asset}/{futuresSettlement}
+            </button>
+            {futuresNotice && (
+              <p className="mt-3 text-center text-[11px] font-semibold text-primary" role="status" data-testid="status-futures-preview">
+                {futuresNotice}
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       {/* Timeframe picker sheet */}

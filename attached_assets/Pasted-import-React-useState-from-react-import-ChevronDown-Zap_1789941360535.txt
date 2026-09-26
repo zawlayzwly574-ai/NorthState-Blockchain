@@ -1,0 +1,170 @@
+import React, { useState } from 'react';
+import { ChevronDown, Zap } from 'lucide-react';
+
+interface DualTradingPanelProps {
+  symbol?: string;
+  markPrice?: number;
+  availableBalance?: number;
+}
+
+export const DualTradingPanel: React.FC<DualTradingPanelProps> = ({
+  symbol = 'BTC',
+  markPrice = 81756.90,
+  availableBalance = 378000,
+}) => {
+  // Spot Trade States (မူရင်းအတိုင်း)
+  const [spotAmount, setSpotAmount] = useState<string>('5000');
+  const [expiry, setExpiry] = useState<string>('60s');
+
+  // Futures Trade States (သီးသန့် Standalone State)
+  const [futuresPrice, setFuturesPrice] = useState<string>(markPrice.toString());
+  const [futuresMargin, setFuturesMargin] = useState<string>('1000');
+  const [leverage, setLeverage] = useState<number>(20);
+  const [marginType, setMarginType] = useState<'Cross' | 'Isolated'>('Cross');
+
+  return (
+    <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6 font-sans">
+      
+      {/* ==================== LEFT SIDE: Spot Trade ==================== */}
+      <div className="bg-[#12141D] p-5 rounded-2xl border border-slate-800 text-white space-y-4 shadow-xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <h3 className="text-base font-bold text-slate-200 uppercase tracking-wider">Spot Trade</h3>
+          <span className="text-xs text-slate-400">Available: <strong className="text-white">${availableBalance.toLocaleString()}</strong></span>
+        </div>
+
+        {/* Trade Amount Input */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">Trade Amount (USDT)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={spotAmount}
+              onChange={(e) => setSpotAmount(e.target.value)}
+              className="w-full bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-amber-500/50"
+            />
+            <div className="grid grid-cols-2 gap-1.5">
+              {['5K', '10K', '25K', '50K'].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => setSpotAmount(amt.replace('K', '000'))}
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#1A1D2A] border border-slate-700/60 hover:border-amber-500 text-slate-300 hover:text-white transition-all"
+                >
+                  {amt}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1.5">Minimum trade & balance for {symbol}: <strong className="text-slate-200">$5,000</strong></p>
+        </div>
+
+        {/* Expiry Timeframe Dropdown */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">Expiry Timeframe</label>
+          <div className="flex items-center justify-between bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 cursor-pointer">
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <span>⏱</span>
+              <span>{expiry}</span>
+            </div>
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          </div>
+        </div>
+
+        {/* Payout Details */}
+        <div className="grid grid-cols-3 gap-2 bg-[#1A1D2A]/60 p-3 rounded-xl text-center text-xs">
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">PAYOUT</span>
+            <span className="font-bold text-amber-400">30%</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">IF WIN</span>
+            <span className="font-bold text-emerald-400">+$1500</span>
+          </div>
+          <div>
+            <span className="text-slate-400 block text-[10px] uppercase">IF LOSS</span>
+            <span className="font-bold text-rose-400">-$5000</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <button className="py-3 bg-emerald-600/90 hover:bg-emerald-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-600/20 transition-all flex flex-col items-center justify-center">
+            <span>BUY LONG</span>
+            <span className="text-[10px] font-normal text-emerald-200">Price will rise ↑</span>
+          </button>
+          <button className="py-3 bg-rose-600/90 hover:bg-rose-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-rose-600/20 transition-all flex flex-col items-center justify-center">
+            <span>SELL SHORT</span>
+            <span className="text-[10px] font-normal text-rose-200">Price will fall ↓</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ==================== RIGHT SIDE: Futures Trade Box ==================== */}
+      <div className="bg-[#12141D] p-5 rounded-2xl border border-slate-800 text-white space-y-4 shadow-xl">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-400" />
+            <h3 className="text-base font-bold text-slate-200 uppercase tracking-wider">Futures Trade Box</h3>
+          </div>
+          <span className="text-xs text-purple-400 font-semibold">{symbol}USDT Perp</span>
+        </div>
+
+        {/* Margin Type & Leverage Selector */}
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <button
+            onClick={() => setMarginType(marginType === 'Cross' ? 'Isolated' : 'Cross')}
+            className="bg-[#1A1D2A] border border-slate-700/80 hover:border-purple-500 py-2 rounded-xl text-slate-200 font-bold"
+          >
+            {marginType}
+          </button>
+          <button className="bg-[#1A1D2A] border border-slate-700/80 hover:border-purple-500 py-2 rounded-xl text-purple-400 font-bold">
+            {leverage}x Leverage
+          </button>
+        </div>
+
+        {/* Order Price Input */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">Order Price (USDT)</label>
+          <input
+            type="text"
+            value={futuresPrice}
+            onChange={(e) => setFuturesPrice(e.target.value)}
+            className="w-full bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-purple-500/50"
+          />
+        </div>
+
+        {/* Margin Amount Input */}
+        <div>
+          <label className="text-xs text-slate-400 block mb-1.5 font-medium">Margin (USDT)</label>
+          <input
+            type="text"
+            value={futuresMargin}
+            onChange={(e) => setFuturesMargin(e.target.value)}
+            className="w-full bg-[#1A1D2A] border border-slate-700/80 rounded-xl px-4 py-2.5 text-base font-bold text-white focus:outline-none focus:border-purple-500/50"
+          />
+        </div>
+
+        {/* Leverage Slider */}
+        <div className="space-y-1 pt-1">
+          <div className="flex justify-between text-xs text-slate-400">
+            <span>Leverage Slider</span>
+            <span className="text-purple-400 font-bold">{leverage}x</span>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="100"
+            value={leverage}
+            onChange={(e) => setLeverage(Number(e.target.value))}
+            className="w-full accent-purple-500 bg-slate-800 rounded-lg h-2 cursor-pointer"
+          />
+        </div>
+
+        {/* Action Button */}
+        <button className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-purple-600/20 transition-all border border-purple-400/30">
+          OPEN {leverage}x LONG — {symbol}/USDT
+        </button>
+      </div>
+
+    </div>
+  );
+};

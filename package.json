@@ -1,7 +1,6 @@
 {
   "name": "workspace",
   "version": "0.0.0",
-  "packageManager": "pnpm@10.26.1",
   "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
@@ -12,9 +11,7 @@
   },
   "private": true,
   "dependencies": {
-    "@radix-ui/react-tooltip": "^1.2.16",
-    "@replit/connectors-sdk": "^0.4.1",
-    "dotenv": "^18.0.0"
+    "@replit/connectors-sdk": "^0.4.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
