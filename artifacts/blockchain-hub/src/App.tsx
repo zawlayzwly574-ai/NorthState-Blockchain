@@ -33,17 +33,6 @@ import { getMiningLogoFile } from '@/mining-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import teamPhoto from '@assets/image_2026-08-14_02-07-24_1786697034785.png';
-import fanPhoto from '@assets/image_2026-08-14_02-07-25_(10)_1786697034786.png';
-import teamCollage from '@assets/image_2026-08-14_02-07-25_(9)_1786697034788.png';
-import leadershipNicolas from '@assets/image_2026-08-14_02-07-25_(8)_1786697034789.png';
-import leadershipPeter from '@assets/image_2026-08-14_02-07-25_(7)_1786697034789.png';
-import leadershipNic from '@assets/image_2026-08-14_02-07-25_(6)_1786697034790.png';
-import leadershipTom from '@assets/image_2026-08-14_02-07-25_(5)_1786697034791.png';
-import leadershipJim from '@assets/image_2026-08-14_02-07-25_(4)_1786697034794.png';
-import leadershipManuel from '@assets/image_2026-08-14_02-07-25_(3)_1786697034796.png';
-import leadershipLandon from '@assets/image_2026-08-14_02-07-25_(2)_1786697034796.png';
-import leadershipTimothy from '@assets/image_2026-08-14_02-07-25_1786697034798.png';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -160,6 +149,18 @@ function PublicNav() {
   return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
 }
 
+function PublicFooter() {
+  return <footer className="border-t border-border/70 px-5 py-8 lg:px-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <Logo />
+      <div className="flex flex-col gap-1 sm:items-end">
+        <span>North State Blockchain · Digital assets, made legible.</span>
+        <span>© 2021 - 2026 North State Blockchain. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>;
+}
+
 function Home() {
   const { isSignedIn } = useAuth();
   const [, setLocation] = useLocation();
@@ -195,63 +196,58 @@ function Home() {
         </div>
       </div>
     </div>
-  </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><footer className="border-t border-border/70 px-5 py-8 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-xs text-muted-foreground sm:flex-row"><Logo /><span>North State Blockchain · Digital assets, made legible.</span></div></footer></main>;
+  </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><PublicFooter /></main>;
 }
 function HeroChart() { return <svg viewBox="0 0 500 130" className="h-full w-full" preserveAspectRatio="none" aria-label="Portfolio trend"><defs><linearGradient id="heroFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#cfa230" stopOpacity=".22" /><stop offset="1" stopColor="#cfa230" stopOpacity="0" /></linearGradient></defs><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10 L500 130 L0 130Z" fill="url(#heroFill)" /><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10" fill="none" stroke="#cfa230" strokeWidth="2.5" /></svg>; }
 
-function Reveal({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  const node = useRef<HTMLDivElement | null>(null);
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const element = node.current;
-    if (!element) return;
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        setVisible(true);
-        observer.disconnect();
-      }
-    }, { threshold: 0.12 });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  return <div ref={node} className={`reveal ${visible ? 'reveal-visible' : ''} ${className}`}>{children}</div>;
-}
-
-const leadership = [
-  { name: 'Nicolas Brand', role: 'Investor, Director', image: leadershipNicolas },
-  { name: 'Peter Smith', role: 'CEO, Co-Founder & Executive Chairman', image: leadershipPeter },
-  { name: 'Nic Cary', role: 'Vice Chairman & Co-Founder', image: leadershipNic },
-  { name: 'Tom Horton', role: 'Lead Director', image: leadershipTom },
-  { name: 'Jim Messina', role: 'Director', image: leadershipJim },
-  { name: 'Manuel Stotz', role: 'Investor, Director', image: leadershipManuel },
-  { name: 'Landon Edmond', role: 'Independent Director', image: leadershipLandon },
-  { name: 'Timothy Flynn', role: 'Independent Director', image: leadershipTimothy },
-];
-
-function PortraitCard({ person }: { person: (typeof leadership)[number] }) {
-  return <article className="group overflow-hidden rounded-2xl border border-border/80 bg-card/65" data-testid={`card-leader-${person.name.toLowerCase().replaceAll(' ', '-')}`}>
-    <div className="relative aspect-[4/4.6] overflow-hidden bg-secondary"><img src={person.image} alt={person.name} className="h-full w-full object-cover grayscale transition duration-700 group-hover:scale-105 group-hover:grayscale-0" /><div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#061327]/90 to-transparent" /></div>
-    <div className="p-4"><h3 className="text-sm font-extrabold">{person.name}</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">{person.role}</p></div>
-  </article>;
-}
-
 function About() {
   return <main className="min-h-[100dvh] overflow-hidden"><PublicNav />
-    <section className="relative mx-auto max-w-7xl px-5 pb-20 pt-14 lg:px-8 lg:pb-28 lg:pt-24">
+    <section className="relative mx-auto max-w-7xl px-5 pb-20 pt-14 lg:px-8 lg:pb-24 lg:pt-24">
       <div className="pointer-events-none absolute -right-40 -top-24 h-[600px] w-[600px] rounded-full bg-primary/10 blur-3xl" />
-      <div className="relative grid items-end gap-12 lg:grid-cols-[.95fr_1.05fr]">
-        <Reveal><p className="eyebrow">THE MISSION</p><h1 className="mt-5 max-w-xl text-balance text-5xl font-extrabold leading-[.94] tracking-[-.08em] sm:text-7xl">A greater human economic freedom</h1><p className="mt-7 max-w-lg text-lg leading-8 text-muted-foreground">Global crypto infrastructure for people, institutions, and AI</p><div className="mt-8 flex items-center gap-3 text-xs font-bold uppercase tracking-[.16em] text-muted-foreground"><span className="h-px w-10 bg-primary" />Since 2011</div></Reveal>
-        <Reveal className="relative"><div className="overflow-hidden rounded-[2rem] border border-border/80 bg-secondary shadow-2xl"><img src={teamCollage} alt="North State Blockchain team gathered together" className="aspect-[1.35/1] w-full object-cover grayscale-[.22]" /><div className="absolute inset-0 bg-gradient-to-tr from-[#061327]/55 via-transparent to-primary/10" /></div><div className="absolute -bottom-6 -left-4 rounded-2xl border border-primary/20 bg-[#171209] px-5 py-4 shadow-xl sm:-left-8"><p className="font-mono-ui text-xl font-medium text-primary">2011</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Founded</p></div></Reveal>
+      <div className="relative grid items-center gap-12 lg:grid-cols-[1fr_.9fr]">
+        <div>
+          <p className="eyebrow">About North State Blockchain</p>
+          <h1 className="mt-5 max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] sm:text-7xl">Founded in 2021. Focused on what’s next.</h1>
+          <p className="mt-7 max-w-xl text-lg leading-8 text-muted-foreground">The North State Blockchain project and platform were founded in 2021, with a focus on cryptocurrency trading and blockchain solutions.</p>
+          <Link href="/sign-up" className="mt-8 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-about-get-started">Explore the platform <ArrowUpRight size={16} /></Link>
+        </div>
+        <div className="surface grid-lines relative overflow-hidden rounded-[2rem] p-7 sm:p-10">
+          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-primary/15 blur-3xl" />
+          <p className="eyebrow">Established</p>
+          <p className="relative mt-3 font-mono-ui text-7xl font-semibold tracking-[-.08em] text-primary sm:text-8xl">2021</p>
+          <p className="relative mt-4 max-w-sm text-base leading-7 text-muted-foreground">A project built around digital-asset markets and practical blockchain technology.</p>
+          <div className="relative mt-8 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border/70 bg-background/55 p-4"><BarChart3 className="text-primary" size={20} /><p className="mt-3 text-sm font-bold">Crypto trading</p></div>
+            <div className="rounded-xl border border-border/70 bg-background/55 p-4"><Zap className="text-accent" size={20} /><p className="mt-3 text-sm font-bold">Blockchain solutions</p></div>
+          </div>
+        </div>
       </div>
     </section>
-    <Reveal><section className="border-y border-border/70 bg-[#07172b]"><div className="mx-auto grid max-w-7xl gap-10 px-5 py-16 lg:grid-cols-[.75fr_1.25fr] lg:px-8 lg:py-24"><div><p className="eyebrow">The long view</p><h2 className="mt-4 max-w-sm text-3xl font-extrabold leading-tight tracking-[-.06em]">Infrastructure for the next financial world.</h2></div><div><p className="max-w-3xl text-xl font-medium leading-9 text-foreground sm:text-2xl">Over a decade ago, we saw what blockchain technology could become — it’s why we named our company after it. Today, Blockchain.com is the leading infrastructure provider powering a new financial world.</p><div className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border/70 bg-border sm:grid-cols-4"><div className="bg-[#0c213a] p-4 sm:p-5"><p className="font-mono-ui text-2xl text-primary">2011</p><p className="mt-2 text-xs text-muted-foreground">Founded</p></div><div className="bg-[#0c213a] p-4 sm:p-5"><p className="font-mono-ui text-2xl text-primary">95M+</p><p className="mt-2 text-xs text-muted-foreground">Wallets created</p></div><div className="bg-[#0c213a] p-4 sm:p-5"><p className="font-mono-ui text-2xl text-primary">$1.1T+</p><p className="mt-2 text-xs text-muted-foreground">Volume moved through our platform</p></div><div className="bg-[#0c213a] p-4 sm:p-5"><p className="font-mono-ui text-2xl text-primary">20+</p><p className="mt-2 text-xs text-muted-foreground">Products across every market cycle</p></div></div></div></div></section></Reveal>
-    <Reveal><section className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[1.1fr_.9fr] lg:px-8 lg:py-28"><div className="overflow-hidden rounded-[2rem] border border-border/80 bg-secondary"><img src={teamPhoto} alt="Blockchain.com team in a black and white group portrait" className="aspect-[1.1/1] h-full w-full object-cover grayscale" /></div><div className="flex flex-col justify-center"><p className="eyebrow">Built in public</p><h2 className="mt-4 text-3xl font-extrabold leading-tight tracking-[-.06em] sm:text-4xl">A team for an open financial system.</h2><p className="mt-6 text-base leading-8 text-muted-foreground">We believe the most important financial infrastructure should be understandable, available, and built to last. That conviction brings together builders, operators, investors, and believers from every corner of the world.</p><p className="mt-5 text-base leading-8 text-muted-foreground">Our global team is united by a shared mission: to usher in a brave new world by accelerating the adoption of cryptocurrency and building a more open, accessible, and inclusive economic future for everyone</p><Link href="/sign-up" className="mt-8 inline-flex w-fit items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-about-join">Build with us <ArrowUpRight size={16} /></Link></div></section></Reveal>
-    <Reveal><section className="mx-auto max-w-7xl px-5 pb-20 lg:px-8 lg:pb-28"><div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="eyebrow">The people behind it</p><h2 className="mt-3 text-3xl font-extrabold tracking-[-.06em] sm:text-4xl">Our industry-leading leadership</h2></div><p className="max-w-lg text-sm leading-6 text-muted-foreground">Our board and management team bring more than 200 years of combined experience from the world’s most respected financial institutions, technology companies, and startups.</p></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 lg:gap-4">{leadership.map((person) => <PortraitCard key={person.name} person={person} />)}</div></section></Reveal>
-    <Reveal><section className="border-y border-border/70 bg-[#07172b]"><div className="mx-auto max-w-7xl px-5 py-16 lg:px-8 lg:py-20"><p className="eyebrow">Backed by conviction</p><h2 className="mt-4 text-2xl font-extrabold tracking-[-.05em] sm:text-3xl">Trusted by leading investors</h2><div className="mt-10 grid grid-cols-2 gap-3 text-sm font-bold text-muted-foreground sm:grid-cols-4"><div className="rounded-xl border border-border/70 bg-background/30 px-4 py-5">Lightspeed</div><div className="rounded-xl border border-border/70 bg-background/30 px-4 py-5">Baillie Gifford</div><div className="rounded-xl border border-border/70 bg-background/30 px-4 py-5">Kingsway</div><div className="rounded-xl border border-border/70 bg-background/30 px-4 py-5">Lakestar</div></div></div></section></Reveal>
-    <Reveal><section className="mx-auto max-w-7xl px-5 py-20 lg:px-8 lg:py-28"><div className="grid gap-12 lg:grid-cols-[.75fr_1.25fr]"><div><p className="eyebrow">Our global team</p><h2 className="mt-4 max-w-sm text-3xl font-extrabold leading-tight tracking-[-.06em]">Building the future of finance</h2></div><div><p className="text-xl leading-9 text-foreground sm:text-2xl">Our global team is united by a shared mission: to usher in a brave new world by accelerating the adoption of cryptocurrency and building a more open, accessible, and inclusive economic future for everyone</p><div className="mt-8 overflow-hidden rounded-2xl border border-border/80"><img src={fanPhoto} alt="Fan wearing a Blockchain.com jersey" className="aspect-[2/1] w-full object-cover object-center grayscale-[.18]" /></div></div></div></section></Reveal>
-    <Reveal><section className="mx-auto max-w-7xl px-5 pb-20 lg:px-8 lg:pb-28"><div className="grid gap-10 rounded-[2rem] border border-primary/20 bg-primary/7 p-7 sm:p-10 lg:grid-cols-[.8fr_1.2fr] lg:p-14"><div><p className="eyebrow">About Blockchain.com</p><h2 className="mt-4 text-3xl font-extrabold leading-tight tracking-[-.06em] sm:text-4xl">The world’s financial system is being rebuilt in the open.</h2></div><div className="space-y-6 text-sm leading-7 text-muted-foreground"><p className="text-lg font-semibold leading-8 text-foreground">We started our company on the conviction that the world’s finances would run better on crypto.</p><p>Back then, we built the original Blockchain Explorer—the search engine for Bitcoin transactions—and an API that let developers everywhere build on top of it. Our Wallet went on to become the most widely-used in the world, putting self-custody in the hands of millions.</p><p>Today, we’re a market leader powering the next era of finance: the infrastructure layer for the people, institutions, and AI agents moving money on-chain. Retail users, the largest financial firms, crypto-native companies, autonomous agents—they come to us from across the world because crypto is simply better engineered for how money should move. Faster, open, global, permissionless. That’s how we arrive at greater human economic freedom.</p><p className="border-l-2 border-primary pl-4 font-semibold text-foreground">The world’s financial system is being rebuilt in the open. We’re the infrastructure beneath it.</p></div></div></section></Reveal>
-    <section className="border-t border-border/70 px-5 py-14 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 sm:flex-row sm:items-center"><div><p className="eyebrow">Find your north star</p><h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">A clearer way to move through crypto.</h2></div><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-about-get-started">Open an account <ArrowUpRight size={16} /></Link></div></section>
-    <footer className="border-t border-border/70 px-5 py-8 lg:px-8"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-xs text-muted-foreground sm:flex-row"><Logo /><span>North State Blockchain · Digital assets, made legible.</span></div></footer>
+    <section className="border-y border-border/70 bg-[#07172b]">
+      <div className="mx-auto max-w-7xl px-5 py-16 lg:px-8 lg:py-20">
+        <p className="eyebrow">Our focus</p>
+        <h2 className="mt-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-[-.06em] sm:text-4xl">Cryptocurrency trading and blockchain solutions.</h2>
+        <div className="mt-10 grid gap-4 md:grid-cols-2">
+          <article className="surface rounded-2xl p-6 sm:p-8">
+            <BarChart3 className="text-primary" size={22} />
+            <h3 className="mt-5 text-xl font-bold">Cryptocurrency trading</h3>
+            <p className="mt-3 max-w-lg text-sm leading-7 text-muted-foreground">The platform is focused on tools and experiences for navigating cryptocurrency markets.</p>
+          </article>
+          <article className="surface rounded-2xl p-6 sm:p-8">
+            <Zap className="text-accent" size={22} />
+            <h3 className="mt-5 text-xl font-bold">Blockchain solutions</h3>
+            <p className="mt-3 max-w-lg text-sm leading-7 text-muted-foreground">We focus on solutions built around blockchain technology and digital assets.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+    <section className="border-t border-border/70 px-5 py-14 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">
+        <div><p className="eyebrow">Started in 2021</p><h2 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">A clear focus on crypto and blockchain.</h2></div>
+        <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-about-open-account">Open an account <ArrowUpRight size={16} /></Link>
+      </div>
+    </section>
+    <PublicFooter />
   </main>;
 }
 
