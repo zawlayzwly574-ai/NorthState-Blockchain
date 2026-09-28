@@ -54,18 +54,15 @@ function AccountStatusBadge({ status }: { status: UserStatus }) {
     deleted: 'bg-muted/20 text-muted-foreground',
   };
   return (
-    <span
-      className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${cls[status]}`}
-      title={status === 'deleted' ? 'Saved profile has no account in the currently connected Clerk instance.' : undefined}
-    >
-      {status === 'deleted' ? 'Not in current Clerk' : status}
+    <span className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${cls[status]}`}>
+      {status}
     </span>
   );
 }
 
 type UserStatus = 'active' | 'suspended' | 'frozen' | 'deleted';
 
-function UserDetailDrawer({ userId, clerkMissing, onClose }: { userId: string; clerkMissing: boolean; onClose: () => void }) {
+function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => void }) {
   const { data, isLoading, isError } = useAdminUserDetail(userId);
   const [detailTab, setDetailTab] = useState<'holdings' | 'transactions' | 'kyc'>('holdings');
 
@@ -104,11 +101,6 @@ function UserDetailDrawer({ userId, clerkMissing, onClose }: { userId: string; c
 
         {!isLoading && !isError && data && (
           <>
-            {clerkMissing && (
-              <p className="mx-6 mt-4 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200" role="status">
-                This saved profile is not in the current Clerk instance. The balances below are from the database; sign-in is not restored.
-              </p>
-            )}
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3 px-6 py-4 border-b border-border">
               <div className="rounded-xl bg-primary/8 border border-primary/15 p-3">
@@ -269,7 +261,7 @@ function UserDetailDrawer({ userId, clerkMissing, onClose }: { userId: string; c
 }
 
 export default function Users() {
-  const { data: users, isLoading, isError, refetch } = useAdminUsers();
+  const { data: users, isLoading } = useAdminUsers();
   const updateStatus = useUpdateAdminUserStatus();
   const deleteUser = useDeleteAdminUser();
   const adjustBalance = useAdjustAdminUserBalance();
@@ -450,13 +442,7 @@ export default function Users() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {isError && !users ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-rose-300" role="alert">
-                    Unable to load the user directory. <button type="button" onClick={() => void refetch()} className="underline underline-offset-2">Retry</button>
-                  </td>
-                </tr>
-              ) : isLoading ? (
+              {isLoading ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
@@ -697,7 +683,6 @@ export default function Users() {
       {selectedUserId && (
         <UserDetailDrawer
           userId={selectedUserId}
-          clerkMissing={users?.find(user => user.clerkUserId === selectedUserId)?.accountStatus === 'deleted'}
           onClose={() => setSelectedUserId(null)}
         />
       )}

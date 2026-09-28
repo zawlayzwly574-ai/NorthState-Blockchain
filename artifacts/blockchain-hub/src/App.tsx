@@ -1936,6 +1936,13 @@ export function Settings() {
   const profileData = profile.data;
   const referralData = referral.data;
   const verStatus = profileData?.verificationStatus ?? 'unverified';
+  const profileLoading = !memberQueriesEnabled || profile.isPending;
+  const profileUnavailable = !profileLoading && (profile.isError || !profileData);
+  const profileEmailLabel = profileUnavailable
+    ? 'Profile unavailable'
+    : profileLoading
+      ? 'Loading profile…'
+      : profileData?.email?.trim() || 'No email on file';
 
   useEffect(() => {
     if (profileData?.name) setEditName(profileData.name);
@@ -2144,6 +2151,12 @@ export function Settings() {
           <Check size={17} />{feedback}
         </div>
       )}
+      {profileUnavailable && (
+        <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm" data-testid="alert-profile-unavailable">
+          <span>We could not load your saved profile. Email and account details are temporarily unavailable.</span>
+          <button type="button" onClick={() => void profile.refetch()} className="font-bold text-primary hover:underline">Retry profile</button>
+        </div>
+      )}
       <div className="grid gap-7 lg:grid-cols-[220px_1fr]">
         {/* Sidebar nav */}
         <nav className="surface h-fit rounded-2xl p-2">
@@ -2174,16 +2187,17 @@ export function Settings() {
                 </span>
                 <div className="min-w-0">
                   <h2 className="truncate text-xl font-extrabold">{profileData?.name ?? 'North State Blockchain account'}</h2>
-                  <p className="mt-1 truncate text-sm text-muted-foreground">{profileData?.email ?? 'Loading profile…'}</p>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{profileEmailLabel}</p>
                 </div>
               </div>
-              {profile.isLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
+              {profileLoading ? <div className="mt-7"><LoadingState lines={3} /></div>
+                : profileUnavailable ? <p className="mt-7 text-sm text-muted-foreground">Your account details will appear here once the saved profile is available.</p>
                 : (
                   <>
                     <div className="mt-7 grid gap-4 sm:grid-cols-2">
                       <Stat label="Account ID" value={user?.id ?? '—'} />
                       <Stat label="Verification status" value={verStatus ?? 'unverified'} accent={verStatus === 'verified'} />
-                      <Stat label="Email" value={profileData?.email ?? '—'} />
+                      <Stat label="Email" value={profileData?.email?.trim() || 'No email on file'} />
                       <Stat label="Referral code" value={profileData?.referralCode ?? '—'} />
                     </div>
                     <div className="mt-6 rounded-2xl border border-border p-5">
@@ -2212,7 +2226,9 @@ export function Settings() {
           )}
 
           {/* ── Security tab ── */}
-          {tab === 'security' && <SecurityTab profile={profileData} />}
+          {tab === 'security' && (profileLoading ? <LoadingState lines={3} /> : profileUnavailable
+            ? <div className="surface rounded-2xl p-6 text-sm text-muted-foreground">Security details are unavailable until the saved profile loads.</div>
+            : <SecurityTab profile={profileData} />)}
 
           {/* ── Verification tab ── */}
           {tab === 'verification' && (

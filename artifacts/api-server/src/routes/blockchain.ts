@@ -62,8 +62,6 @@ type MiningPlaceDefinition = {
   category: "gold" | "energy" | "stock" | "oil";
   yahooSymbol: string;
   unit: string;
-  fallbackPrice: number;
-  fallbackChange: number;
   color: string;
 };
 
@@ -75,7 +73,7 @@ type MiningPlaceAsset = {
   change24h: number;
   currency: string;
   unit: string;
-  status: "live" | "stale" | "fallback";
+  status: "live" | "stale";
   updatedAt: string;
   color: string;
 };
@@ -119,14 +117,14 @@ const marketDefinitions: MarketDefinition[] = [
 ];
 
 const miningPlaceDefinitions: MiningPlaceDefinition[] = [
-  { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", fallbackPrice: 2348.4, fallbackChange: 0.42, color: "#d6ad3b" },
-  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", fallbackPrice: 91.72, fallbackChange: 0.68, color: "#4dbb8a" },
-  { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", fallbackPrice: 78.34, fallbackChange: -0.31, color: "#9d7b52" },
-  { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", fallbackPrice: 229.35, fallbackChange: 0.87, color: "#b8c1cc" },
-  { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", fallbackPrice: 348.68, fallbackChange: -1.14, color: "#d86464" },
-  { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", fallbackPrice: 181.22, fallbackChange: 1.92, color: "#76b900" },
-  { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", fallbackPrice: 506.69, fallbackChange: 0.51, color: "#4a9fe3" },
-  { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", fallbackPrice: 231.62, fallbackChange: -0.22, color: "#e8a43a" },
+  { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", color: "#d6ad3b" },
+  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", color: "#4dbb8a" },
+  { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", color: "#9d7b52" },
+  { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", color: "#b8c1cc" },
+  { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", color: "#d86464" },
+  { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", color: "#76b900" },
+  { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", color: "#4a9fe3" },
+  { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", color: "#e8a43a" },
 ];
 
 let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
@@ -138,11 +136,6 @@ const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.c
 function getUserId(req: Request) {
   const userId = getAuth(req).userId;
   if (!userId) throw new Error("Authentication required.");
-  if (userId === "demo_user" && process.env.NODE_ENV === "production") {
-    const error = new Error("Demo identities are disabled in production.");
-    (error as Error & { status: number }).status = 403;
-    throw error;
-  }
   return userId;
 }
 
@@ -152,7 +145,6 @@ const accountStatusCache = new Map<string, { status: AccountOperationalStatus; e
 const ACCOUNT_STATUS_CACHE_TTL = 15_000;
 
 async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
-  if (userId === "demo_user") return "active";
   const cached = accountStatusCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return cached.status;
   const user = await clerkClient.users.getUser(userId);
@@ -259,7 +251,10 @@ async function ensureDefaultPortfolio(userId: string, allowCreate: boolean) {
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
-    const email = user.emailAddresses[0]?.emailAddress ?? "";
+    const primaryEmail = user.emailAddresses.find(
+      (address) => address.id === user.primaryEmailAddressId,
+    );
+    const email = (primaryEmail ?? user.emailAddresses[0])?.emailAddress?.trim() ?? "";
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
     return { email, name };
   } catch {
@@ -267,16 +262,13 @@ async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name
   }
 }
 
-async function findAdminClerkUser(userId: string) {
-  try {
-    return await clerkClient.users.getUser(userId);
-  } catch (error: unknown) {
-    if ((error as { status?: number })?.status === 404) return null;
-    throw error;
-  }
-}
-
-async function ensureSeededUser(userId: string) {
+async function ensureSeededUser(
+  userId: string,
+  { syncClerkIdentity = false, profileOnly = false }: {
+    syncClerkIdentity?: boolean;
+    profileOnly?: boolean;
+  } = {},
+) {
   const [existing] = await db
     .select()
     .from(walletProfilesTable)
@@ -286,14 +278,20 @@ async function ensureSeededUser(userId: string) {
   if (existing) {
     const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
     if (
-      userId !== "demo_user" &&
-      (existing.email === "member@northstateblockchain.app" ||
-        existing.displayName === "North State Blockchain Member")
+      syncClerkIdentity ||
+      !existing.email.trim() ||
+      existing.email === "member@northstateblockchain.app" ||
+      !existing.displayName.trim() ||
+      existing.displayName === "North State Blockchain Member"
     ) {
       const { email, name } = await fetchClerkUserInfo(userId);
       if (!email) throw new Error("The authenticated member has no email address in Clerk.");
-      if (existing.email === "member@northstateblockchain.app") profileUpdate.email = email;
-      if (existing.displayName === "North State Blockchain Member") {
+      if (existing.email !== email) profileUpdate.email = email;
+      if (
+        !existing.displayName.trim() ||
+        existing.displayName === "North State Blockchain Member" ||
+        existing.displayName === emailPrefix(existing.email)
+      ) {
         profileUpdate.displayName = name || emailPrefix(email);
       }
     }
@@ -302,19 +300,15 @@ async function ensureSeededUser(userId: string) {
     }
     const accountRepairWindowMs = 24 * 60 * 60 * 1000;
     const recentlyCreated = Date.now() - existing.createdAt.getTime() <= accountRepairWindowMs;
-    await ensureDefaultPortfolio(userId, recentlyCreated);
+    // An older imported account may be missing its trading row. Its identity
+    // remains readable on Settings; financial routes still reject that gap.
+    if (!profileOnly || recentlyCreated) {
+      await ensureDefaultPortfolio(userId, recentlyCreated);
+    }
     return { ...existing, ...profileUpdate };
   }
 
-  const isDemoUser = userId === "demo_user";
-  if (isDemoUser && process.env.NODE_ENV === "production") {
-    const error = new Error("Demo identities are disabled in production.");
-    (error as Error & { status: number }).status = 403;
-    throw error;
-  }
-  const info = isDemoUser
-    ? { email: "demo@example.invalid", name: "Demo User" }
-    : await fetchClerkUserInfo(userId);
+  const info = await fetchClerkUserInfo(userId);
   if (!info.email) throw new Error("The authenticated member has no email address in Clerk.");
 
   const [profile] = await db
@@ -323,8 +317,8 @@ async function ensureSeededUser(userId: string) {
       clerkUserId: userId,
       displayName: info.name || emailPrefix(info.email),
       email: info.email,
-      referralCode: isDemoUser ? "NORTHSTAR-DEMO" : `NORTHSTAR-${userId.slice(-10).toUpperCase()}`,
-      verificationStatus: isDemoUser ? "verified" : "unverified",
+      referralCode: `NORTHSTAR-${userId.slice(-10).toUpperCase()}`,
+      verificationStatus: "unverified",
       referralInvitedCount: 0,
       referralReward: "0",
     })
@@ -340,9 +334,12 @@ async function ensureSeededUser(userId: string) {
       .limit(1);
     if (fetched) {
       const recentlyCreated = Date.now() - fetched.createdAt.getTime() <= 24 * 60 * 60 * 1000;
-      await ensureDefaultPortfolio(userId, recentlyCreated);
+      if (!profileOnly || recentlyCreated) {
+        await ensureDefaultPortfolio(userId, recentlyCreated);
+      }
       return fetched;
     }
+    throw new Error("Unable to load the persisted member profile.");
   }
 
   await ensureDefaultPortfolio(userId, true);
@@ -778,14 +775,14 @@ router.use(createFuturesRouter(
 ));
 
 router.get("/profile", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
+  const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
   res.json(GetProfileResponse.parse({
     id: String(profile.id),
     name: profile.displayName,
     email: profile.email,
     initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     verificationStatus: profile.verificationStatus,
-    referralCode: "NORTHSTAR-ALEX",
+    referralCode: profile.referralCode,
     twoFactorEnabled: profile.twoFactorEnabled ?? false,
     smsPhoneNumber: profile.smsPhoneNumber ?? null,
     smsPhoneVerified: profile.smsPhoneVerified ?? false,
@@ -794,14 +791,14 @@ router.get("/profile", async (req, res) => {
 
 // Backwards-compatible profile alias used by older clients.
 router.get("/user", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
+  const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
   res.json(GetProfileResponse.parse({
     id: String(profile.id),
     name: profile.displayName,
     email: profile.email,
     initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     verificationStatus: profile.verificationStatus,
-    referralCode: "NORTHSTAR-ALEX",
+    referralCode: profile.referralCode,
     twoFactorEnabled: profile.twoFactorEnabled ?? false,
     smsPhoneNumber: profile.smsPhoneNumber ?? null,
     smsPhoneVerified: profile.smsPhoneVerified ?? false,
@@ -814,6 +811,7 @@ router.patch("/profile", async (req, res) => {
   if (!displayName || typeof displayName !== "string" || displayName.trim().length < 1) {
     res.status(400).json({ error: "Display name is required." }); return;
   }
+  await ensureSeededUser(userId, { profileOnly: true });
   await db
     .update(walletProfilesTable)
     .set({ displayName: displayName.trim() })
@@ -1740,17 +1738,19 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       // exactly what the user's own Dashboard/Wallet reads.
       const account = accountByUser.get(profile.clerkUserId);
       const totalHoldings = asNumber(account?.balance) + asNumber(account?.futuresBalance);
-      const clerkUser = await findAdminClerkUser(profile.clerkUserId);
-      const email = clerkUser?.emailAddresses[0]?.emailAddress || profile.email;
-      const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ").trim();
-      const status = clerkUser?.privateMetadata?.[accountStatusKey];
-      const accountStatus: AccountOperationalStatus | "deleted" = !clerkUser
-        ? "deleted"
-        : status === "suspended" || status === "frozen" ? status : "active";
+      const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
+      const email = clerkInfo.email || profile.email;
+      let accountStatus: AccountOperationalStatus | "deleted" = "active";
+      try {
+        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
+      } catch (error: unknown) {
+        if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
+        else throw error;
+      }
       return {
         id: String(profile.id),
         clerkUserId: profile.clerkUserId,
-        displayName: clerkName || profile.displayName || emailPrefix(email),
+        displayName: clerkInfo.name || emailPrefix(email),
         email,
         verificationStatus: profile.verificationStatus,
         referralCode: profile.referralCode,
@@ -2062,10 +2062,9 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
   // exactly what the user's own Dashboard/Wallet reads.
   const totalHoldings = asNumber(accountRows[0]?.balance) + asNumber(accountRows[0]?.futuresBalance);
   const kyc = kycRows[0] ? await enrichKyc(kycRows[0]) : null;
-  const clerkUser = await findAdminClerkUser(userId);
-  const displayName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ").trim()
-    || profile.displayName;
-  const email = clerkUser?.emailAddresses[0]?.emailAddress || profile.email;
+  const clerkInfo = await fetchClerkUserInfo(userId);
+  const displayName = clerkInfo.name || profile.displayName;
+  const email = clerkInfo.email || profile.email;
 
   res.json({
     id: String(profile.id),
