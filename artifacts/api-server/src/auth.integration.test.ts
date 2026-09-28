@@ -1,13 +1,35 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clerkMiddleware, getAuth, getUser, select, transaction, update, insert } = vi.hoisted(() => {
+const {
+  clerkMiddleware,
+  clerkMiddlewareHandler,
+  getAuth,
+  getUser,
+  select,
+  transaction,
+  update,
+  insert,
+} = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
   const select = vi.fn();
   const transaction = vi.fn();
   const update = vi.fn();
   const insert = vi.fn();
+  const clerkMiddlewareHandler = vi.fn((
+    request: { headers: { cookie?: string; authorization?: string } },
+    _response: unknown,
+    next: () => void,
+  ) => {
+    authByRequest.set(request, {
+      userId: request.headers.cookie?.includes("__session=restored")
+        || request.headers.authorization === "Bearer restored-token"
+        ? "user_restored"
+        : null,
+    });
+    next();
+  });
 
   return {
     getUser,
@@ -15,20 +37,9 @@ const { clerkMiddleware, getAuth, getUser, select, transaction, update, insert }
     transaction,
     update,
     insert,
+    clerkMiddlewareHandler,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
-    clerkMiddleware: () => (
-      request: { headers: { cookie?: string; authorization?: string } },
-      _response: unknown,
-      next: () => void,
-    ) => {
-      authByRequest.set(request, {
-        userId: request.headers.cookie?.includes("__session=restored")
-          || request.headers.authorization === "Bearer restored-token"
-          ? "user_restored"
-          : null,
-      });
-      next();
-    },
+    clerkMiddleware: () => clerkMiddlewareHandler,
   };
 });
 
@@ -126,17 +137,28 @@ describe("member route authentication", () => {
     transaction.mockResolvedValue(undefined);
     update.mockReset();
     insert.mockReset();
+    clerkMiddlewareHandler.mockClear();
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("serves public liveness without Clerk or database access", async () => {
-    const response = await fetch(`${baseUrl}/api/health`);
+  it("serves GET and HEAD liveness before Clerk or database access", async () => {
+    const getResponse = await fetch(`${baseUrl}/api/health`);
+    expect(getResponse.status).toBe(200);
+    expect(await getResponse.json()).toEqual({ status: "ok" });
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
+    const headResponse = await fetch(`${baseUrl}/api/health`, { method: "HEAD" });
+    expect(headResponse.status).toBe(200);
+    expect(headResponse.headers.get("content-type")).toContain("application/json");
+    expect(headResponse.headers.get("content-length")).toBe(
+      String(Buffer.byteLength(JSON.stringify({ status: "ok" }))),
+    );
+    // HTTP HEAD responses carry GET-equivalent headers, but no response body.
+    expect(await headResponse.text()).toBe("");
+
+    expect(clerkMiddlewareHandler).not.toHaveBeenCalled();
     expect(getUser).not.toHaveBeenCalled();
     expect(select).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();

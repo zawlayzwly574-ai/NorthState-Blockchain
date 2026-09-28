@@ -1,11 +1,14 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
-router.get("/health", (_req, res) => {
+const sendLiveness = (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
-});
+};
+
+router.head("/health", sendLiveness);
+router.get("/health", sendLiveness);
 
 router.get("/healthz", async (_req, res) => {
   try {
