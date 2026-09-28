@@ -170,25 +170,31 @@ function Home() {
     <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
       <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />A calmer way to hold digital assets</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">Your money, with <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">Get started <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">Explore markets <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />Bank-grade controls</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />Transparent fees</span></div></div>
       <div className="animate-rise-2 relative">
-        <div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6">
-          <div className="mb-5 flex items-center justify-between">
+        <div className="surface grid-lines relative overflow-hidden rounded-3xl p-5 sm:p-7">
+          <div className="flex items-center justify-between">
             <div>
-              <p className="eyebrow">Illustrative portfolio preview</p>
-              <p className="mt-1 text-xs text-muted-foreground">Sample figures only — not live account data</p>
+              <p className="eyebrow">Member portfolio</p>
+              <p className="mt-1 text-xs text-muted-foreground">Your account data is private</p>
             </div>
-            <span className="rounded-lg border border-accent/20 bg-accent/10 px-2 py-1 font-mono-ui text-[10px] font-medium text-accent">EXAMPLE</span>
+            <span className="grid h-10 w-10 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Lock size={18} /></span>
           </div>
-          <div className="rounded-2xl border border-border/70 bg-background/55 p-5">
-            <div className="flex items-end justify-between">
-              <div><p className="text-xs font-semibold text-muted-foreground">Example total balance</p><p className="mt-2 text-3xl font-extrabold tracking-[-.05em]">$24,680<span className="text-muted-foreground">.42</span></p></div>
-              <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">+8.42%</span>
+          <div className="mt-6 rounded-2xl border border-border/70 bg-background/55 p-5 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"><ShieldCheck size={21} /></div>
+              <div>
+                <h2 className="font-bold">Sign in to view your real data</h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">Balances, holdings, and account history are shown only after you sign in.</p>
+              </div>
             </div>
-            <div className="mt-7 h-28"><HeroChart /></div>
-            <div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>FEB 08</span><span>MAR 08</span><span>APR 08</span><span>MAY 08</span></div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#f6ad3c]" />BTC</div><p className="mt-2 font-mono-ui text-sm font-medium">$11,208.44</p></div>
-            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#9a9cf5]" />ETH</div><p className="mt-2 font-mono-ui text-sm font-medium">$6,892.10</p></div>
+            <div className="mt-6 grid gap-2">
+              {['Portfolio balance', 'Asset holdings', 'Account activity'].map((label) => (
+                <div key={label} className="flex items-center justify-between rounded-xl border border-border/60 bg-background/45 px-4 py-3">
+                  <span className="text-sm font-semibold text-muted-foreground">{label}</span>
+                  <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><Lock size={13} />Private</span>
+                </div>
+              ))}
+            </div>
+            <Link href="/sign-in" className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-sign-in">Sign in to your account <ArrowUpRight size={16} /></Link>
           </div>
         </div>
         <div className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/20 bg-[#171209] p-4 shadow-xl sm:-left-10">
@@ -198,7 +204,6 @@ function Home() {
     </div>
   </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><PublicFooter /></main>;
 }
-function HeroChart() { return <svg viewBox="0 0 500 130" className="h-full w-full" preserveAspectRatio="none" aria-label="Portfolio trend"><defs><linearGradient id="heroFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#cfa230" stopOpacity=".22" /><stop offset="1" stopColor="#cfa230" stopOpacity="0" /></linearGradient></defs><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10 L500 130 L0 130Z" fill="url(#heroFill)" /><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10" fill="none" stroke="#cfa230" strokeWidth="2.5" /></svg>; }
 
 function About() {
   return <main className="min-h-[100dvh] overflow-hidden"><PublicNav />
@@ -249,11 +254,6 @@ function About() {
     </section>
     <PublicFooter />
   </main>;
-}
-
-function AuthPage({ signUp = false }: { signUp?: boolean }) {
-  const [submitted, setSubmitted] = useState(false);
-  return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8"><div className="w-full max-w-[440px] animate-rise"><div className="mb-8 flex justify-center"><Logo /></div><div className="surface rounded-3xl p-6 sm:p-8"><div className="mb-7"><p className="eyebrow">{signUp ? 'Start with North State Blockchain' : 'Welcome back'}</p><h1 className="mt-2 text-2xl font-extrabold tracking-[-.05em]">{signUp ? 'A clearer crypto account.' : 'Your portfolio is waiting.'}</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">{signUp ? 'Create your account with the email or phone you use every day.' : 'Sign in to see your balance, activity, and markets.'}</p></div>{submitted ? <div className="rounded-2xl border border-primary/25 bg-primary/10 p-5 text-center" data-testid="status-auth-success"><div className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground"><Check size={19} /></div><h2 className="mt-4 font-bold">{signUp ? 'Check your inbox' : 'Sign-in link sent'}</h2><p className="mt-2 text-sm text-muted-foreground">Your configured account flow will continue from there.</p><Link href="/dashboard" className="mt-5 inline-flex rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground" data-testid="link-auth-dashboard">Continue to North State Blockchain</Link></div> : <form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); setSubmitted(true); }}><Field label={signUp ? 'Email or phone' : 'Email or phone'} type="text" placeholder="you@example.com" required data-testid="input-auth-identifier" /><Field label="Password" type="password" placeholder="Enter your password" required data-testid="input-auth-password" />{!signUp && <Link href="/sign-in/forgot-password" className="justify-self-end text-xs font-bold text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</Link>}<Button type="submit" className="mt-2 w-full" data-testid="button-auth-submit">{signUp ? 'Create account' : 'Sign in'} <ArrowUpRight size={16} /></Button><div className="my-1 flex items-center gap-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground"><span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" /></div><Button type="button" variant="secondary" className="w-full" onClick={() => setSubmitted(true)} data-testid="button-auth-continue-email">{signUp ? 'Continue with email' : 'Continue with email'}</Button></form>}<div className="mt-7 border-t border-border pt-5 text-center text-sm text-muted-foreground">{signUp ? 'Already have an account?' : 'New to North State Blockchain?'} <Link href={signUp ? '/sign-in' : '/sign-up'} className="font-bold text-primary hover:underline" data-testid="link-auth-switch">{signUp ? 'Sign in' : 'Create an account'}</Link></div></div><p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">By continuing, you agree to North State Blockchain's terms and privacy policy.</p></div></main>;
 }
 
 const clerkAppearance = {
@@ -1669,10 +1669,22 @@ export function Dashboard() {
     },
   });
   const fxQuery = useGetFxRates({ query: { queryKey: getGetFxRatesQueryKey(), staleTime: 5 * 60_000, refetchInterval: 5 * 60_000 } });
+  const fxRefreshFailed = fxQuery.isError;
+  const fxIsRefreshing = fxQuery.isFetching;
 
-  // Exchange rate: convert USD → selected currency
-  const fxRate = (currency === 'USD' ? 1 : (fxQuery.data?.rates?.[currency] ?? 1));
-  const cx = (usdValue: number) => usdValue * fxRate;
+  // Balances are stored in USD. Never imply a parity conversion when a rate
+  // for the selected display currency is unavailable.
+  const requestedFxRate = currency === 'USD' ? 1 : fxQuery.data?.rates?.[currency];
+  const fxRateIsFresh = fxQuery.dataUpdatedAt > 0 && Date.now() - fxQuery.dataUpdatedAt <= 5 * 60_000;
+  const fxRate = requestedFxRate !== undefined
+    && (currency === 'USD' || fxRateIsFresh)
+    && Number.isFinite(requestedFxRate)
+    && requestedFxRate > 0
+    ? requestedFxRate
+    : undefined;
+  const displayBalance = (usdValue: number) => fxRate === undefined
+    ? money(usdValue, 'USD')
+    : money(usdValue * fxRate, currency);
 
   const data = portfolio.data
     ? {
@@ -1754,7 +1766,8 @@ export function Dashboard() {
                   <div>
                     <p className="text-sm font-semibold text-muted-foreground">Available cash</p>
                     <p className="mt-2 font-mono-ui text-3xl font-medium tracking-[-.05em]" data-testid="text-cash-balance">
-                      {money(cx(data.cashBalance), currency)}
+                      {displayBalance(data.cashBalance)}
+                      <span className="ml-2 align-middle text-xs font-bold text-muted-foreground">{fxRate === undefined ? 'USD' : currency}</span>
                     </p>
                     <label className="relative mt-3 inline-block">
                       <select value={currency} onChange={(event) => setCurrency(event.target.value)}
@@ -1764,6 +1777,15 @@ export function Dashboard() {
                       </select>
                       <ChevronDown size={12} className="pointer-events-none absolute right-2 top-2.5 text-muted-foreground" />
                     </label>
+                    {currency !== 'USD' && fxRate === undefined && (
+                      <p role="status" className="mt-2 text-xs text-muted-foreground">
+                        {fxRefreshFailed
+                          ? `The latest ${currency} rate refresh failed; amounts are shown in USD.`
+                          : fxIsRefreshing
+                            ? `${currency} conversion is refreshing; amounts are shown in USD.`
+                            : `${currency} conversion is unavailable; amounts are shown in USD.`}
+                      </p>
+                    )}
                   </div>
                   <div className="grid h-11 w-11 place-items-center rounded-xl bg-accent/12 text-accent"><Landmark size={20} /></div>
                 </div>
@@ -1795,7 +1817,7 @@ export function Dashboard() {
                           <p className="text-xs text-muted-foreground">units</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-mono-ui text-sm font-medium">{money(cx(holding.value), currency)}</p>
+                          <p className="font-mono-ui text-sm font-medium">{displayBalance(holding.value)} <span className="text-xs text-muted-foreground">{fxRate === undefined ? 'USD' : currency}</span></p>
                           <p className={`text-xs font-bold ${holding.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'}`}>{pct(holding.change24h)}</p>
                         </div>
                         <div className="hidden text-right text-xs text-muted-foreground sm:block">{holding.allocation.toFixed(1)}%</div>
@@ -2477,7 +2499,7 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
   );
 }
 
-function MiningPlace() {
+export function MiningPlace() {
   const { data, isLoading, isError, refetch } = useGetMiningPlace({
     query: {
       queryKey: getGetMiningPlaceQueryKey(),
@@ -2512,53 +2534,53 @@ function MiningPlace() {
         </div>
       </div>
 
-      {isLoading ? (
-        <LoadingState lines={7} />
-      ) : isError ? (
-        <ErrorState retry={() => refetch()} />
-      ) : !data || data.assets.length === 0 ? (
-        <EmptyState title="No assets available" detail="Real-world benchmarks are currently offline." />
-      ) : (
-        <div className="animate-rise grid gap-10">
-          <section className="surface rounded-2xl p-5 sm:p-6">
-            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-              <div><p className="eyebrow">Your investments</p><h2 className="mt-1 text-lg font-extrabold">Mining Place positions</h2></div>
-              <span className="font-mono-ui text-sm text-primary">
-                Available: {investments.data ? `${money(investments.data.availableUsdc)} USDC` : investments.isError ? 'Unavailable' : 'Loading…'}
-              </span>
-            </div>
-            {investments.isError && <p role="alert" className="mt-4 text-sm text-destructive">Investment balances and history could not be refreshed.</p>}
-            {investments.isLoading && !investments.data ? <div className="mt-4"><LoadingState lines={2} /></div> : investments.isError && !investments.data ? (
-              <Button variant="secondary" onClick={() => void investments.refetch()} className="mt-4">Retry</Button>
-            ) : !investments.data?.investments.length ? (
-              <p className="mt-4 text-sm text-muted-foreground">Open an asset to submit your first investment request.</p>
-            ) : <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              {investments.data.investments.map(investment => <div key={investment.id} className="rounded-xl border border-border bg-background/40 p-4">
-                <div className="flex items-center justify-between"><strong>{investment.symbol}</strong><span className={`text-xs font-bold capitalize ${investment.status === 'active' ? 'text-[#2db87a]' : investment.status === 'rejected' ? 'text-destructive' : 'text-accent'}`}>{investment.status}</span></div>
-                <p className="mt-2 font-mono-ui text-lg">{money(investment.approvedAmount ?? investment.requestedAmount)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{investment.units?.toFixed(6) ?? '—'} units · {dateLabel(investment.createdAt)}</p>
-                {investment.adminNote && <p className="mt-2 text-xs text-muted-foreground">{investment.adminNote}</p>}
-              </div>)}
-            </div>}
-          </section>
+      <div className="animate-rise grid gap-10">
+        <section className="surface rounded-2xl p-5 sm:p-6">
+          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <div><p className="eyebrow">Your investments</p><h2 className="mt-1 text-lg font-extrabold">Mining Place positions</h2></div>
+            <span className="font-mono-ui text-sm text-primary">
+              Available: {investments.data ? `${money(investments.data.availableUsdc)} USDC` : investments.isError ? 'Unavailable' : 'Loading…'}
+            </span>
+          </div>
+          {investments.isError && <p role="alert" className="mt-4 text-sm text-destructive">Investment balances and history could not be refreshed.</p>}
+          {investments.isLoading && !investments.data ? <div className="mt-4"><LoadingState lines={2} /></div> : investments.isError && !investments.data ? (
+            <Button variant="secondary" onClick={() => void investments.refetch()} className="mt-4">Retry</Button>
+          ) : !investments.data?.investments.length ? (
+            <p className="mt-4 text-sm text-muted-foreground">Open an asset to submit your first investment request.</p>
+          ) : <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {investments.data.investments.map(investment => <div key={investment.id} className="rounded-xl border border-border bg-background/40 p-4">
+              <div className="flex items-center justify-between"><strong>{investment.symbol}</strong><span className={`text-xs font-bold capitalize ${investment.status === 'active' ? 'text-[#2db87a]' : investment.status === 'rejected' ? 'text-destructive' : 'text-accent'}`}>{investment.status}</span></div>
+              <p className="mt-2 font-mono-ui text-lg">{money(investment.approvedAmount ?? investment.requestedAmount)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{investment.units?.toFixed(6) ?? '—'} units · {dateLabel(investment.createdAt)}</p>
+              {investment.adminNote && <p className="mt-2 text-xs text-muted-foreground">{investment.adminNote}</p>}
+            </div>)}
+          </div>}
+        </section>
+        <section className="grid gap-5">
           <div className="flex items-center justify-between border-b border-border/60 pb-4">
              <h2 className="text-sm font-bold text-foreground">Market Feeds</h2>
              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-               <RefreshCw size={12} className="text-primary" /> Live · 3 sec refresh · Updated {new Date(data.updatedAt).toLocaleTimeString()}
+                <RefreshCw size={12} className="text-primary" /> {data ? `Updated ${new Date(data.updatedAt).toLocaleTimeString()}` : 'Quotes refresh automatically'}
              </span>
           </div>
-          {categories.map(category => (
-            <section key={category}>
-              <h3 className="mb-5 text-xs font-extrabold uppercase tracking-widest text-muted-foreground">{categoryLabels[category] || category}</h3>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {assetsByCategory[category].map(asset => (
-                  <AssetCard key={asset.symbol} asset={asset} />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+          {isLoading && !data ? <LoadingState lines={7} />
+            : isError && !data ? <ErrorState retry={() => refetch()} />
+            : !data || data.assets.length === 0 ? <EmptyState title="Market feed unavailable" detail="Real-world benchmark quotes are currently unavailable. Your persisted investments remain available above." />
+            : <>
+              {isError && <p role="status" className="rounded-xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">The latest quote refresh failed. Previously loaded market quotes remain visible.</p>}
+              {categories.map(category => (
+                <section key={category}>
+                  <h3 className="mb-5 text-xs font-extrabold uppercase tracking-widest text-muted-foreground">{categoryLabels[category] || category}</h3>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {assetsByCategory[category].map(asset => (
+                      <AssetCard key={asset.symbol} asset={asset} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </>}
+        </section>
+      </div>
     </Shell>
   );
 }
@@ -2578,20 +2600,7 @@ function MiningPlaceDetail() {
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [investmentMessage, setInvestmentMessage] = useState('');
   const item = miningPlace.data?.assets.find((asset) => asset.symbol.toLowerCase() === symbol.toLowerCase());
-  const chart = useMemo(() => {
-    if (!item) return [];
-    const direction = item.change24h >= 0 ? 1 : -1;
-    const movement = Math.max(Math.abs(item.change24h), 0.35) / 100;
-    return Array.from({ length: 24 }, (_, index) => ({
-      time: `${String(index).padStart(2, '0')}:00`,
-      value: index === 23 ? item.price : item.price * (
-        1
-        - direction * movement
-        + direction * movement * (index / 23)
-        + Math.sin(index / 2.8) * movement * 0.18
-      ),
-    }));
-  }, [item]);
+  const history = (item as (MiningPlaceAsset & { history?: { time: string; value: number }[] }) | undefined)?.history ?? [];
 
   return (
     <Shell>
@@ -2652,8 +2661,8 @@ function MiningPlaceDetail() {
           <div className="surface mt-7 rounded-2xl p-5 sm:p-7">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <p className="eyebrow">Movement preview</p>
-                <h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Benchmark price movement</h2>
+                <p className="eyebrow">Price history</p>
+                <h2 className="mt-1 text-lg font-extrabold tracking-[-.03em]">Benchmark price history</h2>
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={item.status} />
@@ -2661,12 +2670,12 @@ function MiningPlaceDetail() {
               </div>
             </div>
             <div className="mt-8 h-64">
-              <Chart points={chart} />
+              {history.length > 0
+                ? <Chart points={history} />
+                : <div role="status" className="grid h-full place-items-center rounded-xl border border-dashed border-border/70 text-sm text-muted-foreground">Price history is unavailable for this benchmark.</div>}
             </div>
-            <div className="mt-3 flex justify-between text-[10px] font-mono-ui text-muted-foreground">
-              <span>EARLIER</span><span>NOW</span>
-            </div>
-            <p className="mt-5 text-xs leading-5 text-muted-foreground">Chart preview is anchored to the latest public quote and its reported 24-hour movement. Refreshing quotes update the view automatically.</p>
+            {history.length > 0 && <div className="mt-3 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>{history[0]?.time}</span><span>{history[history.length - 1]?.time}</span></div>}
+            <p className="mt-5 text-xs leading-5 text-muted-foreground">Only history returned by the market data service is shown here.</p>
           </div>
         </>
       )}

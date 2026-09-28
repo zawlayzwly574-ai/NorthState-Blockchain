@@ -254,26 +254,6 @@ export function useSetUserTradingMode() {
   });
 }
 
-export function useCleanupDemoHoldings() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiClient('/cleanup-demo-holdings', { method: 'POST' }) as Promise<{ removed: number }>,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-    },
-  });
-}
-
-export function useCleanupLegacyBalanceBase() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiClient('/cleanup-legacy-balance-base', { method: 'POST' }) as Promise<{ reset: number }>,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
-    },
-  });
-}
-
 export function useAdminTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['admin', 'transactions'],

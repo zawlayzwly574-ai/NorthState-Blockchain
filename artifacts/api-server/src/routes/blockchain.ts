@@ -62,8 +62,6 @@ type MiningPlaceDefinition = {
   category: "gold" | "energy" | "stock" | "oil";
   yahooSymbol: string;
   unit: string;
-  fallbackPrice: number;
-  fallbackChange: number;
   color: string;
 };
 
@@ -75,7 +73,7 @@ type MiningPlaceAsset = {
   change24h: number;
   currency: string;
   unit: string;
-  status: "live" | "stale" | "fallback";
+  status: "live" | "stale";
   updatedAt: string;
   color: string;
 };
@@ -119,14 +117,14 @@ const marketDefinitions: MarketDefinition[] = [
 ];
 
 const miningPlaceDefinitions: MiningPlaceDefinition[] = [
-  { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", fallbackPrice: 2348.4, fallbackChange: 0.42, color: "#d6ad3b" },
-  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", fallbackPrice: 91.72, fallbackChange: 0.68, color: "#4dbb8a" },
-  { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", fallbackPrice: 78.34, fallbackChange: -0.31, color: "#9d7b52" },
-  { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", fallbackPrice: 229.35, fallbackChange: 0.87, color: "#b8c1cc" },
-  { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", fallbackPrice: 348.68, fallbackChange: -1.14, color: "#d86464" },
-  { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", fallbackPrice: 181.22, fallbackChange: 1.92, color: "#76b900" },
-  { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", fallbackPrice: 506.69, fallbackChange: 0.51, color: "#4a9fe3" },
-  { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", fallbackPrice: 231.62, fallbackChange: -0.22, color: "#e8a43a" },
+  { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", color: "#d6ad3b" },
+  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", color: "#4dbb8a" },
+  { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", color: "#9d7b52" },
+  { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", color: "#b8c1cc" },
+  { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", color: "#d86464" },
+  { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", color: "#76b900" },
+  { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", color: "#4a9fe3" },
+  { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", color: "#e8a43a" },
 ];
 
 let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
@@ -138,11 +136,6 @@ const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.c
 function getUserId(req: Request) {
   const userId = getAuth(req).userId;
   if (!userId) throw new Error("Authentication required.");
-  if (userId === "demo_user" && process.env.NODE_ENV === "production") {
-    const error = new Error("Demo identities are disabled in production.");
-    (error as Error & { status: number }).status = 403;
-    throw error;
-  }
   return userId;
 }
 
@@ -152,7 +145,6 @@ const accountStatusCache = new Map<string, { status: AccountOperationalStatus; e
 const ACCOUNT_STATUS_CACHE_TTL = 15_000;
 
 async function getAccountOperationalStatus(userId: string): Promise<AccountOperationalStatus> {
-  if (userId === "demo_user") return "active";
   const cached = accountStatusCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) return cached.status;
   const user = await clerkClient.users.getUser(userId);
@@ -285,13 +277,13 @@ async function ensureSeededUser(
 
   if (existing) {
     const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (userId !== "demo_user" && (
+    if (
       syncClerkIdentity ||
       !existing.email.trim() ||
       existing.email === "member@northstateblockchain.app" ||
       !existing.displayName.trim() ||
       existing.displayName === "North State Blockchain Member"
-    )) {
+    ) {
       const { email, name } = await fetchClerkUserInfo(userId);
       if (!email) throw new Error("The authenticated member has no email address in Clerk.");
       if (existing.email !== email) profileUpdate.email = email;
@@ -316,15 +308,7 @@ async function ensureSeededUser(
     return { ...existing, ...profileUpdate };
   }
 
-  const isDemoUser = userId === "demo_user";
-  if (isDemoUser && process.env.NODE_ENV === "production") {
-    const error = new Error("Demo identities are disabled in production.");
-    (error as Error & { status: number }).status = 403;
-    throw error;
-  }
-  const info = isDemoUser
-    ? { email: "demo@example.invalid", name: "Demo User" }
-    : await fetchClerkUserInfo(userId);
+  const info = await fetchClerkUserInfo(userId);
   if (!info.email) throw new Error("The authenticated member has no email address in Clerk.");
 
   const [profile] = await db
@@ -333,8 +317,8 @@ async function ensureSeededUser(
       clerkUserId: userId,
       displayName: info.name || emailPrefix(info.email),
       email: info.email,
-      referralCode: isDemoUser ? "NORTHSTAR-DEMO" : `NORTHSTAR-${userId.slice(-10).toUpperCase()}`,
-      verificationStatus: isDemoUser ? "verified" : "unverified",
+      referralCode: `NORTHSTAR-${userId.slice(-10).toUpperCase()}`,
+      verificationStatus: "unverified",
       referralInvitedCount: 0,
       referralReward: "0",
     })
@@ -428,6 +412,7 @@ type BinanceTicker = {
   lastPrice?: string;
   priceChangePercent?: string;
   quoteVolume?: string;
+  closeTime?: number;
 };
 
 const binanceSymbols: Record<string, string> = {
@@ -537,25 +522,27 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
   return marketDefinitions.flatMap((definition): MarketAsset[] => {
     const provider = liveData[definition.id];
     if (!isValidMarketQuote(provider)) {
-      const previous = previousAssets.get(definition.symbol);
-      return previous ? [previous] : [];
+      return [];
     }
 
     const price = Number(provider!.usd);
     const previous = previousAssets.get(definition.symbol);
+    if (!Number.isFinite(provider!.usd_24h_change)) return [];
+    const marketCap = Number.isFinite(provider!.usd_market_cap) && provider!.usd_market_cap! >= 0
+      ? provider!.usd_market_cap!
+      : previous?.marketCap;
+    const volume24h = Number.isFinite(provider!.usd_24h_vol) && provider!.usd_24h_vol! >= 0
+      ? provider!.usd_24h_vol!
+      : previous?.volume24h;
+    if (typeof marketCap !== "number" || !Number.isFinite(marketCap)
+      || typeof volume24h !== "number" || !Number.isFinite(volume24h)) return [];
     return [{
       symbol: definition.symbol,
       name: definition.name,
       price,
-      change24h: Number.isFinite(provider.usd_24h_change)
-        ? provider.usd_24h_change!
-        : previous?.change24h ?? 0,
-      marketCap: Number.isFinite(provider.usd_market_cap)
-        ? provider.usd_market_cap!
-        : previous?.marketCap ?? 0,
-      volume24h: Number.isFinite(provider.usd_24h_vol)
-        ? provider.usd_24h_vol!
-        : previous?.volume24h ?? 0,
+      change24h: provider.usd_24h_change!,
+      marketCap,
+      volume24h,
       rank: definition.rank,
       color: definition.color,
     }];
@@ -582,6 +569,72 @@ async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[
   return marketRefreshPromise;
 }
 
+type ProviderPriceQuote = { price: number; timestamp: number };
+const MAX_FINANCIAL_QUOTE_AGE_MS = 2 * 60_000;
+
+function isFreshProviderQuote(quote: ProviderPriceQuote, now = Date.now()) {
+  return Number.isFinite(quote.price)
+    && quote.price > 0
+    && Number.isFinite(quote.timestamp)
+    && quote.timestamp <= now
+    && now - quote.timestamp <= MAX_FINANCIAL_QUOTE_AGE_MS;
+}
+
+async function fetchFreshProviderQuote(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+  symbol: string,
+): Promise<ProviderPriceQuote | null> {
+  const normalizedSymbol = symbol.toUpperCase();
+  const definition = marketDefinitions.find((asset) => asset.symbol === normalizedSymbol);
+  const miningDefinition = miningPlaceDefinitions.find((asset) => asset.symbol === normalizedSymbol);
+
+  if (definition && binanceSymbols[definition.id]) {
+    try {
+      const response = await fetch(
+        `https://api.binance.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(binanceSymbols[definition.id])}`,
+        { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) },
+      );
+      if (!response.ok) throw new Error(`Binance returned ${response.status}`);
+      const ticker = (await response.json()) as BinanceTicker;
+      const quote = { price: Number(ticker.lastPrice), timestamp: Number(ticker.closeTime) };
+      if (isFreshProviderQuote(quote)) return quote;
+      req.log.warn({ symbol: normalizedSymbol }, "Binance returned a missing, invalid, or stale timestamped quote");
+    } catch (error) {
+      req.log.warn({ err: error, symbol: normalizedSymbol }, "Timestamped Binance quote unavailable");
+    }
+  }
+
+  if (miningDefinition) {
+    for (const host of YAHOO_FINANCE_HOSTS) {
+      try {
+        const response = await fetch(
+          `https://${host}/v8/finance/chart/${encodeURIComponent(miningDefinition.yahooSymbol)}?range=1d&interval=5m`,
+          {
+            headers: { accept: "application/json", "user-agent": "Mozilla/5.0 NorthStateBlockchain/1.0" },
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+        if (!response.ok) throw new Error(`${host} returned ${response.status}`);
+        const payload = (await response.json()) as {
+          chart?: { result?: Array<{ meta?: { regularMarketPrice?: number; regularMarketTime?: number } }> };
+        };
+        const meta = payload.chart?.result?.[0]?.meta;
+        const quote = {
+          price: Number(meta?.regularMarketPrice),
+          timestamp: Number(meta?.regularMarketTime) * 1000,
+        };
+        if (isFreshProviderQuote(quote)) return quote;
+        req.log.warn({ symbol: normalizedSymbol, host }, "Yahoo returned a missing, invalid, or stale timestamped quote");
+      } catch (error) {
+        req.log.warn({ err: error, symbol: normalizedSymbol, host }, "Timestamped Yahoo quote unavailable");
+      }
+    }
+  }
+
+  req.log.warn({ symbol: normalizedSymbol }, "No fresh provider quote with a provider timestamp is available");
+  return null;
+}
+
 router.get("/markets", async (req, res) => {
   const data = GetMarketSummaryResponse.parse(await fetchMarketAssets(req));
   res.json(data);
@@ -599,7 +652,7 @@ router.get("/mining-place", async (req, res) => {
 
   if (!miningPlaceRefreshPromise) {
     const previousAssets = new Map(miningPlaceCache?.assets.map((asset) => [asset.symbol, asset]));
-    miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset> => {
+    miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset | null> => {
     let liveAsset: MiningPlaceAsset | null = null;
     let lastError: unknown = null;
     for (const host of YAHOO_FINANCE_HOSTS) {
@@ -630,12 +683,14 @@ router.get("/mining-place", async (req, res) => {
         const meta = payload.chart?.result?.[0]?.meta;
         const price = Number(meta?.regularMarketPrice);
         const previousClose = Number(meta?.chartPreviousClose ?? meta?.previousClose);
-        if (!Number.isFinite(price) || price <= 0) {
-          throw new Error(`${host} did not return a valid price`);
+        const providerTimestamp = Number(meta?.regularMarketTime) * 1000;
+        if (!Number.isFinite(price) || price <= 0
+          || !Number.isFinite(providerTimestamp) || providerTimestamp <= 0 || providerTimestamp > now
+          || now - providerTimestamp > MINING_PLACE_MAX_STALE_AGE
+          || !Number.isFinite(previousClose) || previousClose <= 0) {
+          throw new Error(`${host} did not return a complete timestamped quote`);
         }
-        const change24h = Number.isFinite(previousClose) && previousClose > 0
-          ? ((price - previousClose) / previousClose) * 100
-          : definition.fallbackChange;
+        const change24h = ((price - previousClose) / previousClose) * 100;
         liveAsset = {
           symbol: definition.symbol,
           name: definition.name,
@@ -644,8 +699,8 @@ router.get("/mining-place", async (req, res) => {
           change24h,
           currency: meta?.currency ?? "USD",
           unit: definition.unit,
-          status: "live",
-          updatedAt: new Date((meta?.regularMarketTime ?? Math.floor(now / 1000)) * 1000).toISOString(),
+          status: now - providerTimestamp <= MAX_FINANCIAL_QUOTE_AGE_MS ? "live" : "stale",
+          updatedAt: new Date(providerTimestamp).toISOString(),
           color: definition.color,
         };
         break;
@@ -666,27 +721,15 @@ router.get("/mining-place", async (req, res) => {
       const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;
       if (
         previous
-        && previous.status !== "fallback"
         && Number.isFinite(previousTimestamp)
         && now - previousTimestamp <= MINING_PLACE_MAX_STALE_AGE
       ) {
         return { ...previous, status: "stale" };
       }
-      return {
-        symbol: definition.symbol,
-        name: definition.name,
-        category: definition.category,
-        price: definition.fallbackPrice,
-        change24h: definition.fallbackChange,
-        currency: "USD",
-        unit: definition.unit,
-        status: "fallback",
-        updatedAt: new Date(now).toISOString(),
-        color: definition.color,
-      };
+      return null;
     }
     })).then((assets) => {
-      miningPlaceCache = { assets, ts: Date.now() };
+      miningPlaceCache = { assets: assets.filter((asset): asset is MiningPlaceAsset => asset !== null), ts: Date.now() };
       return miningPlaceCache;
     }).finally(() => {
       miningPlaceRefreshPromise = null;
@@ -712,29 +755,26 @@ router.get("/markets/fx-rates", async (req, res) => {
         { signal: AbortSignal.timeout(5000) },
       );
       if (response.ok) {
-        const body = (await response.json()) as { rates: Record<string, number> };
-        // Add USD→USD identity and MMK static rate (not in ECB data)
+        const body = (await response.json()) as { rates?: Record<string, number> };
+        if (!body.rates || Object.values(body.rates).some((rate) => !Number.isFinite(rate) || rate <= 0)) {
+          throw new Error("Frankfurter returned an invalid FX rate table");
+        }
         fxCache = {
-          rates: { USD: 1, ...body.rates, MMK: 2100 },
+          rates: { USD: 1, ...body.rates },
           ts: Date.now(),
         };
+      } else {
+        throw new Error(`Frankfurter returned ${response.status}`);
       }
     }
-    const rates = fxCache?.rates ?? { USD: 1, EUR: 0.92, GBP: 0.79 };
-    res.json(GetFxRatesResponse.parse({ base: "USD", rates }));
+    if (!fxCache || Date.now() - fxCache.ts > FX_TTL) {
+      res.status(503).json({ error: "Current FX rates are unavailable." });
+      return;
+    }
+    res.json(GetFxRatesResponse.parse({ base: "USD", rates: fxCache.rates }));
   } catch (err) {
-    req.log.warn({ err }, "FX rate fetch failed, using fallback");
-    res.json(GetFxRatesResponse.parse({
-      base: "USD",
-      rates: {
-        USD: 1, EUR: 0.92, GBP: 0.79, JPY: 149.5, AUD: 1.52, CAD: 1.36,
-        CHF: 0.88, CNY: 7.24, HKD: 7.82, SGD: 1.35, SEK: 10.5, NOK: 10.7,
-        DKK: 6.91, NZD: 1.64, MXN: 17.1, INR: 83.5, BRL: 5.05, KRW: 1330,
-        ZAR: 18.6, THB: 35.1, MYR: 4.72, IDR: 15750, PHP: 56.5, AED: 3.67,
-        SAR: 3.75, TRY: 32.4, PLN: 4.01, CZK: 23.1, HUF: 357, RON: 4.57,
-        MMK: 2100,
-      },
-    }));
+    req.log.warn({ err }, "FX rate fetch failed");
+    res.status(503).json({ error: "Current FX rates are unavailable." });
   }
 });
 
@@ -747,10 +787,7 @@ router.get("/markets/:symbol", async (req, res) => {
     return;
   }
 
-  let chart = Array.from({ length: 25 }, (_, index) => ({
-    time: `${String(index).padStart(2, "0")}:00`,
-    value: asset.price * (1 + Math.sin(index / 3.4) * 0.012 + (index - 12) * 0.00035),
-  }));
+  let chart: Array<{ time: string; value: number }> = [];
 
   try {
     const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
@@ -859,7 +896,7 @@ router.get("/notifications", async (req, res) => {
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const account = await requireTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
   const spotValue = asNumber(account.balance);
@@ -891,20 +928,19 @@ router.get("/portfolio", async (req, res) => {
 
 const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => asset.symbol));
 
-function investmentQuote(symbol: string) {
-  const cached = miningPlaceCache?.assets.find((asset) => asset.symbol === symbol);
-  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol)!;
-  return cached ?? {
-    symbol: definition.symbol,
+async function investmentQuote(
+  req: Parameters<Parameters<IRouter["post"]>[1]>[0],
+  symbol: string,
+) {
+  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol);
+  if (!definition) return null;
+  const quote = await fetchFreshProviderQuote(req, symbol);
+  if (!quote) return null;
+  return {
     name: definition.name,
     category: definition.category,
-    price: definition.fallbackPrice,
-    change24h: definition.fallbackChange,
-    currency: "USD",
-    unit: definition.unit,
-    status: "fallback" as const,
-    updatedAt: new Date().toISOString(),
-    color: definition.color,
+    price: quote.price,
+    timestamp: quote.timestamp,
   };
 }
 
@@ -965,8 +1001,12 @@ router.post("/mining-investments", async (req, res) => {
     res.status(400).json({ error: "Investment amount must be a positive USDC amount." });
     return;
   }
+  const quote = await investmentQuote(req, symbol);
+  if (!quote) {
+    res.status(503).json({ error: "A fresh provider quote is unavailable; the investment was not placed." });
+    return;
+  }
   await ensureSeededUser(userId);
-  const quote = investmentQuote(symbol);
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from ${holdingsTable}
@@ -985,7 +1025,8 @@ router.post("/mining-investments", async (req, res) => {
       0,
     );
     const available = Math.max(0, asNumber(holding?.amount) - reserved);
-    if (available < amount) return { investment: null, available };
+    if (available < amount) return { kind: "insufficient_balance" as const, available };
+    if (!isFreshProviderQuote(quote)) return { kind: "quote_unavailable" as const };
     const [investment] = await tx.insert(miningInvestmentsTable).values({
       clerkUserId: userId,
       symbol,
@@ -997,9 +1038,13 @@ router.post("/mining-investments", async (req, res) => {
       currentValue: "0",
       status: "pending",
     }).returning();
-    return { investment, available: available - amount };
+    return { kind: "placed" as const, investment, available: available - amount };
   });
-  if (!result.investment) {
+  if (result.kind === "quote_unavailable") {
+    res.status(503).json({ error: "A fresh provider quote is unavailable; the investment was not placed." });
+    return;
+  }
+  if (result.kind === "insufficient_balance") {
     res.status(409).json({ error: `Insufficient available USDC. You have ${result.available.toFixed(2)} USDC available.` });
     return;
   }
@@ -1780,55 +1825,6 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
   res.json(result);
 });
 
-// Exact amount+value fingerprints of the fixed demo holdings that were once
-// seeded for every new signup (BTC/ETH/USDC/BNB). Real deposits/holdings never
-// land on these exact numbers, so matching all four fields is safe: it can
-// only ever hit leftover seed rows, never a genuine user balance.
-const LEGACY_DEMO_HOLDINGS = [
-  { symbol: "BTC", amount: "0.1842", value: "11600.12" },
-  { symbol: "ETH", amount: "1.842", value: "5756.44" },
-  { symbol: "USDC", amount: "1835.2", value: "1835.20" },
-  { symbol: "BNB", amount: "1.22", value: "710.21" },
-] as const;
-
-router.post("/admin/cleanup-demo-holdings", requireAdmin, async (_req, res) => {
-  let deleted = 0;
-  for (const seed of LEGACY_DEMO_HOLDINGS) {
-    const rows = await db
-      .delete(holdingsTable)
-      .where(and(
-        eq(holdingsTable.symbol, seed.symbol),
-        eq(holdingsTable.amount, seed.amount),
-        eq(holdingsTable.value, seed.value),
-      ))
-      .returning({ id: holdingsTable.id });
-    deleted += rows.length;
-  }
-  res.json({ removed: deleted });
-});
-
-// Every account created before signups started at a real 0 balance was seeded
-// with this exact hardcoded demo starting balance. Only reset accounts that
-// still sit at this exact untouched value with zero trades ever placed — that
-// combination can only occur if no real deposit, withdrawal, admin
-// adjustment, or trade has ever happened on the account, so zeroing it is
-// unambiguous. Accounts that drifted from this value (a real trade, a real
-// admin adjustment) are left completely alone for manual review.
-const LEGACY_DEMO_BALANCE_BASE = "24680.42000000";
-
-router.post("/admin/cleanup-legacy-balance-base", requireAdmin, async (_req, res) => {
-  const rows = await db
-    .update(tradingAccountsTable)
-    .set({ balance: "0", updatedAt: new Date() })
-    .where(and(
-      eq(tradingAccountsTable.balance, LEGACY_DEMO_BALANCE_BASE),
-      eq(tradingAccountsTable.futuresBalance, "0"),
-      eq(tradingAccountsTable.totalTrades, 0),
-    ))
-    .returning({ id: tradingAccountsTable.id });
-  res.json({ reset: rows.length });
-});
-
 router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
   const direction = req.body?.direction;
@@ -1866,15 +1862,11 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
     }
     const meta = marketDefinitions.find(m => m.symbol === asset)
       ?? miningPlaceDefinitions.find(d => d.symbol === asset);
-    let price = TRADING_FALLBACK[asset] ?? 0;
-    try {
-      const assets = await fetchMarketAssets(req);
-      const found = assets.find((a: { symbol: string; price: number }) => a.symbol === asset);
-      if (found?.price) price = found.price;
-    } catch {
-      // fall back to TRADING_FALLBACK / 0 below
+    const quote = await fetchFreshProviderQuote(req, asset);
+    if (!quote) {
+      res.status(503).json({ error: `A fresh provider quote for ${asset} is unavailable; no balance adjustment was made.` });
+      return;
     }
-    if (asset === "GOLD") price = TRADING_FALLBACK.GOLD ?? price;
 
     const holdingResult = await db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:HOLDING:${asset}`}))`);
@@ -1883,9 +1875,12 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
       const beforeAmount = existing ? Number(existing.amount) : 0;
       const afterAmount = direction === "credit" ? beforeAmount + coinAmount : beforeAmount - coinAmount;
       if (afterAmount < 0) {
-        return { error: `User only holds ${beforeAmount} ${asset}.` };
+        return { kind: "insufficient_balance" as const, error: `User only holds ${beforeAmount} ${asset}.` };
       }
-      const afterValue = afterAmount * price;
+      if (!isFreshProviderQuote(quote)) {
+        return { kind: "quote_unavailable" as const };
+      }
+      const afterValue = afterAmount * quote.price;
       if (existing) {
         await tx.update(holdingsTable).set({
           amount: String(afterAmount),
@@ -1920,9 +1915,13 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
         status: "completed",
         transactionId: transaction.id,
       });
-      return { amount: afterAmount, value: afterValue };
+      return { kind: "adjusted" as const, amount: afterAmount, value: afterValue };
     });
-    if ("error" in holdingResult) {
+    if (holdingResult.kind === "quote_unavailable") {
+      res.status(503).json({ error: `A fresh provider quote for ${asset} is unavailable; no balance adjustment was made.` });
+      return;
+    }
+    if (holdingResult.kind === "insufficient_balance") {
       res.status(409).json({ error: holdingResult.error });
       return;
     }
@@ -2013,10 +2012,6 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
     res.status(400).json({ error: "Account status must be active, suspended, or frozen." });
     return;
   }
-  if (userId === "demo_user") {
-    res.status(400).json({ error: "The demo account cannot be changed." });
-    return;
-  }
   try {
     await setAccountOperationalStatus(userId, status);
     res.json({ userId, accountStatus: status });
@@ -2031,10 +2026,6 @@ router.patch("/admin/users/:userId/status", requireAdmin, async (req, res) => {
 
 router.delete("/admin/users/:userId", requireAdmin, async (req, res) => {
   const userId = String(req.params.userId);
-  if (userId === "demo_user") {
-    res.status(400).json({ error: "The demo account cannot be deleted." });
-    return;
-  }
   try {
     await clerkClient.users.deleteUser(userId);
     accountStatusCache.delete(userId);
@@ -2358,10 +2349,6 @@ router.patch("/admin/kyc/:id/reject", requireAdmin, async (req, res) => {
 
 // ─── Trading / Futures ────────────────────────────────────────────────────────
 
-const TRADING_FALLBACK: Record<string, number> = {
-  BTC: 67000, ETH: 3500, BNB: 580, SOL: 145, XRP: 0.52, GOLD: 2348.4,
-};
-
 // ─── Per-asset minimum trade amount (USDT) ─────────────────────────────────────
 // A trade cannot be placed, and the account balance must already be at or
 // above this threshold, before a trade in that asset is allowed at all.
@@ -2426,14 +2413,29 @@ function mapTrade(t: typeof tradesTable.$inferSelect) {
     id: t.id, asset: t.asset, direction: t.direction, amount: Number(t.amount),
     timeframeSecs: t.timeframeSecs, status: t.status, result: t.result,
     adminOverride: t.adminOverride, entryPrice: Number(t.entryPrice),
-    exitPrice: t.exitPrice ? Number(t.exitPrice) : null,
+    exitPrice: t.adminOverride !== null ? null : (t.exitPrice ? Number(t.exitPrice) : null),
     payout: t.payout ? Number(t.payout) : null, payoutRate: Number(t.payoutRate),
     createdAt: t.createdAt.toISOString(), expiresAt: t.expiresAt.toISOString(),
     settledAt: t.settledAt?.toISOString() ?? null,
   };
 }
 
-async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss") {
+async function settleActiveTrade(tradeId: number, req: Request, forcedOutcome?: "win" | "loss") {
+  const [initialTrade] = await db.select().from(tradesTable).where(eq(tradesTable.id, tradeId)).limit(1);
+  if (!initialTrade || initialTrade.status !== "active") {
+    return { trade: initialTrade, settled: false, error: null, forced: false };
+  }
+  let providerQuote: ProviderPriceQuote | null = null;
+  if (!forcedOutcome && !initialTrade.adminOverride) {
+    const [initialAccount] = await db.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
+      .from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, initialTrade.clerkUserId))
+      .limit(1);
+    if (initialAccount?.tradeOutcomeMode !== "always_win" && initialAccount?.tradeOutcomeMode !== "always_lose") {
+      providerQuote = await fetchFreshProviderQuote(req, initialTrade.asset);
+    }
+  }
+
   return db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from ${tradesTable}
@@ -2442,38 +2444,14 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     `);
     const [trade] = await tx.select().from(tradesTable).where(eq(tradesTable.id, tradeId)).limit(1);
     if (!trade || trade.status !== "active") {
-      return { trade, settled: false, error: null };
+      return { trade, settled: false, error: null, forced: false };
     }
 
     const now = new Date();
     const entry = Number(trade.entryPrice);
     let outcome: "win" | "loss";
-    let exitPrice: number;
-    if (forcedOutcome) {
-      outcome = forcedOutcome;
-      exitPrice = outcome === "win"
-        ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
-        : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
-    } else if (trade.adminOverride) {
-      outcome = trade.adminOverride as "win" | "loss";
-      exitPrice = outcome === "win"
-        ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
-        : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
-    } else {
-      const [tradeAccount] = await tx.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
-        .from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
-      if (tradeAccount?.tradeOutcomeMode === "always_win" || tradeAccount?.tradeOutcomeMode === "always_lose") {
-        outcome = tradeAccount.tradeOutcomeMode === "always_win" ? "win" : "loss";
-        exitPrice = outcome === "win"
-          ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
-          : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
-      } else {
-        exitPrice = entry * (1 + (Math.random() * 0.04 - 0.02));
-        const priceRose = exitPrice > entry;
-        outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
-      }
-    }
-
+    let exitPrice: number | null = null;
+    let forced = false;
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${trade.clerkUserId}:TRADING_BALANCE`}))`);
     await tx.execute(sql`
       select id from ${tradingAccountsTable}
@@ -2485,9 +2463,42 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     if (!account) {
       throw new Error("Cannot settle a trade without its persisted trading account.");
     }
+    const controlledOutcome = forcedOutcome
+      ?? trade.adminOverride as "win" | "loss" | null
+      ?? (account.tradeOutcomeMode === "always_win" ? "win"
+        : account.tradeOutcomeMode === "always_lose" ? "loss" : undefined);
+    if (controlledOutcome) {
+      forced = true;
+      outcome = controlledOutcome;
+    } else {
+      if (!providerQuote
+        || trade.asset.toUpperCase() !== initialTrade.asset.toUpperCase()
+        || !isFreshProviderQuote(providerQuote, Date.now())) {
+        return {
+          trade,
+          settled: false,
+          error: "A fresh provider quote with a provider timestamp is unavailable. Trade settlement was deferred.",
+          forced: false,
+        };
+      }
+      exitPrice = providerQuote.price;
+      const priceRose = exitPrice > entry;
+      outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
+    }
+
     const balanceUpdate = outcome === "win"
       ? sql`${tradingAccountsTable.balance} + (${trade.amount}::numeric * ${trade.payoutRate}::numeric)`
       : sql`${tradingAccountsTable.balance} - ${trade.amount}`;
+    if (!forced && (!providerQuote
+      || trade.asset.toUpperCase() !== initialTrade.asset.toUpperCase()
+      || !isFreshProviderQuote(providerQuote, Date.now()))) {
+      return {
+        trade,
+        settled: false,
+        error: "A fresh provider quote with a provider timestamp is unavailable. Trade settlement was deferred.",
+        forced: false,
+      };
+    }
     const [updatedAccount] = await tx.update(tradingAccountsTable).set({
       balance: balanceUpdate,
       wins: outcome === "win" ? sql`${tradingAccountsTable.wins} + 1` : tradingAccountsTable.wins,
@@ -2498,7 +2509,7 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
       : eq(tradingAccountsTable.id, account.id))
       .returning();
     if (!updatedAccount) {
-      return { trade, settled: false, error: "Insufficient USDT balance to settle this loss." };
+      return { trade, settled: false, error: "Insufficient USDT balance to settle this loss.", forced: false };
     }
 
     const payoutUpdate = outcome === "win"
@@ -2507,8 +2518,8 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
     const [settledTrade] = await tx.update(tradesTable).set({
       status: "completed",
       result: outcome,
-      adminOverride: forcedOutcome ?? trade.adminOverride,
-      exitPrice: String(exitPrice),
+      adminOverride: forced ? (forcedOutcome ?? trade.adminOverride ?? outcome) : trade.adminOverride,
+      exitPrice: forced ? null : String(exitPrice),
       payout: payoutUpdate,
       settledAt: now,
     }).where(and(eq(tradesTable.id, trade.id), eq(tradesTable.status, "active"))).returning();
@@ -2516,17 +2527,26 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
       throw new Error("Trade settlement claim was lost.");
     }
 
-    return { trade: settledTrade, settled: true, error: null, balance: updatedAccount.balance };
+    return { trade: settledTrade, settled: true, error: null, balance: updatedAccount.balance, forced };
   });
 }
 
-async function autoSettleExpiredTrades(userId: string) {
+async function autoSettleExpiredTrades(userId: string, req: Request) {
   const active = await db.select().from(tradesTable)
     .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
   const now = new Date();
   for (const trade of active) {
     if (trade.expiresAt <= now) {
-      await settleActiveTrade(trade.id);
+      const result = await settleActiveTrade(trade.id, req);
+      if (!result.settled && result.error) {
+        req.log.warn({ tradeId: trade.id, err: result.error }, "Trade settlement deferred; no balance mutation was made");
+      }
+      if (result.settled && result.forced) {
+        req.log.warn({
+          tradeId: trade.id,
+          outcome: result.trade?.result,
+        }, "Administrator-controlled trade outcome used a policy-based payout with no provider close quote");
+      }
     }
   }
 }
@@ -2534,7 +2554,7 @@ async function autoSettleExpiredTrades(userId: string) {
 router.get("/trading/account", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const acct = await requireTradingAccount(userId);
   res.json(tradingAccountResponse(acct));
 });
@@ -2600,7 +2620,7 @@ router.post("/trading/transfer", async (req, res): Promise<void> => {
 
 router.get("/trading/trades", async (req, res) => {
   const userId = getUserId(req);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const trades = await db.select().from(tradesTable)
     .where(eq(tradesTable.clerkUserId, userId))
     .orderBy(desc(tradesTable.createdAt)).limit(50);
@@ -2627,6 +2647,11 @@ router.post("/trading/trades", async (req, res) => {
     res.status(400).json({ error: `Minimum trade amount for ${assetSymbol} is ${minTrade.toLocaleString()} USDT.` });
     return;
   }
+  const quote = await fetchFreshProviderQuote(req, assetSymbol);
+  if (!quote) {
+    res.status(503).json({ error: `A fresh provider quote for ${assetSymbol} is unavailable; the trade was not placed.` });
+    return;
+  }
   await ensureSeededUser(userId);
   const tradingAccount = await requireTradingAccount(userId);
   if (Number(tradingAccount.balance) < minTrade) {
@@ -2634,14 +2659,6 @@ router.post("/trading/trades", async (req, res) => {
     return;
   }
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
-  let entryPrice: number;
-  try {
-    const assets = await fetchMarketAssets(req);
-    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === assetSymbol);
-    entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
-  } catch {
-    entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;
-  }
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
   const result = await db.transaction(async (tx) => {
@@ -2660,14 +2677,17 @@ router.post("/trading/trades", async (req, res) => {
           and ${tradesTable.status} = 'active'
       ), 0) >= ${amountString}`,
     )).limit(1);
-    if (!availableAccount) return null;
+    if (!availableAccount) return { kind: "insufficient_balance" as const };
+    if (!isFreshProviderQuote(quote)) {
+      return { kind: "quote_unavailable" as const };
+    }
     const [trade] = await tx.insert(tradesTable).values({
       clerkUserId: userId,
       asset: assetSymbol,
       direction,
       amount: amountString,
       timeframeSecs,
-      entryPrice: String(entryPrice),
+      entryPrice: String(quote.price),
       expiresAt,
       payoutRate: String(resolvedPayoutRate),
     }).returning();
@@ -2675,16 +2695,20 @@ router.post("/trading/trades", async (req, res) => {
       totalTrades: sql`${tradingAccountsTable.totalTrades} + 1`,
       updatedAt: now,
     }).where(eq(tradingAccountsTable.clerkUserId, userId));
-    return { trade, balance: availableAccount.balance };
+    return { kind: "placed" as const, trade, balance: availableAccount.balance, entryPrice: quote.price };
   });
-  if (!result) {
+  if (result.kind === "quote_unavailable") {
+    res.status(503).json({ error: `A fresh provider quote for ${assetSymbol} is unavailable; the trade was not placed.` });
+    return;
+  }
+  if (result.kind === "insufficient_balance") {
     res.status(400).json({ error: "Insufficient available USDT balance after active trade reservations." });
     return;
   }
   res.json({
     tradeId: result.trade.id,
     balance: asNumber(result.balance),
-    entryPrice,
+    entryPrice: result.entryPrice,
     expiresAt: result.trade.expiresAt.toISOString(),
   });
 });
@@ -2749,7 +2773,7 @@ router.patch("/admin/trading/trades/:id/outcome", requireAdmin, async (req, res)
   if (!trade) { res.status(404).json({ error: "Trade not found." }); return; }
   const now = new Date();
   if (trade.status === "active") {
-    const settlement = await settleActiveTrade(tradeId, outcome as "win" | "loss");
+    const settlement = await settleActiveTrade(tradeId, req, outcome as "win" | "loss");
     if (!settlement.settled) {
       res.status(409).json({ error: settlement.error ?? "Trade is no longer active." });
       return;
@@ -2761,7 +2785,15 @@ router.patch("/admin/trading/trades/:id/outcome", requireAdmin, async (req, res)
   const [profile] = await db.select({
     displayName: walletProfilesTable.displayName, email: walletProfilesTable.email,
   }).from(walletProfilesTable).where(eq(walletProfilesTable.clerkUserId, trade.clerkUserId)).limit(1);
-  res.json({ ...mapTrade(updated), clerkUserId: updated.clerkUserId, displayName: profile?.displayName ?? "Unknown", email: profile?.email ?? "" });
+  res.json({
+    ...mapTrade(updated),
+    clerkUserId: updated.clerkUserId,
+    displayName: profile?.displayName ?? "Unknown",
+    email: profile?.email ?? "",
+    ...(trade.status === "active" ? {
+        settlementNotice: `Administrator-forced ${outcome} payout is policy-based and has no provider close quote.`,
+    } : {}),
+  });
 });
 
 export default router;
