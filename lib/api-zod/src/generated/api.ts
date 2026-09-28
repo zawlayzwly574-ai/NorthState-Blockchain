@@ -9,6 +9,15 @@ import * as zod from 'zod';
 
 
 /**
+ * Returns a simple response without requiring authentication or a database connection.
+ * @summary Public liveness check
+ */
+export const LivenessCheckResponse = zod.object({
+  "status": zod.enum(['ok'])
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

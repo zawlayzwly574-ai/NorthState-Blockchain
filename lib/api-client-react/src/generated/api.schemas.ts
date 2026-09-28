@@ -749,3 +749,14 @@ export interface AdminUser {
   createdAt: string;
 }
 
+export type LivenessCheck200Status = typeof LivenessCheck200Status[keyof typeof LivenessCheck200Status];
+
+
+export const LivenessCheck200Status = {
+  ok: 'ok',
+} as const;
+
+export type LivenessCheck200 = {
+  status: LivenessCheck200Status;
+};
+

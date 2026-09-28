@@ -20,7 +20,7 @@ Required:
 - `DATABASE_URL` — the existing Neon PostgreSQL connection string for this app.
 - `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` — keys for the same external Clerk instance used by the frontend.
 - `ADMIN_SECRET` — protects `/api/admin/*`.
-- `CORS_ALLOWED_ORIGINS` — comma-separated, exact HTTPS origins for the member and admin Vercel deployments (include custom domains and any preview domains that need access).
+- `CORS_ALLOWED_ORIGINS` — comma-separated, exact HTTPS origins for the member and admin Vercel deployments (include each production and preview URL that needs access). The API already allows `https://northstateblockchain.com` and `https://www.northstateblockchain.com`.
 
 Optional:
 
@@ -40,7 +40,7 @@ The existing Replit project configuration contains a market-data credential inli
 
 - `VITE_API_BASE_URL` — the same Railway API base URL, with no trailing slash.
 
-The API client sends Clerk bearer tokens for cross-origin member requests. The Railway API must allow the exact Vercel origins through `CORS_ALLOWED_ORIGINS`. Admin requests send `X-Admin-Key`; that secret remains in Railway and is entered by an administrator in the admin panel.
+The API client sends Clerk bearer tokens for cross-origin member requests. Set `CORS_ALLOWED_ORIGINS` on Railway to the actual Vercel origins, for example `https://your-member-project.vercel.app,https://your-admin-project.vercel.app`; add exact preview URLs as needed. Do not allow every `*.vercel.app` site with credentialed requests. Admin requests send `X-Admin-Key`; that secret remains in Railway and is entered by an administrator in the admin panel.
 
 ## Database migration procedure
 
@@ -66,7 +66,7 @@ For the production cutover, point Railway at the same Neon database that current
 
 1. Set Railway's service root to the repository root so pnpm can resolve the workspace.
 2. Configure the Railway variables above, then run the migration command manually against staging.
-3. Confirm Railway's `/api/healthz` returns HTTP 200. It checks database connectivity and the core trading schema; a missing database, table, or connection produces HTTP 503.
+3. Confirm Railway's public `/api/health` returns HTTP 200 and exactly `{ "status": "ok" }` without credentials; uptime monitors can use it even when Clerk or Neon is unavailable. `/api/healthz` separately checks database connectivity and the core trading schema; a missing database, table, or connection produces HTTP 503.
 4. Configure each Vercel project with its artifact root and the required public build variables.
 5. Add both deployed Vercel origins to Railway's `CORS_ALLOWED_ORIGINS`, then confirm sign-in, member balances, trade history, Futures positions, and admin requests against the intended Neon database.
 

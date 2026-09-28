@@ -43,6 +43,7 @@ import type {
   HealthStatus,
   KycInput,
   KycStatus,
+  LivenessCheck200,
   MarketAsset,
   MarketDetail,
   MiningInvestment,
@@ -108,6 +109,84 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getLivenessCheckUrl = () => {
+
+
+
+
+  return `/api/health`
+}
+
+/**
+ * Returns a simple response without requiring authentication or a database connection.
+ * @summary Public liveness check
+ */
+export const livenessCheck = async ( options?: Parameters<typeof customFetch>[1]): Promise<LivenessCheck200> => {
+
+  return customFetch<LivenessCheck200>(getLivenessCheckUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getLivenessCheckQueryKey = () => {
+    return [
+    `/api/health`
+    ] as const;
+    }
+
+
+export const getLivenessCheckQueryOptions = <TData = Awaited<ReturnType<typeof livenessCheck>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof livenessCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getLivenessCheckQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof livenessCheck>>> = ({ signal }) => livenessCheck({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof livenessCheck>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type LivenessCheckQueryResult = NonNullable<Awaited<ReturnType<typeof livenessCheck>>>
+export type LivenessCheckQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Public liveness check
+ */
+
+export function useLivenessCheck<TData = Awaited<ReturnType<typeof livenessCheck>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof livenessCheck>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getLivenessCheckQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 

@@ -1,16 +1,20 @@
 import type { AddressInfo } from "node:net";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(() => {
+const { clerkMiddleware, getAuth, getUser, select, transaction, update, insert } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
   const select = vi.fn();
   const transaction = vi.fn();
+  const update = vi.fn();
+  const insert = vi.fn();
 
   return {
     getUser,
     select,
     transaction,
+    update,
+    insert,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
       request: { headers: { cookie?: string; authorization?: string } },
@@ -47,6 +51,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
       ...actual.db,
       select,
       transaction,
+      update,
+      insert,
     },
   };
 });
@@ -101,7 +107,13 @@ describe("member route authentication", () => {
 
   beforeEach(() => {
     getUser.mockReset();
-    getUser.mockResolvedValue({ privateMetadata: {} });
+    getUser.mockResolvedValue({
+      privateMetadata: {},
+      primaryEmailAddressId: "email_primary",
+      emailAddresses: [{ id: "email_primary", emailAddress: "alex@example.com" }],
+      firstName: "Alex",
+      lastName: "Morgan",
+    });
     select.mockReset();
     select.mockReturnValue({
       from: () => ({
@@ -112,6 +124,44 @@ describe("member route authentication", () => {
     });
     transaction.mockReset();
     transaction.mockResolvedValue(undefined);
+    update.mockReset();
+    insert.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("serves public liveness without Clerk or database access", async () => {
+    const response = await fetch(`${baseUrl}/api/health`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
+    expect(getUser).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows custom domains and configured Vercel origins, but not unrelated previews", async () => {
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://northstateblockchain.vercel.app,https://northstate-admin.vercel.app");
+    for (const origin of ["https://northstateblockchain.com", "https://www.northstateblockchain.com", "https://northstateblockchain.vercel.app"]) {
+      const response = await fetch(`${baseUrl}/api/health`, {
+        method: "OPTIONS",
+        headers: { origin, "access-control-request-method": "GET", "access-control-request-headers": "authorization" },
+      });
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+      expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+      expect(response.headers.get("access-control-allow-headers")).toContain("Authorization");
+    }
+
+    const blocked = await fetch(`${baseUrl}/api/health`, {
+      method: "OPTIONS",
+      headers: { origin: "https://unrelated-project.vercel.app", "access-control-request-method": "GET" },
+    });
+    expect(blocked.status).toBe(403);
+    expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
+    expect(getUser).not.toHaveBeenCalled();
   });
 
   it("accepts a restored Clerk session and reaches the member handler", async () => {
@@ -126,6 +176,107 @@ describe("member route authentication", () => {
       email: "alex@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("updates the saved email from Clerk's primary address without replacing a custom display name", async () => {
+    const saved = {
+      ...profile,
+      email: "old@example.com",
+      displayName: "My chosen name",
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    };
+    select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) });
+    update.mockImplementation(() => ({
+      set: (changes: Partial<typeof saved>) => ({
+        where: async () => { Object.assign(saved, changes); },
+      }),
+    }));
+    getUser.mockResolvedValue({
+      privateMetadata: {},
+      primaryEmailAddressId: "email_current",
+      emailAddresses: [
+        { id: "email_old", emailAddress: "old@example.com" },
+        { id: "email_current", emailAddress: "current@example.com" },
+      ],
+      firstName: "Alex",
+      lastName: "Morgan",
+    });
+
+    const response = await fetch(`${baseUrl}/api/profile`, { headers: { authorization: "Bearer restored-token" } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      name: "My chosen name",
+      email: "current@example.com",
+      referralCode: profile.referralCode,
+    });
+    expect(saved.email).toBe("current@example.com");
+    expect(saved.displayName).toBe("My chosen name");
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("repairs an older saved profile's empty identity without creating a trading balance", async () => {
+    const saved = {
+      ...profile,
+      email: "",
+      displayName: "North State Blockchain Member",
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    };
+    select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [saved] }) }) });
+    update.mockImplementation(() => ({
+      set: (changes: Partial<typeof saved>) => ({
+        where: async () => { Object.assign(saved, changes); },
+      }),
+    }));
+
+    const response = await fetch(`${baseUrl}/api/profile`, { headers: { cookie: "__session=restored" } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ name: "Alex Morgan", email: "alex@example.com" });
+    expect(saved.email).toBe("alex@example.com");
+    expect(saved.displayName).toBe("Alex Morgan");
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("persists Clerk identity and a zero-balance account for a first-time member", async () => {
+    let savedIdentity: Record<string, unknown> | undefined;
+    const insertTradingAccount = vi.fn();
+    select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => [] }) }) });
+    insert.mockImplementation(() => ({
+      values: (values: Record<string, unknown>) => {
+        savedIdentity = values;
+        return {
+          onConflictDoNothing: () => ({
+            returning: async () => [{ ...profile, ...values, id: 2, createdAt: new Date() }],
+          }),
+        };
+      },
+    }));
+    transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        execute: async () => undefined,
+        select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+        insert: () => ({
+          values: (values: unknown) => {
+            insertTradingAccount(values);
+            return { onConflictDoNothing: async () => undefined };
+          },
+        }),
+      }),
+    );
+
+    const response = await fetch(`${baseUrl}/api/profile`, { headers: { cookie: "__session=restored" } });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "2",
+      name: "Alex Morgan",
+      email: "alex@example.com",
+      verificationStatus: "unverified",
+    });
+    expect(savedIdentity).toMatchObject({ clerkUserId: "user_restored", email: "alex@example.com", displayName: "Alex Morgan" });
+    expect(insertTradingAccount).toHaveBeenCalledWith({ clerkUserId: "user_restored", balance: "0" });
   });
 
   it("returns updated Spot and Futures balances for a verified member's transfer", async () => {

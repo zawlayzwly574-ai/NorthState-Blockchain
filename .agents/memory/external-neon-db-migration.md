@@ -22,3 +22,10 @@ API route tests must not read or write through the workspace `DATABASE_URL`; it 
 **Why:** a test failure or fixture mismatch must never cause an accidental read or write to real member financial records.
 
 **How to apply:** use in-memory DB mocks or an explicitly disposable test database for route tests. Never rely on the workspace Neon URL as a test database.
+
+## Legacy identity versus trading-account integrity
+An older imported member must still be able to read and refresh their saved profile even if their trading-account row is missing. Financial routes must continue to reject that inconsistency rather than creating a new zero-balance account for an established member.
+
+**Why:** identity repair is safe and needed for Settings, but treating a missing imported ledger row as a new account would conceal lost financial records.
+
+**How to apply:** keep profile reads independent of trading-account repair for older members; provision an initial zero-balance account only for genuinely new or very recent registrations, and reconcile older financial records explicitly.

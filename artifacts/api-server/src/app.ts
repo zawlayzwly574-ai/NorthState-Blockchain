@@ -7,16 +7,22 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
+import healthRouter from "./routes/health";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
-const configuredCorsOrigins = new Set(
-  (process.env.CORS_ALLOWED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-);
+const defaultCorsOrigins = new Set([
+  "https://northstateblockchain.com",
+  "https://www.northstateblockchain.com",
+]);
+
+function isAllowedBrowserOrigin(origin: string) {
+  return defaultCorsOrigins.has(origin) ||
+    (process.env.CORS_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .some((configured) => configured.trim() === origin);
+}
 
 function firstHeaderValue(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value)?.split(",")[0]?.trim();
@@ -39,7 +45,7 @@ function enforceAllowedBrowserOrigins(
     return;
   }
 
-  if (origin !== requestOrigin(req) && !configuredCorsOrigins.has(origin)) {
+  if (origin !== requestOrigin(req) && !isAllowedBrowserOrigin(origin)) {
     res.status(403).json({ error: "Origin is not allowed." });
     return;
   }
@@ -47,7 +53,7 @@ function enforceAllowedBrowserOrigins(
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
@@ -82,6 +88,8 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
+// Liveness and database readiness are public, even if Clerk is unavailable.
+app.use("/api", healthRouter);
 // KYC submits two ID sides in one backward-compatible image payload; allow
 // generous headroom for large phone-camera photos before optimization.
 app.use(express.json({ limit: "100mb" }));

@@ -259,7 +259,10 @@ async function ensureDefaultPortfolio(userId: string, allowCreate: boolean) {
 async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
   try {
     const user = await clerkClient.users.getUser(userId);
-    const email = user.emailAddresses[0]?.emailAddress ?? "";
+    const primaryEmail = user.emailAddresses.find(
+      (address) => address.id === user.primaryEmailAddressId,
+    );
+    const email = (primaryEmail ?? user.emailAddresses[0])?.emailAddress?.trim() ?? "";
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
     return { email, name };
   } catch {
@@ -267,7 +270,13 @@ async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name
   }
 }
 
-async function ensureSeededUser(userId: string) {
+async function ensureSeededUser(
+  userId: string,
+  { syncClerkIdentity = false, profileOnly = false }: {
+    syncClerkIdentity?: boolean;
+    profileOnly?: boolean;
+  } = {},
+) {
   const [existing] = await db
     .select()
     .from(walletProfilesTable)
@@ -276,15 +285,21 @@ async function ensureSeededUser(userId: string) {
 
   if (existing) {
     const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
-    if (
-      userId !== "demo_user" &&
-      (existing.email === "member@northstateblockchain.app" ||
-        existing.displayName === "North State Blockchain Member")
-    ) {
+    if (userId !== "demo_user" && (
+      syncClerkIdentity ||
+      !existing.email.trim() ||
+      existing.email === "member@northstateblockchain.app" ||
+      !existing.displayName.trim() ||
+      existing.displayName === "North State Blockchain Member"
+    )) {
       const { email, name } = await fetchClerkUserInfo(userId);
       if (!email) throw new Error("The authenticated member has no email address in Clerk.");
-      if (existing.email === "member@northstateblockchain.app") profileUpdate.email = email;
-      if (existing.displayName === "North State Blockchain Member") {
+      if (existing.email !== email) profileUpdate.email = email;
+      if (
+        !existing.displayName.trim() ||
+        existing.displayName === "North State Blockchain Member" ||
+        existing.displayName === emailPrefix(existing.email)
+      ) {
         profileUpdate.displayName = name || emailPrefix(email);
       }
     }
@@ -293,7 +308,11 @@ async function ensureSeededUser(userId: string) {
     }
     const accountRepairWindowMs = 24 * 60 * 60 * 1000;
     const recentlyCreated = Date.now() - existing.createdAt.getTime() <= accountRepairWindowMs;
-    await ensureDefaultPortfolio(userId, recentlyCreated);
+    // An older imported account may be missing its trading row. Its identity
+    // remains readable on Settings; financial routes still reject that gap.
+    if (!profileOnly || recentlyCreated) {
+      await ensureDefaultPortfolio(userId, recentlyCreated);
+    }
     return { ...existing, ...profileUpdate };
   }
 
@@ -331,9 +350,12 @@ async function ensureSeededUser(userId: string) {
       .limit(1);
     if (fetched) {
       const recentlyCreated = Date.now() - fetched.createdAt.getTime() <= 24 * 60 * 60 * 1000;
-      await ensureDefaultPortfolio(userId, recentlyCreated);
+      if (!profileOnly || recentlyCreated) {
+        await ensureDefaultPortfolio(userId, recentlyCreated);
+      }
       return fetched;
     }
+    throw new Error("Unable to load the persisted member profile.");
   }
 
   await ensureDefaultPortfolio(userId, true);
@@ -769,14 +791,14 @@ router.use(createFuturesRouter(
 ));
 
 router.get("/profile", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
+  const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
   res.json(GetProfileResponse.parse({
     id: String(profile.id),
     name: profile.displayName,
     email: profile.email,
     initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     verificationStatus: profile.verificationStatus,
-    referralCode: "NORTHSTAR-ALEX",
+    referralCode: profile.referralCode,
     twoFactorEnabled: profile.twoFactorEnabled ?? false,
     smsPhoneNumber: profile.smsPhoneNumber ?? null,
     smsPhoneVerified: profile.smsPhoneVerified ?? false,
@@ -785,14 +807,14 @@ router.get("/profile", async (req, res) => {
 
 // Backwards-compatible profile alias used by older clients.
 router.get("/user", async (req, res) => {
-  const profile = await ensureSeededUser(getUserId(req));
+  const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
   res.json(GetProfileResponse.parse({
     id: String(profile.id),
     name: profile.displayName,
     email: profile.email,
     initials: profile.displayName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(),
     verificationStatus: profile.verificationStatus,
-    referralCode: "NORTHSTAR-ALEX",
+    referralCode: profile.referralCode,
     twoFactorEnabled: profile.twoFactorEnabled ?? false,
     smsPhoneNumber: profile.smsPhoneNumber ?? null,
     smsPhoneVerified: profile.smsPhoneVerified ?? false,
@@ -805,6 +827,7 @@ router.patch("/profile", async (req, res) => {
   if (!displayName || typeof displayName !== "string" || displayName.trim().length < 1) {
     res.status(400).json({ error: "Display name is required." }); return;
   }
+  await ensureSeededUser(userId, { profileOnly: true });
   await db
     .update(walletProfilesTable)
     .set({ displayName: displayName.trim() })

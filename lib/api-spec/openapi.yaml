@@ -17,6 +17,24 @@ tags:
   - name: wallet
     description: Wallet actions and verification
 paths:
+  /health:
+    get:
+      operationId: livenessCheck
+      tags: [health]
+      summary: Public liveness check
+      description: Returns a simple response without requiring authentication or a database connection.
+      responses:
+        "200":
+          description: Server is responding
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
   /healthz:
     get:
       operationId: healthCheck

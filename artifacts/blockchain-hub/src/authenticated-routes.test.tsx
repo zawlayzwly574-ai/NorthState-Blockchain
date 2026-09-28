@@ -158,6 +158,39 @@ describe("authenticated portfolio routes", () => {
     expect(screen.queryByText("We could not load this view")).not.toBeInTheDocument();
   });
 
+  it("shows a profile error instead of an endless email placeholder and recovers on retry", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    let profileAvailable = false;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/profile") && !profileAvailable) {
+        return new Response(JSON.stringify({ error: "Temporarily unavailable" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      const body = url.includes("/api/profile")
+        ? { ...jsonFor(url), email: "alex@example.com" }
+        : jsonFor(url);
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    renderRoute(<Settings />, "/settings");
+    expect(await screen.findByTestId("alert-profile-unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Profile unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Loading profile…")).not.toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+
+    profileAvailable = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry profile" }));
+    expect(await screen.findAllByText("alex@example.com")).toHaveLength(2);
+    await waitFor(() => expect(screen.queryByTestId("alert-profile-unavailable")).not.toBeInTheDocument());
+  });
+
   it.each([
     ["Overview", "/dashboard"],
     ["Activity", "/activity"],

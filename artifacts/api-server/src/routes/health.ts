@@ -3,6 +3,10 @@ import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
+router.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 router.get("/healthz", async (_req, res) => {
   try {
     const result = await pool.query(`
