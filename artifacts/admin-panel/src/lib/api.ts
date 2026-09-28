@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
 
+export function adminApiUrl(endpoint: string) {
+  return `${apiBaseUrl}/api/admin${endpoint}`;
+}
+
 export function getAdminKey() {
   return localStorage.getItem('admin_key') ?? sessionStorage.getItem('admin_key');
 }
@@ -26,7 +30,7 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   }
   headers.set('Content-Type', 'application/json');
 
-  const res = await fetch(`${apiBaseUrl}/api/admin${endpoint}`, {
+  const res = await fetch(adminApiUrl(endpoint), {
     ...options,
     headers,
   });

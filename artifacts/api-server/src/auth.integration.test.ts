@@ -142,25 +142,43 @@ describe("member route authentication", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("allows custom domains and configured Vercel origins, but not unrelated previews", async () => {
-    vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://northstateblockchain.vercel.app,https://northstate-admin.vercel.app");
-    for (const origin of ["https://northstateblockchain.com", "https://www.northstateblockchain.com", "https://northstateblockchain.vercel.app"]) {
+  it("allows the custom domain, admin domain, all HTTPS Vercel deployments, and configured origins", async () => {
+    vi.stubEnv("CORS_ALLOWED_ORIGINS", "https://additional.example.org");
+    for (const origin of [
+      "https://northstateblockchain.com",
+      "https://www.northstateblockchain.com",
+      "https://north-state-blockchain-admin-panel.vercel.app",
+      "https://northstateblockchain.vercel.app",
+      "https://unrelated-project.vercel.app",
+      "https://additional.example.org",
+    ]) {
       const response = await fetch(`${baseUrl}/api/health`, {
         method: "OPTIONS",
-        headers: { origin, "access-control-request-method": "GET", "access-control-request-headers": "authorization" },
+        headers: { origin, "access-control-request-method": "GET", "access-control-request-headers": "authorization,x-admin-key" },
       });
       expect(response.status).toBe(204);
       expect(response.headers.get("access-control-allow-origin")).toBe(origin);
       expect(response.headers.get("access-control-allow-credentials")).toBe("true");
       expect(response.headers.get("access-control-allow-headers")).toContain("Authorization");
+      expect(response.headers.get("access-control-allow-headers")).toContain("X-Admin-Key");
+      expect(response.headers.get("vary")).toContain("Origin");
     }
 
-    const blocked = await fetch(`${baseUrl}/api/health`, {
-      method: "OPTIONS",
-      headers: { origin: "https://unrelated-project.vercel.app", "access-control-request-method": "GET" },
-    });
-    expect(blocked.status).toBe(403);
-    expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
+    for (const origin of [
+      "http://preview.vercel.app",
+      "https://vercel.app",
+      "https://preview.vercel.app.attacker.example",
+      "https://preview.vercel.app:8443",
+      "https://preview.vercel.app/path",
+    ]) {
+      const blocked = await fetch(`${baseUrl}/api/health`, {
+        method: "OPTIONS",
+        headers: { origin, "access-control-request-method": "GET" },
+      });
+      expect(blocked.status).toBe(403);
+      expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
+      expect(blocked.headers.get("vary")).toContain("Origin");
+    }
     expect(getUser).not.toHaveBeenCalled();
   });
 

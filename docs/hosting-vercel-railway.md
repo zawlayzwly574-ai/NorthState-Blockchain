@@ -20,10 +20,10 @@ Required:
 - `DATABASE_URL` — the existing Neon PostgreSQL connection string for this app.
 - `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` — keys for the same external Clerk instance used by the frontend.
 - `ADMIN_SECRET` — protects `/api/admin/*`.
-- `CORS_ALLOWED_ORIGINS` — comma-separated, exact HTTPS origins for the member and admin Vercel deployments (include each production and preview URL that needs access). The API already allows `https://northstateblockchain.com` and `https://www.northstateblockchain.com`.
 
 Optional:
 
+- `CORS_ALLOWED_ORIGINS` — comma-separated additional exact origins for non-Vercel frontends. The API already accepts `https://northstateblockchain.com`, `https://www.northstateblockchain.com`, `https://north-state-blockchain-admin-panel.vercel.app`, and any HTTPS `*.vercel.app` deployment.
 - `PG_POOL_MAX` — connection limit per Railway process; defaults to `5`. Keep the total across Railway replicas within Neon connection limits.
 - `MARKET_API_KEY` — optional CoinGecko key for increased market-data limits.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` — only needed if enabling Twilio-backed phone verification.
@@ -40,7 +40,7 @@ The existing Replit project configuration contains a market-data credential inli
 
 - `VITE_API_BASE_URL` — the same Railway API base URL, with no trailing slash.
 
-The API client sends Clerk bearer tokens for cross-origin member requests. Set `CORS_ALLOWED_ORIGINS` on Railway to the actual Vercel origins, for example `https://your-member-project.vercel.app,https://your-admin-project.vercel.app`; add exact preview URLs as needed. Do not allow every `*.vercel.app` site with credentialed requests. Admin requests send `X-Admin-Key`; that secret remains in Railway and is entered by an administrator in the admin panel.
+The member API client sends Clerk bearer tokens for cross-origin requests. Both frontends use `VITE_API_BASE_URL` for requests to Railway, including admin login. Vercel preview URLs are allowed without editing Railway settings for each build. This broad `*.vercel.app` allowance also includes unrelated Vercel projects; requests still require the member's Clerk token or the administrator's key. Admin requests send `X-Admin-Key`; that secret remains in Railway and is entered by an administrator in the admin panel.
 
 ## Database migration procedure
 
@@ -68,6 +68,6 @@ For the production cutover, point Railway at the same Neon database that current
 2. Configure the Railway variables above, then run the migration command manually against staging.
 3. Confirm Railway's public `/api/health` returns HTTP 200 and exactly `{ "status": "ok" }` without credentials; uptime monitors can use it even when Clerk or Neon is unavailable. `/api/healthz` separately checks database connectivity and the core trading schema; a missing database, table, or connection produces HTTP 503.
 4. Configure each Vercel project with its artifact root and the required public build variables.
-5. Add both deployed Vercel origins to Railway's `CORS_ALLOWED_ORIGINS`, then confirm sign-in, member balances, trade history, Futures positions, and admin requests against the intended Neon database.
+5. Confirm the custom and Vercel origins pass Railway's CORS preflight checks, then confirm sign-in, member balances, trade history, Futures positions, and admin requests against the intended Neon database. Add only other, non-Vercel origins to `CORS_ALLOWED_ORIGINS` as needed.
 
 After staging has been verified, Railway's pre-deploy command can be set to the migration command if automatic, serialized schema updates are desired. It is intentionally not enabled by default, so a routine app deployment cannot mutate the production schema without an explicit operator decision.

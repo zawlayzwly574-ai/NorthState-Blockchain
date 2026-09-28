@@ -10,3 +10,4 @@
 - [Admin balance adjustments](admin-balance-adjustments.md) — admin-only USDT-denominated canonical balance credits/debits are atomic, audited, and respect active trade reservations.
 - [Spot and Futures allocation](canonical-trading-balance.md) — Overview totals both balances, while existing Spot trading uses Spot funds; migrate old combined-balance allocations once.
 - [External Neon DB migration](external-neon-db-migration.md) — moved off Replit's built-in Postgres to a user-supplied Neon URL; pooler connections can show a blank session search_path, breaking unqualified table queries.
+- [Vercel CORS policy](vercel-cors-policy.md) — user explicitly wants all HTTPS *.vercel.app previews accepted; keep exact-origin reflection and authentication.

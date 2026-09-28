@@ -15,13 +15,30 @@ const app: Express = express();
 const defaultCorsOrigins = new Set([
   "https://northstateblockchain.com",
   "https://www.northstateblockchain.com",
+  "https://north-state-blockchain-admin-panel.vercel.app",
 ]);
 
 function isAllowedBrowserOrigin(origin: string) {
-  return defaultCorsOrigins.has(origin) ||
+  if (
+    defaultCorsOrigins.has(origin) ||
     (process.env.CORS_ALLOWED_ORIGINS ?? "")
       .split(",")
-      .some((configured) => configured.trim() === origin);
+      .some((configured) => configured.trim() === origin)
+  ) {
+    return true;
+  }
+
+  // Vercel deployment and preview URLs change per build. Match the actual
+  // HTTPS origin rather than using "*" with credentialed requests.
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" &&
+      url.port === "" &&
+      url.origin === origin &&
+      url.hostname.endsWith(".vercel.app");
+  } catch {
+    return false;
+  }
 }
 
 function firstHeaderValue(value: string | string[] | undefined) {
@@ -45,6 +62,7 @@ function enforceAllowedBrowserOrigins(
     return;
   }
 
+  res.vary("Origin");
   if (origin !== requestOrigin(req) && !isAllowedBrowserOrigin(origin)) {
     res.status(403).json({ error: "Origin is not allowed." });
     return;
@@ -54,8 +72,6 @@ function enforceAllowedBrowserOrigins(
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Vary", "Origin");
-
   if (req.method === "OPTIONS") {
     res.sendStatus(204);
     return;
