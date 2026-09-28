@@ -9,6 +9,8 @@
 
 Both Vercel projects use their artifact directory as the project root. The checked-in `vercel.json` files build the corresponding workspace and publish `dist/public`. The Vite builds use `/` when `BASE_PATH` is not set, so Vercel does not need Replit's path prefix or injected `PORT`.
 
+The repository root and all deployable packages pin pnpm 10.26.1. Commit the root `pnpm-lock.yaml` with any dependency change; regenerate it from the repository root using that version of pnpm, then verify `pnpm install --frozen-lockfile` before deploying. Railway's service root **must be the repository root**, not `artifacts/api-server`, so Railpack sees `pnpm-workspace.yaml`, the lockfile, and shared `lib/*` packages. In each Vercel project, set `ENABLE_EXPERIMENTAL_COREPACK=1` as a build environment variable so Vercel honors `packageManager`. Leave Vercel's Install Command on automatic detection: an explicit `pnpm install` override can choose an older pnpm incompatible with the workspace lockfile.
+
 ## Environment variables
 
 Set secrets in each platform's environment-variable manager. Do not commit `.env` files or put private values in Vercel's `VITE_*` variables.
