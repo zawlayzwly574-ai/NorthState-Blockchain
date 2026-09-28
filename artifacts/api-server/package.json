@@ -1,6 +1,5 @@
 {
   "name": "@workspace/api-server",
-  "packageManager": "pnpm@10.26.1",
   "version": "0.0.0",
   "private": true,
   "type": "module",

@@ -44,8 +44,6 @@ export * from './kycInput';
 export * from './kycInputDocumentType';
 export * from './kycStatus';
 export * from './kycStatusStatus';
-export * from './livenessCheck200';
-export * from './livenessCheck200Status';
 export * from './marketAsset';
 export * from './marketDetail';
 export * from './miningInvestment';

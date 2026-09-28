@@ -7,39 +7,16 @@ import {
   clerkProxyMiddleware,
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
-import healthRouter from "./routes/health";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
-const defaultCorsOrigins = new Set([
-  "https://northstateblockchain.com",
-  "https://www.northstateblockchain.com",
-  "https://north-state-blockchain-admin-panel.vercel.app",
-]);
-
-function isAllowedBrowserOrigin(origin: string) {
-  if (
-    defaultCorsOrigins.has(origin) ||
-    (process.env.CORS_ALLOWED_ORIGINS ?? "")
-      .split(",")
-      .some((configured) => configured.trim() === origin)
-  ) {
-    return true;
-  }
-
-  // Vercel deployment and preview URLs change per build. Match the actual
-  // HTTPS origin rather than using "*" with credentialed requests.
-  try {
-    const url = new URL(origin);
-    return url.protocol === "https:" &&
-      url.port === "" &&
-      url.origin === origin &&
-      url.hostname.endsWith(".vercel.app");
-  } catch {
-    return false;
-  }
-}
+const configuredCorsOrigins = new Set(
+  (process.env.CORS_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
 
 function firstHeaderValue(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value)?.split(",")[0]?.trim();
@@ -62,8 +39,7 @@ function enforceAllowedBrowserOrigins(
     return;
   }
 
-  res.vary("Origin");
-  if (origin !== requestOrigin(req) && !isAllowedBrowserOrigin(origin)) {
+  if (origin !== requestOrigin(req) && !configuredCorsOrigins.has(origin)) {
     res.status(403).json({ error: "Origin is not allowed." });
     return;
   }
@@ -71,7 +47,9 @@ function enforceAllowedBrowserOrigins(
   res.setHeader("Access-Control-Allow-Origin", origin);
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Admin-Key");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  res.setHeader("Vary", "Origin");
+
   if (req.method === "OPTIONS") {
     res.sendStatus(204);
     return;
@@ -104,8 +82,6 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(enforceAllowedBrowserOrigins);
-// Liveness and database readiness are public, even if Clerk is unavailable.
-app.use("/api", healthRouter);
 // KYC submits two ID sides in one backward-compatible image payload; allow
 // generous headroom for large phone-camera photos before optimization.
 app.use(express.json({ limit: "100mb" }));

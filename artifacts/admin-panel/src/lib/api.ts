@@ -2,10 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
 
-export function adminApiUrl(endpoint: string) {
-  return `${apiBaseUrl}/api/admin${endpoint}`;
-}
-
 export function getAdminKey() {
   return localStorage.getItem('admin_key') ?? sessionStorage.getItem('admin_key');
 }
@@ -30,7 +26,7 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   }
   headers.set('Content-Type', 'application/json');
 
-  const res = await fetch(adminApiUrl(endpoint), {
+  const res = await fetch(`${apiBaseUrl}/api/admin${endpoint}`, {
     ...options,
     headers,
   });
@@ -250,6 +246,26 @@ export function useSetUserTradingMode() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'users', variables.userId] });
+    },
+  });
+}
+
+export function useCleanupDemoHoldings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient('/cleanup-demo-holdings', { method: 'POST' }) as Promise<{ removed: number }>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+  });
+}
+
+export function useCleanupLegacyBalanceBase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient('/cleanup-legacy-balance-base', { method: 'POST' }) as Promise<{ reset: number }>,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
     },
   });
 }

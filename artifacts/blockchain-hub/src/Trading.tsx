@@ -14,8 +14,6 @@ import {
   usePlaceTrade,
   useGetMarketSummary,
   getGetMarketSummaryQueryKey,
-  useGetMiningPlace,
-  getGetMiningPlaceQueryKey,
   getGetTradingAccountQueryKey,
   getGetTradesQueryKey,
   getGetPortfolioQueryKey,
@@ -350,24 +348,13 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
             <span className="font-mono text-sm font-bold">${formatTradePrice(trade.entryPrice)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 border-b border-border/50 px-1 py-3">
-            {trade.adminOverride ? (
-              <>
-                <span className="text-xs text-muted-foreground">Settlement</span>
-                <span className="max-w-[65%] text-right text-xs font-semibold text-muted-foreground" data-testid="text-policy-settlement">
-                  Policy-settled result — no market close price
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="text-xs text-muted-foreground">Close Price</span>
-                <span className="font-mono text-sm font-bold">
-                  {trade.exitPrice === null || trade.exitPrice === undefined ? '—' : `$${formatTradePrice(trade.exitPrice)}`}
-                </span>
-              </>
-            )}
+            <span className="text-xs text-muted-foreground">Close Price</span>
+            <span className="font-mono text-sm font-bold">
+              {trade.exitPrice === null || trade.exitPrice === undefined ? '—' : `$${formatTradePrice(trade.exitPrice)}`}
+            </span>
           </div>
           <div className="flex items-center justify-between gap-4 px-1 py-3">
-            <span className="text-xs text-muted-foreground">{trade.adminOverride ? 'Policy-controlled result' : 'Status'}</span>
+            <span className="text-xs text-muted-foreground">Status</span>
             <span className={`rounded-full bg-secondary px-2.5 py-1 text-[10px] font-extrabold uppercase ${resultTone}`}>
               {resultLabel}
             </span>
@@ -423,25 +410,13 @@ export function TradingPage() {
   const { data: futuresQuote } = useGetFuturesQuote(asset, {
     query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 3_000 },
   });
-  const { data: miningPlace } = useGetMiningPlace({
-    query: { queryKey: getGetMiningPlaceQueryKey(), refetchInterval: 3_000 },
-  });
   const { data: tradingHistory } = useGetTradingChart(asset, {
-    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 60_000, enabled: asset !== 'GOLD' },
+    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 60_000 },
   });
 
-  const marketAsset = asset === 'GOLD' ? undefined : market.find(m => m.symbol === asset);
-  const goldBenchmark = miningPlace?.assets.find(item => item.symbol === 'GOLD');
-  const goldBenchmarkUpdatedAt = Date.parse(goldBenchmark?.updatedAt ?? '');
-  const goldQuoteIsFresh = goldBenchmark?.status === 'live'
-    && Number.isFinite(goldBenchmark?.price)
-    && (goldBenchmark?.price ?? 0) > 0
-    && Number.isFinite(goldBenchmarkUpdatedAt)
-    && Date.now() >= goldBenchmarkUpdatedAt
-    && Date.now() - goldBenchmarkUpdatedAt <= 2 * 60_000;
-  const currentPrice = asset === 'GOLD'
-    ? goldQuoteIsFresh ? goldBenchmark!.price : null
-    : marketAsset?.price ?? null;
+  const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
+  const marketAsset = market.find(m => m.symbol === marketSymbol);
+  const currentPrice = marketAsset?.price ?? null;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -651,31 +626,7 @@ export function TradingPage() {
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
-        {isGold ? (
-          <div className="grid min-h-[232px] gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Gold benchmark · GC=F</p>
-              {goldQuoteIsFresh ? (
-                <>
-                  <p className="mt-2 font-mono text-2xl font-extrabold text-foreground" data-testid="text-gold-benchmark-price">
-                    ${goldBenchmark!.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">Provider quote updated {new Date(goldBenchmark!.updatedAt).toLocaleString()}</p>
-                </>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground" role="status" data-testid="status-gold-quote-unavailable">
-                  A fresh live GC=F quote is unavailable. GOLD orders are paused.
-                </p>
-              )}
-            </div>
-            {goldQuoteIsFresh && <span className="rounded-lg bg-green-500/15 px-2.5 py-1 text-xs font-bold text-green-400">LIVE</span>}
-            <p className="border-t border-border/60 pt-3 text-xs leading-5 text-muted-foreground sm:col-span-2">
-              GOLD price history is unavailable. The trading history feed maps GOLD to XAUT, a different instrument, so it is not shown here.
-            </p>
-          </div>
-        ) : (
-          <PriceChart key={asset} quote={futuresQuote} history={tradingHistory} entryPrice={entryPrice} />
-        )}
+        <PriceChart key={asset} quote={futuresQuote} history={tradingHistory} entryPrice={entryPrice} />
       </div>
 
       {/* ── Order Panel ── */}
@@ -1058,13 +1009,9 @@ export function TradingPage() {
               <div>
                 <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Live reference</p>
                 <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
-                  {asset === 'GOLD'
-                    ? goldQuoteIsFresh
-                      ? `$${goldBenchmark!.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
-                      : 'Unavailable'
-                    : freshFuturesQuote && futuresQuote?.price
-                      ? `$${futuresQuote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
-                      : 'Unavailable'}
+                  {freshFuturesQuote && futuresQuote?.price
+                    ? `$${futuresQuote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
+                    : 'Unavailable'}
                 </p>
               </div>
               <div>
