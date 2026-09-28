@@ -267,6 +267,15 @@ async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name
   }
 }
 
+async function findAdminClerkUser(userId: string) {
+  try {
+    return await clerkClient.users.getUser(userId);
+  } catch (error: unknown) {
+    if ((error as { status?: number })?.status === 404) return null;
+    throw error;
+  }
+}
+
 async function ensureSeededUser(userId: string) {
   const [existing] = await db
     .select()
@@ -1731,19 +1740,17 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       // exactly what the user's own Dashboard/Wallet reads.
       const account = accountByUser.get(profile.clerkUserId);
       const totalHoldings = asNumber(account?.balance) + asNumber(account?.futuresBalance);
-      const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
-      const email = clerkInfo.email || profile.email;
-      let accountStatus: AccountOperationalStatus | "deleted" = "active";
-      try {
-        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
-      } catch (error: unknown) {
-        if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
-        else throw error;
-      }
+      const clerkUser = await findAdminClerkUser(profile.clerkUserId);
+      const email = clerkUser?.emailAddresses[0]?.emailAddress || profile.email;
+      const clerkName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ").trim();
+      const status = clerkUser?.privateMetadata?.[accountStatusKey];
+      const accountStatus: AccountOperationalStatus | "deleted" = !clerkUser
+        ? "deleted"
+        : status === "suspended" || status === "frozen" ? status : "active";
       return {
         id: String(profile.id),
         clerkUserId: profile.clerkUserId,
-        displayName: clerkInfo.name || emailPrefix(email),
+        displayName: clerkName || profile.displayName || emailPrefix(email),
         email,
         verificationStatus: profile.verificationStatus,
         referralCode: profile.referralCode,
@@ -2055,9 +2062,10 @@ router.get("/admin/users/:userId", requireAdmin, async (req, res) => {
   // exactly what the user's own Dashboard/Wallet reads.
   const totalHoldings = asNumber(accountRows[0]?.balance) + asNumber(accountRows[0]?.futuresBalance);
   const kyc = kycRows[0] ? await enrichKyc(kycRows[0]) : null;
-  const clerkInfo = await fetchClerkUserInfo(userId);
-  const displayName = clerkInfo.name || profile.displayName;
-  const email = clerkInfo.email || profile.email;
+  const clerkUser = await findAdminClerkUser(userId);
+  const displayName = [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ").trim()
+    || profile.displayName;
+  const email = clerkUser?.emailAddresses[0]?.emailAddress || profile.email;
 
   res.json({
     id: String(profile.id),
