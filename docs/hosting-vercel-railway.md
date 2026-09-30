@@ -33,7 +33,7 @@ The existing Replit project configuration contains a market-data credential inli
 
 ### Member Vercel project
 
-- `VITE_CLERK_PUBLISHABLE_KEY` — the frontend publishable key that was previously in use. It may be a development (`pk_test_`) key; use the same Clerk instance as the Railway API.
+- `VITE_CLERK_PUBLISHABLE_KEY` — the production (`pk_live_`) publishable key for the Clerk instance used by real members. Do not use a development (`pk_test_`) instance for the production member site.
 - `CLERK_PUBLISHABLE_KEY` — optional compatibility setting; if present, it must exactly match `VITE_CLERK_PUBLISHABLE_KEY` and the Railway API key.
 - `VITE_API_BASE_URL` — the public HTTPS base URL of the Railway API, with no trailing slash.
 
@@ -42,6 +42,8 @@ The existing Replit project configuration contains a market-data credential inli
 - `VITE_API_BASE_URL` — the same Railway API base URL, with no trailing slash.
 
 The API client sends Clerk bearer tokens for cross-origin member requests. The Railway API must allow the exact Vercel origins through `CORS_ALLOWED_ORIGINS`. Admin requests send `X-Admin-Key`; that secret remains in Railway and is entered by an administrator in the admin panel.
+
+Configure the production Clerk instance to allow email verification-code sign-in if members should sign in with a code from their inbox. Email sign-in verification and application KYC approval are separate. The API restores profile access from the member's latest KYC submission only when that submission is already marked `verified`; pending or rejected submissions stay gated. When a Clerk instance changes, keep the existing database; the API reconnects a profile and its KYC data only when Clerk confirms the email and exactly one legacy profile matches. Multiple matches need manual review.
 
 ## Database migration procedure
 

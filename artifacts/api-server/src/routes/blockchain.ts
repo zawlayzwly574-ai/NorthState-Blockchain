@@ -352,6 +352,25 @@ async function reattachLegacyAccount(userId: string, email: string) {
   });
 }
 
+async function restoreApprovedKycStatus(profile: typeof walletProfilesTable.$inferSelect) {
+  if (profile.verificationStatus === "verified") return profile;
+
+  const restored = await db.transaction(async (tx) => {
+    const [latestSubmission] = await tx.select().from(kycSubmissionsTable)
+      .where(eq(kycSubmissionsTable.clerkUserId, profile.clerkUserId))
+      .orderBy(desc(kycSubmissionsTable.submittedAt), desc(kycSubmissionsTable.id))
+      .limit(1);
+    if (latestSubmission?.status !== "verified") return false;
+
+    await tx.update(walletProfilesTable)
+      .set({ verificationStatus: "verified" })
+      .where(eq(walletProfilesTable.clerkUserId, profile.clerkUserId));
+    return true;
+  });
+
+  return restored ? { ...profile, verificationStatus: "verified" } : profile;
+}
+
 async function ensureSeededUser(
   userId: string,
   { syncClerkIdentity = false, profileOnly = false }: {
@@ -374,6 +393,7 @@ async function ensureSeededUser(
   }
 
   if (existing) {
+    existing = await restoreApprovedKycStatus(existing);
     const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
     if (
       syncClerkIdentity ||

@@ -21,7 +21,7 @@ vi.mock("@clerk/react", async () => {
   };
 });
 
-import { ActivityPage, Dashboard, ProtectedRoute, Settings } from "./App";
+import { ActivityPage, Dashboard, ProtectedRoute, Settings, VerifiedRoute } from "./App";
 
 const protectedPaths = [
   "/api/portfolio",
@@ -118,6 +118,20 @@ describe("authenticated portfolio routes", () => {
       protectedPaths.some((protectedPath) => String(input).includes(protectedPath)),
     );
     expect(protectedCalls).toHaveLength(0);
+  });
+
+  it("lets a previously verified member access Markets without another KYC prompt", async () => {
+    authState.isLoaded = true;
+    authState.isSignedIn = true;
+    authState.verificationStatus = "verified";
+
+    renderRoute(
+      <VerifiedRoute><div>Markets account content</div></VerifiedRoute>,
+      "/markets",
+    );
+
+    expect(await screen.findByText("Markets account content")).toBeInTheDocument();
+    expect(screen.queryByText("Complete Identity Verification")).not.toBeInTheDocument();
   });
 
   it("loads the read-only Overview for an unverified member without a crash state", async () => {
