@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -17,8 +18,21 @@ router.get("/healthz", async (_req, res) => {
       return;
     }
     res.json({ status: "ok", database: "ok" });
-  } catch {
-    res.status(503).json({ status: "not_ready", database: "unavailable" });
+  } catch (error) {
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "unknown";
+    logger.error({ errorCode }, "Database health check failed");
+    const databaseError =
+      errorCode === "28P01" ? "authentication_failed" :
+      errorCode === "3D000" ? "database_not_found" :
+      errorCode === "ENOTFOUND" ? "host_not_found" :
+      ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENETUNREACH"].includes(errorCode)
+        ? "connection_failed"
+        : "unknown";
+    res.status(503).json({ status: "not_ready", database: "unavailable", databaseError });
   }
 });
 

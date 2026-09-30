@@ -33,7 +33,8 @@ The existing Replit project configuration contains a market-data credential inli
 
 ### Member Vercel project
 
-- `VITE_CLERK_PUBLISHABLE_KEY` — publishable key for that same external Clerk instance.
+- `VITE_CLERK_PUBLISHABLE_KEY` — the frontend publishable key that was previously in use. It may be a development (`pk_test_`) key; use the same Clerk instance as the Railway API.
+- `CLERK_PUBLISHABLE_KEY` — optional compatibility setting; if present, it must exactly match `VITE_CLERK_PUBLISHABLE_KEY` and the Railway API key.
 - `VITE_API_BASE_URL` — the public HTTPS base URL of the Railway API, with no trailing slash.
 
 ### Admin Vercel project

@@ -17,14 +17,23 @@ if (process.env.VERCEL && !apiBaseUrl) {
   throw new Error("VITE_API_BASE_URL is required when building the Vercel frontend.");
 }
 
-// The frontend is wired to authenticate against the same Clerk application
-// the backend verifies sessions against (CLERK_PUBLISHABLE_KEY), rather than
-// the separate VITE_CLERK_PUBLISHABLE_KEY value, so sign-in on the client and
-// session verification on the server point at one Clerk app instead of two.
-const serverClerkPublishableKey =
-  process.env.VITE_CLERK_PUBLISHABLE_KEY ?? process.env.CLERK_PUBLISHABLE_KEY;
+const serverClerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY?.trim();
+const frontendClerkPublishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
 
-if (!serverClerkPublishableKey) {
+if (
+  serverClerkPublishableKey &&
+  frontendClerkPublishableKey &&
+  serverClerkPublishableKey !== frontendClerkPublishableKey
+) {
+  throw new Error(
+    'CLERK_PUBLISHABLE_KEY and VITE_CLERK_PUBLISHABLE_KEY must match; the frontend and API must use the same Clerk instance.',
+  );
+}
+
+const clerkPublishableKey =
+  frontendClerkPublishableKey ?? serverClerkPublishableKey;
+
+if (!clerkPublishableKey) {
   throw new Error(
     'Set VITE_CLERK_PUBLISHABLE_KEY (or CLERK_PUBLISHABLE_KEY) for the frontend build.',
   );
@@ -34,7 +43,7 @@ export default defineConfig({
   base: basePath,
   define: {
     'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
-      serverClerkPublishableKey,
+      clerkPublishableKey,
     ),
   },
   plugins: [
