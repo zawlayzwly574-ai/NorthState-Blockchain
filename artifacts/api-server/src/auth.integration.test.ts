@@ -103,7 +103,11 @@ describe("member route authentication", () => {
     getUser.mockReset();
     getUser.mockResolvedValue({
       privateMetadata: {},
-      emailAddresses: [{ id: "email_1", emailAddress: "alex@example.com" }],
+      emailAddresses: [{
+        id: "email_1",
+        emailAddress: "alex@example.com",
+        verification: { status: "verified" },
+      }],
       primaryEmailAddressId: "email_1",
       firstName: "Alex",
       lastName: "Morgan",
@@ -132,6 +136,151 @@ describe("member route authentication", () => {
       email: "alex@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores a verified legacy profile and balances when the Clerk user ID changed", async () => {
+    const currentProfile = {
+      ...profile,
+      clerkUserId: "user_restored",
+      verificationStatus: "unverified",
+      referralInvitedCount: 0,
+      referralReward: "0",
+      twoFactorEnabled: false,
+      smsPhoneNumber: null,
+      smsPhoneVerified: false,
+      totpSecret: null,
+    };
+    const legacyProfile = {
+      ...profile,
+      clerkUserId: "user_previous_instance",
+      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+    };
+    const currentAccount = {
+      clerkUserId: "user_restored",
+      balance: "0",
+      futuresBalance: "0",
+      totalTrades: 0,
+      wins: 0,
+      losses: 0,
+      tradeOutcomeMode: "auto",
+    };
+    const legacyAccount = {
+      clerkUserId: "user_previous_instance",
+      balance: "2500",
+      futuresBalance: "700",
+      totalTrades: 12,
+      wins: 8,
+      losses: 4,
+      tradeOutcomeMode: "auto",
+    };
+    let dbSelectCount = 0;
+    select.mockImplementation(() => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => dbSelectCount++ === 0 ? [currentProfile] : [],
+        }),
+      }),
+    }));
+
+    const transactionSelectResults: Array<Array<Record<string, unknown>>> = [
+      [currentProfile],
+      [currentProfile, legacyProfile],
+      [currentAccount],
+      [legacyAccount],
+    ];
+    const updatedTables: unknown[] = [];
+    const deletedTables: unknown[] = [];
+    transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      execute: async () => ({ rows: [{ has_owned_data: false }] }),
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => transactionSelectResults.shift() ?? [] }),
+        }),
+      }),
+      update: (table: unknown) => {
+        updatedTables.push(table);
+        return { set: () => ({ where: async () => undefined }) };
+      },
+      delete: (table: unknown) => {
+        deletedTables.push(table);
+        return { where: async () => undefined };
+      },
+    }));
+
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "1",
+      name: "Alex Morgan",
+      email: "alex@example.com",
+      verificationStatus: "verified",
+      referralCode: "NORTHSTAR-ALEX-TORED",
+    });
+    expect(updatedTables).toHaveLength(11);
+    expect(deletedTables).toHaveLength(2);
+    expect(transactionSelectResults).toHaveLength(0);
+  });
+
+  it("does not reattach an account when the verified email matches multiple legacy profiles", async () => {
+    const currentProfile = {
+      ...profile,
+      clerkUserId: "user_restored",
+      verificationStatus: "unverified",
+      referralInvitedCount: 0,
+      referralReward: "0",
+      twoFactorEnabled: false,
+      smsPhoneNumber: null,
+      smsPhoneVerified: false,
+      totpSecret: null,
+      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+    };
+    const legacyProfiles = [
+      { ...profile, clerkUserId: "user_previous_instance" },
+      { ...profile, id: 2, clerkUserId: "user_another_instance", referralCode: "NORTHSTAR-ANOTHER" },
+    ];
+    select.mockReturnValue({
+      from: () => ({
+        where: () => ({ limit: async () => [currentProfile] }),
+      }),
+    });
+
+    const transactionSelectResults: Array<Array<Record<string, unknown>>> = [
+      [currentProfile],
+      [currentProfile, ...legacyProfiles],
+    ];
+    const updatedTables: unknown[] = [];
+    const deletedTables: unknown[] = [];
+    transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
+      execute: vi.fn(),
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: async () => transactionSelectResults.shift() ?? [] }),
+        }),
+      }),
+      update: (table: unknown) => {
+        updatedTables.push(table);
+        return { set: () => ({ where: async () => undefined }) };
+      },
+      delete: (table: unknown) => {
+        deletedTables.push(table);
+        return { where: async () => undefined };
+      },
+    }));
+
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: "1",
+      verificationStatus: "unverified",
+    });
+    expect(updatedTables).toHaveLength(0);
+    expect(deletedTables).toHaveLength(0);
   });
 
   it("returns updated Spot and Futures balances for a verified member's transfer", async () => {

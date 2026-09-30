@@ -248,18 +248,108 @@ async function ensureDefaultPortfolio(userId: string, allowCreate: boolean) {
   });
 }
 
-async function fetchClerkUserInfo(userId: string): Promise<{ email: string; name: string }> {
+type ClerkUserInfo = { email: string; name: string; emailVerified: boolean };
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+async function fetchClerkUserInfo(userId: string): Promise<ClerkUserInfo> {
   try {
     const user = await clerkClient.users.getUser(userId);
     const primaryEmail = user.emailAddresses.find(
       (address) => address.id === user.primaryEmailAddressId,
-    );
-    const email = (primaryEmail ?? user.emailAddresses[0])?.emailAddress?.trim() ?? "";
+    ) ?? user.emailAddresses[0];
+    const email = primaryEmail?.emailAddress?.trim() ?? "";
     const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || "";
-    return { email, name };
+    return { email, name, emailVerified: primaryEmail?.verification?.status === "verified" };
   } catch {
     throw new Error("Unable to retrieve the authenticated member profile from Clerk.");
   }
+}
+
+function isBlankSignupProfile(profile: typeof walletProfilesTable.$inferSelect, email: string) {
+  return profile.verificationStatus === "unverified"
+    && normalizeEmail(profile.email) === email
+    && profile.referralInvitedCount === 0
+    && asNumber(profile.referralReward) === 0
+    && !profile.totpSecret
+    && !profile.twoFactorEnabled
+    && !profile.smsPhoneNumber
+    && !profile.smsPhoneVerified;
+}
+
+async function reattachLegacyAccount(userId: string, email: string) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`ACCOUNT_EMAIL:${normalizedEmail}`}))`);
+
+    const [currentProfile] = await tx.select().from(walletProfilesTable)
+      .where(eq(walletProfilesTable.clerkUserId, userId)).limit(1);
+    if (currentProfile && !isBlankSignupProfile(currentProfile, normalizedEmail)) return null;
+
+    const matchingProfiles = await tx.select().from(walletProfilesTable)
+      .where(sql`lower(trim(${walletProfilesTable.email})) = ${normalizedEmail}`).limit(3);
+    const legacyProfiles = matchingProfiles.filter((profile) => profile.clerkUserId !== userId);
+    if (legacyProfiles.length !== 1) return null;
+    const legacyProfile = legacyProfiles[0];
+
+    const ownershipResult = await tx.execute(sql`
+      select (
+        exists(select 1 from trades where clerk_user_id = ${userId})
+        or exists(select 1 from futures_positions where clerk_user_id = ${userId})
+        or exists(select 1 from user_passkeys where clerk_user_id = ${userId})
+        or exists(select 1 from wallet_holdings where clerk_user_id = ${userId})
+        or exists(select 1 from wallet_activities where clerk_user_id = ${userId})
+        or exists(select 1 from kyc_submissions where clerk_user_id = ${userId})
+        or exists(select 1 from wallet_transactions where clerk_user_id = ${userId})
+        or exists(select 1 from mining_investments where clerk_user_id = ${userId})
+        or exists(select 1 from support_threads where clerk_user_id = ${userId})
+      ) as has_owned_data
+    `);
+    if (Boolean(ownershipResult.rows[0]?.has_owned_data)) return null;
+
+    const [currentAccount] = await tx.select().from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
+    if (currentAccount && (
+      asNumber(currentAccount.balance) !== 0
+      || asNumber(currentAccount.futuresBalance) !== 0
+      || currentAccount.totalTrades !== 0
+      || currentAccount.wins !== 0
+      || currentAccount.losses !== 0
+      || currentAccount.tradeOutcomeMode !== "auto"
+    )) return null;
+
+    const [legacyAccount] = await tx.select().from(tradingAccountsTable)
+      .where(eq(tradingAccountsTable.clerkUserId, legacyProfile.clerkUserId)).limit(1);
+
+    if (currentProfile) {
+      await tx.delete(walletProfilesTable).where(eq(walletProfilesTable.clerkUserId, userId));
+    }
+    if (currentAccount && legacyAccount) {
+      await tx.delete(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId));
+    }
+
+    await tx.update(walletProfilesTable).set({ clerkUserId: userId })
+      .where(eq(walletProfilesTable.clerkUserId, legacyProfile.clerkUserId));
+    if (legacyAccount) {
+      await tx.update(tradingAccountsTable).set({ clerkUserId: userId })
+        .where(eq(tradingAccountsTable.clerkUserId, legacyProfile.clerkUserId));
+    }
+    await tx.update(tradesTable).set({ clerkUserId: userId }).where(eq(tradesTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(futuresPositionsTable).set({ clerkUserId: userId }).where(eq(futuresPositionsTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(passkeysTable).set({ clerkUserId: userId }).where(eq(passkeysTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(holdingsTable).set({ clerkUserId: userId }).where(eq(holdingsTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(activitiesTable).set({ clerkUserId: userId }).where(eq(activitiesTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(kycSubmissionsTable).set({ clerkUserId: userId }).where(eq(kycSubmissionsTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(transactionsTable).set({ clerkUserId: userId }).where(eq(transactionsTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(miningInvestmentsTable).set({ clerkUserId: userId }).where(eq(miningInvestmentsTable.clerkUserId, legacyProfile.clerkUserId));
+    await tx.update(supportThreadsTable).set({ clerkUserId: userId }).where(eq(supportThreadsTable.clerkUserId, legacyProfile.clerkUserId));
+
+    return { ...legacyProfile, clerkUserId: userId };
+  });
 }
 
 async function ensureSeededUser(
@@ -269,11 +359,19 @@ async function ensureSeededUser(
     profileOnly?: boolean;
   } = {},
 ) {
-  const [existing] = await db
+  let [existing] = await db
     .select()
     .from(walletProfilesTable)
     .where(eq(walletProfilesTable.clerkUserId, userId))
     .limit(1);
+
+  let clerkInfo: ClerkUserInfo | null = null;
+  if (!existing || (syncClerkIdentity && existing.verificationStatus !== "verified")) {
+    clerkInfo = await fetchClerkUserInfo(userId);
+    if (clerkInfo.emailVerified && clerkInfo.email) {
+      existing = await reattachLegacyAccount(userId, clerkInfo.email) ?? existing;
+    }
+  }
 
   if (existing) {
     const profileUpdate: Partial<typeof walletProfilesTable.$inferInsert> = {};
@@ -284,7 +382,7 @@ async function ensureSeededUser(
       !existing.displayName.trim() ||
       existing.displayName === "North State Blockchain Member"
     ) {
-      const { email, name } = await fetchClerkUserInfo(userId);
+      const { email, name } = clerkInfo ?? await fetchClerkUserInfo(userId);
       if (!email) throw new Error("The authenticated member has no email address in Clerk.");
       if (existing.email !== email) profileUpdate.email = email;
       if (
@@ -308,7 +406,7 @@ async function ensureSeededUser(
     return { ...existing, ...profileUpdate };
   }
 
-  const info = await fetchClerkUserInfo(userId);
+  const info = clerkInfo ?? await fetchClerkUserInfo(userId);
   if (!info.email) throw new Error("The authenticated member has no email address in Clerk.");
 
   const [profile] = await db
