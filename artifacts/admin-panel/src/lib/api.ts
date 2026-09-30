@@ -2,6 +2,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
 
+export function getAdminBasePath() {
+  const configuredBase = import.meta.env.BASE_URL.replace(/\/$/, '');
+  const pathname = window.location.pathname;
+  return configuredBase && (pathname === configuredBase || pathname.startsWith(`${configuredBase}/`))
+    ? configuredBase
+    : '';
+}
+
 export function getAdminKey() {
   return localStorage.getItem('admin_key') ?? sessionStorage.getItem('admin_key');
 }
@@ -14,7 +22,7 @@ export function setAdminKey(key: string) {
 export function clearAdminKey() {
   localStorage.removeItem('admin_key');
   sessionStorage.removeItem('admin_key');
-  const base = import.meta.env.BASE_URL.replace(/\/$/, '') || '';
+  const base = getAdminBasePath();
   window.location.href = `${base}/login`;
 }
 

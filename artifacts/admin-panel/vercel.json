@@ -5,6 +5,10 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     {
+      "source": "/admin-panel/:path*",
+      "destination": "/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

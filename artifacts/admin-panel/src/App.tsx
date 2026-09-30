@@ -5,7 +5,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
-import { getAdminKey } from '@/lib/api';
+import { getAdminBasePath, getAdminKey } from '@/lib/api';
 import { Layout } from '@/components/layout';
 
 import Login from '@/pages/login';
@@ -98,7 +98,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+        <WouterRouter base={getAdminBasePath()}>
           <Router />
         </WouterRouter>
         <Toaster />
