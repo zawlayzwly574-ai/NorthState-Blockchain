@@ -5,6 +5,14 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     {
+      "source": "/admin-panel",
+      "destination": "https://north-state-blockchain-admin-panel.vercel.app"
+    },
+    {
+      "source": "/admin-panel/:path*",
+      "destination": "https://north-state-blockchain-admin-panel.vercel.app/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
