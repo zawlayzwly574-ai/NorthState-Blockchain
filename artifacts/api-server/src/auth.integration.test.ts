@@ -101,7 +101,13 @@ describe("member route authentication", () => {
 
   beforeEach(() => {
     getUser.mockReset();
-    getUser.mockResolvedValue({ privateMetadata: {} });
+    getUser.mockResolvedValue({
+      privateMetadata: {},
+      emailAddresses: [{ id: "email_1", emailAddress: "alex@example.com" }],
+      primaryEmailAddressId: "email_1",
+      firstName: "Alex",
+      lastName: "Morgan",
+    });
     select.mockReset();
     select.mockReturnValue({
       from: () => ({
@@ -384,5 +390,70 @@ describe("member route authentication", () => {
     expect(await response.json()).toEqual({ error: "Unauthorized" });
     expect(getUser).not.toHaveBeenCalled();
     expect(select).not.toHaveBeenCalled();
+  });
+
+  it("does not offer fallback prices or accept investments when market quotes are unavailable", async () => {
+    const originalFetch = globalThis.fetch;
+    const marketFetch = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return url.includes("finance.yahoo.com")
+        ? marketFetch()
+        : originalFetch(input, init);
+    });
+
+    try {
+      const marketResponse = await originalFetch(`${baseUrl}/api/mining-place`);
+      expect(marketResponse.status).toBe(503);
+      expect(await marketResponse.json()).toMatchObject({
+        error: "Market quotes are temporarily unavailable. Please try again.",
+      });
+      expect(marketFetch).toHaveBeenCalled();
+
+      const investmentResponse = await originalFetch(`${baseUrl}/api/mining-investments`, {
+        method: "POST",
+        headers: {
+          cookie: "__session=restored",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ symbol: "AAPL", amount: 25 }),
+      });
+      expect(investmentResponse.status).toBe(503);
+      expect(await investmentResponse.json()).toMatchObject({
+        error: "A live market quote is temporarily unavailable for this asset. Please try again.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not open a spot trade at a fallback price when market providers are unavailable", async () => {
+    const originalFetch = globalThis.fetch;
+    const providerFetch = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      return url.includes("api.coingecko.com") || url.includes("api.binance.com")
+        ? providerFetch()
+        : originalFetch(input, init);
+    });
+
+    try {
+      const response = await originalFetch(`${baseUrl}/api/trading/trades`, {
+        method: "POST",
+        headers: {
+          cookie: "__session=restored",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ asset: "BTC", direction: "long", amount: 5000, timeframeSecs: 60 }),
+      });
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: "A fresh market price is unavailable. The order was not opened.",
+      });
+      expect(providerFetch).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

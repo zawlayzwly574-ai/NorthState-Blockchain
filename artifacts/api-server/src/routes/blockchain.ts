@@ -487,7 +487,10 @@ async function fetchBinanceMarketData(
   }
 }
 
-async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]): Promise<MarketAsset[]> {
+async function fetchFreshMarketAssets(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+  allowStale = true,
+): Promise<MarketAsset[]> {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
   const endpoint = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
   let liveData: Record<string, MarketQuote> = {};
@@ -522,7 +525,7 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
     const provider = liveData[definition.id];
     if (!isValidMarketQuote(provider)) {
       const previous = previousAssets.get(definition.symbol);
-      return previous ? [previous] : [];
+      return allowStale && previous ? [previous] : [];
     }
 
     const price = Number(provider!.usd);
@@ -574,6 +577,10 @@ router.get("/markets", async (req, res) => {
 router.get("/mining-place", async (req, res) => {
   const now = Date.now();
   if (miningPlaceCache && now - miningPlaceCache.ts < MINING_PLACE_TTL) {
+    if (miningPlaceCache.assets.length === 0) {
+      res.status(503).json({ error: "Market quotes are temporarily unavailable. Please try again." });
+      return;
+    }
     res.json(GetMiningPlaceResponse.parse({
       assets: miningPlaceCache.assets,
       updatedAt: new Date(miningPlaceCache.ts).toISOString(),
@@ -583,7 +590,7 @@ router.get("/mining-place", async (req, res) => {
 
   if (!miningPlaceRefreshPromise) {
     const previousAssets = new Map(miningPlaceCache?.assets.map((asset) => [asset.symbol, asset]));
-    miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset> => {
+    miningPlaceRefreshPromise = Promise.all(miningPlaceDefinitions.map(async (definition): Promise<MiningPlaceAsset | null> => {
     let liveAsset: MiningPlaceAsset | null = null;
     let lastError: unknown = null;
     for (const host of YAHOO_FINANCE_HOSTS) {
@@ -614,12 +621,10 @@ router.get("/mining-place", async (req, res) => {
         const meta = payload.chart?.result?.[0]?.meta;
         const price = Number(meta?.regularMarketPrice);
         const previousClose = Number(meta?.chartPreviousClose ?? meta?.previousClose);
-        if (!Number.isFinite(price) || price <= 0) {
-          throw new Error(`${host} did not return a valid price`);
+        if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(previousClose) || previousClose <= 0) {
+          throw new Error(`${host} did not return a valid price and previous close`);
         }
-        const change24h = Number.isFinite(previousClose) && previousClose > 0
-          ? ((price - previousClose) / previousClose) * 100
-          : definition.fallbackChange;
+        const change24h = ((price - previousClose) / previousClose) * 100;
         liveAsset = {
           symbol: definition.symbol,
           name: definition.name,
@@ -650,26 +655,15 @@ router.get("/mining-place", async (req, res) => {
       const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;
       if (
         previous
-        && previous.status !== "fallback"
         && Number.isFinite(previousTimestamp)
         && now - previousTimestamp <= MINING_PLACE_MAX_STALE_AGE
       ) {
         return { ...previous, status: "stale" };
       }
-      return {
-        symbol: definition.symbol,
-        name: definition.name,
-        category: definition.category,
-        price: definition.fallbackPrice,
-        change24h: definition.fallbackChange,
-        currency: "USD",
-        unit: definition.unit,
-        status: "fallback",
-        updatedAt: new Date(now).toISOString(),
-        color: definition.color,
-      };
+      return null;
     }
-    })).then((assets) => {
+    })).then((results) => {
+      const assets = results.filter((asset): asset is MiningPlaceAsset => asset !== null);
       miningPlaceCache = { assets, ts: Date.now() };
       return miningPlaceCache;
     }).finally(() => {
@@ -678,6 +672,10 @@ router.get("/mining-place", async (req, res) => {
   }
 
   const refreshed = await miningPlaceRefreshPromise;
+  if (refreshed.assets.length === 0) {
+    res.status(503).json({ error: "Market quotes are temporarily unavailable. Please try again." });
+    return;
+  }
   res.json(GetMiningPlaceResponse.parse({
     assets: refreshed.assets,
     updatedAt: new Date(refreshed.ts).toISOString(),
@@ -875,21 +873,9 @@ router.get("/portfolio", async (req, res) => {
 
 const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => asset.symbol));
 
-function investmentQuote(symbol: string) {
+function investmentQuote(symbol: string): MiningPlaceAsset | null {
   const cached = miningPlaceCache?.assets.find((asset) => asset.symbol === symbol);
-  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol)!;
-  return cached ?? {
-    symbol: definition.symbol,
-    name: definition.name,
-    category: definition.category,
-    price: definition.fallbackPrice,
-    change24h: definition.fallbackChange,
-    currency: "USD",
-    unit: definition.unit,
-    status: "fallback" as const,
-    updatedAt: new Date().toISOString(),
-    color: definition.color,
-  };
+  return cached?.status === "live" ? cached : null;
 }
 
 function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
@@ -949,8 +935,12 @@ router.post("/mining-investments", async (req, res) => {
     res.status(400).json({ error: "Investment amount must be a positive USDC amount." });
     return;
   }
-  await ensureSeededUser(userId);
   const quote = investmentQuote(symbol);
+  if (!quote) {
+    res.status(503).json({ error: "A live market quote is temporarily unavailable for this asset. Please try again." });
+    return;
+  }
+  await ensureSeededUser(userId);
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from ${holdingsTable}
@@ -2620,11 +2610,16 @@ router.post("/trading/trades", async (req, res) => {
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
   let entryPrice: number;
   try {
-    const assets = await fetchMarketAssets(req);
+    const assets = await fetchFreshMarketAssets(req, false);
     const found = assets.find((a: { symbol: string; price: number }) => a.symbol === assetSymbol);
-    entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
+    if (!found) {
+      res.status(503).json({ error: "A fresh market price is unavailable. The order was not opened." });
+      return;
+    }
+    entryPrice = found.price;
   } catch {
-    entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;
+    res.status(503).json({ error: "A fresh market price is unavailable. The order was not opened." });
+    return;
   }
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
