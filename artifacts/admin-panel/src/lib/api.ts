@@ -291,6 +291,7 @@ export function useAdminTransactions() {
   return useQuery<Transaction[]>({
     queryKey: ['admin', 'transactions'],
     queryFn: () => apiClient('/transactions'),
+    refetchInterval: 5000,
   });
 }
 
@@ -298,6 +299,7 @@ export function useAdminKyc() {
   return useQuery<KycSubmission[]>({
     queryKey: ['admin', 'kyc'],
     queryFn: () => apiClient('/kyc'),
+    refetchInterval: 5000,
   });
 }
 

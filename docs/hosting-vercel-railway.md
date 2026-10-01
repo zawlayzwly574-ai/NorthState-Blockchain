@@ -69,8 +69,26 @@ For the production cutover, point Railway at the same Neon database that current
 
 1. Set Railway's service root to the repository root so pnpm can resolve the workspace.
 2. Configure the Railway variables above, then run the migration command manually against staging.
-3. Confirm Railway's `/api/healthz` returns HTTP 200. It checks database connectivity and the core trading schema; a missing database, table, or connection produces HTTP 503.
+3. Confirm Railway's `/api/health` (also available as `/api/healthz`) returns HTTP 200. It checks database connectivity and the core trading schema; a missing database, table, or connection produces HTTP 503.
 4. Configure each Vercel project with its artifact root and the required public build variables.
 5. Add both deployed Vercel origins to Railway's `CORS_ALLOWED_ORIGINS`, then confirm sign-in, member balances, trade history, Futures positions, and admin requests against the intended Neon database.
 
 After staging has been verified, Railway's pre-deploy command can be set to the migration command if automatic, serialized schema updates are desired. It is intentionally not enabled by default, so a routine app deployment cannot mutate the production schema without an explicit operator decision.
+
+## UptimeRobot monitoring
+
+The API exposes `/api/health` and `/api/healthz`. Both execute a PostgreSQL query against Neon and return HTTP 503 when the database or required schema is unavailable, so the API monitor covers both Railway and Neon.
+
+Create a Main API key in UptimeRobot, then run the setup script from the repository root. The key is read only from the current process environment; do not commit it or add it to Vercel/Railway application variables.
+
+```sh
+node scripts/uptimerobot-setup.mjs --dry-run
+read -r -s -p 'UptimeRobot API key: ' UPTIMEROBOT_API_KEY
+export UPTIMEROBOT_API_KEY
+node scripts/uptimerobot-setup.mjs
+unset UPTIMEROBOT_API_KEY
+```
+
+The script idempotently creates HTTPS monitors for the member app, admin panel, and API/Neon health route at 300-second intervals. Override `UPTIMEROBOT_MEMBER_URL`, `UPTIMEROBOT_ADMIN_URL`, or `UPTIMEROBOT_API_URL` if the public domains change. The current admin custom domain does not resolve, so the default Vercel domain is used.
+
+Vercel serves these frontends as static CDN assets and does not need an always-running server process. Five-minute monitoring is a health check, not a guarantee that Railway or Neon never sleep: monitor scheduling can be delayed, and Neon may scale to zero between checks. Use an always-on Neon compute setting/plan and a Railway plan without sleep if uninterrupted compute availability is required.

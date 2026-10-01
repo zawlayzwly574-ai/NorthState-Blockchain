@@ -1,16 +1,20 @@
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clerkMiddleware, getAuth, getUser, select, transaction } = vi.hoisted(() => {
+const { clerkMiddleware, getAuth, getUser, poolQuery, select, transaction, update } = vi.hoisted(() => {
   const authByRequest = new WeakMap<object, { userId: string | null }>();
   const getUser = vi.fn();
+  const poolQuery = vi.fn();
   const select = vi.fn();
   const transaction = vi.fn();
+  const update = vi.fn();
 
   return {
     getUser,
+    poolQuery,
     select,
     transaction,
+    update,
     getAuth: vi.fn((request: object) => authByRequest.get(request) ?? { userId: null }),
     clerkMiddleware: () => (
       request: { headers: { cookie?: string; authorization?: string } },
@@ -47,7 +51,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
       ...actual.db,
       select,
       transaction,
+      update,
     },
+    pool: { query: poolQuery },
   };
 });
 
@@ -100,6 +106,7 @@ describe("member route authentication", () => {
   });
 
   beforeEach(() => {
+    poolQuery.mockReset();
     getUser.mockReset();
     getUser.mockResolvedValue({
       privateMetadata: {},
@@ -114,14 +121,51 @@ describe("member route authentication", () => {
     });
     select.mockReset();
     select.mockReturnValue({
-      from: () => ({
-        where: () => ({
+      from: () => {
+        const query = {
+          where: () => query,
+          orderBy: () => query,
           limit: async () => [profile],
-        }),
-      }),
+        };
+        return query;
+      },
     });
     transaction.mockReset();
     transaction.mockResolvedValue(undefined);
+    update.mockReset();
+    update.mockImplementation(() => ({ set: () => ({ where: async () => undefined }) }));
+  });
+
+  it("checks the database through both supported health routes", async () => {
+    poolQuery.mockResolvedValue({
+      rows: [{
+        wallet_profiles: "wallet_profiles",
+        trading_accounts: "trading_accounts",
+        futures_positions: "futures_positions",
+      }],
+    });
+
+    const health = await fetch(`${baseUrl}/api/health`);
+    const healthz = await fetch(`${baseUrl}/api/healthz`);
+
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ status: "ok", database: "ok" });
+    expect(healthz.status).toBe(200);
+    expect(await healthz.json()).toEqual({ status: "ok", database: "ok" });
+    expect(poolQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports database unavailability as HTTP 503 on the health route", async () => {
+    poolQuery.mockRejectedValue(Object.assign(new Error("database unavailable"), { code: "ENOTFOUND" }));
+
+    const response = await fetch(`${baseUrl}/api/health`);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      status: "not_ready",
+      database: "unavailable",
+      databaseError: "host_not_found",
+    });
   });
 
   it("accepts a restored Clerk session and reaches the member handler", async () => {
@@ -136,6 +180,30 @@ describe("member route authentication", () => {
       email: "alex@example.com",
     });
     expect(select).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows configured frontend origins to complete credentialed CORS preflight", async () => {
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://member.example.test",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "authorization,content-type",
+      },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://member.example.test");
+    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
+  it("rejects browser requests from origins outside the configured allowlist", async () => {
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { origin: "https://untrusted.example.test" },
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Origin is not allowed." });
   });
 
   it("restores a verified legacy profile and balances when the Clerk user ID changed", async () => {
@@ -242,9 +310,14 @@ describe("member route authentication", () => {
       { ...profile, id: 2, clerkUserId: "user_another_instance", referralCode: "NORTHSTAR-ANOTHER" },
     ];
     select.mockReturnValue({
-      from: () => ({
-        where: () => ({ limit: async () => [currentProfile] }),
-      }),
+      from: () => {
+        const query = {
+          where: () => query,
+          orderBy: () => query,
+          limit: async () => [currentProfile],
+        };
+        return query;
+      },
     });
 
     const transactionSelectResults: Array<Array<Record<string, unknown>>> = [
@@ -347,11 +420,14 @@ describe("member route authentication", () => {
 
   it("returns the standard user profile for a logged-in unverified member", async () => {
     select.mockReturnValue({
-      from: () => ({
-        where: () => ({
+      from: () => {
+        const query = {
+          where: () => query,
+          orderBy: () => query,
           limit: async () => [{ ...profile, verificationStatus: "unverified" }],
-        }),
-      }),
+        };
+        return query;
+      },
     });
 
     const response = await fetch(`${baseUrl}/api/user`, {
@@ -364,6 +440,50 @@ describe("member route authentication", () => {
       name: "Alex Morgan",
       verificationStatus: "unverified",
     });
+  });
+
+  it("restores access for an existing member with a verified KYC submission", async () => {
+    const oldProfile = {
+      ...profile,
+      verificationStatus: "unverified",
+      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+    };
+    getUser.mockResolvedValue({
+      privateMetadata: {},
+      emailAddresses: [{
+        id: "email_1",
+        emailAddress: "alex@example.com",
+        verification: { status: "unverified" },
+      }],
+      primaryEmailAddressId: "email_1",
+      firstName: "Alex",
+      lastName: "Morgan",
+    });
+    let selectCount = 0;
+    select.mockImplementation(() => {
+      const result = selectCount++ === 0 ? [oldProfile] : [{ status: "verified" }];
+      const query = {
+        where: () => query,
+        orderBy: () => query,
+        limit: async () => result,
+      };
+      return { from: () => query };
+    });
+    const persistedStatus = vi.fn();
+    update.mockImplementation(() => ({
+      set: (values: unknown) => {
+        persistedStatus(values);
+        return { where: async () => undefined };
+      },
+    }));
+
+    const response = await fetch(`${baseUrl}/api/profile`, {
+      headers: { cookie: "__session=restored" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ verificationStatus: "verified" });
+    expect(persistedStatus).toHaveBeenCalledWith({ verificationStatus: "verified" });
   });
 
   it.each([
@@ -506,11 +626,14 @@ describe("member route authentication", () => {
 
   it("blocks wallet mutations until KYC receives admin approval", async () => {
     select.mockReturnValueOnce({
-      from: () => ({
-        where: () => ({
+      from: () => {
+        const query = {
+          where: () => query,
+          orderBy: () => query,
           limit: async () => [{ ...profile, verificationStatus: "unverified" }],
-        }),
-      }),
+        };
+        return query;
+      },
     });
 
     const response = await fetch(`${baseUrl}/api/transactions/withdraw`, {

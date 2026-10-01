@@ -396,6 +396,20 @@ async function ensureSeededUser(
     if (Object.keys(profileUpdate).length) {
       await db.update(walletProfilesTable).set(profileUpdate).where(eq(walletProfilesTable.clerkUserId, userId));
     }
+    if (existing.verificationStatus !== "verified") {
+      const [latestKyc] = await db
+        .select({ status: kycSubmissionsTable.status })
+        .from(kycSubmissionsTable)
+        .where(eq(kycSubmissionsTable.clerkUserId, userId))
+        .orderBy(desc(kycSubmissionsTable.submittedAt))
+        .limit(1);
+      if (latestKyc?.status === "verified") {
+        await db.update(walletProfilesTable)
+          .set({ verificationStatus: "verified" })
+          .where(eq(walletProfilesTable.clerkUserId, userId));
+        existing = { ...existing, verificationStatus: "verified" };
+      }
+    }
     const accountRepairWindowMs = 24 * 60 * 60 * 1000;
     const recentlyCreated = Date.now() - existing.createdAt.getTime() <= accountRepairWindowMs;
     // An older imported account may be missing its trading row. Its identity

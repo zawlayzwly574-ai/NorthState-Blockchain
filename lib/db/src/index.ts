@@ -18,6 +18,7 @@ if (!Number.isInteger(poolMax) || poolMax < 1 || poolMax > 100) {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  options: "-c search_path=public",
   max: poolMax,
   connectionTimeoutMillis: 5_000,
   idleTimeoutMillis: 30_000,

@@ -4,7 +4,7 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-router.get("/healthz", async (_req, res) => {
+router.get(["/health", "/healthz"], async (_req, res) => {
   try {
     const result = await pool.query(`
       SELECT
