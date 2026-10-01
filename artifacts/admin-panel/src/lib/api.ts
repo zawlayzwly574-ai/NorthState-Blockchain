@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
+export function resolveAdminApiBaseUrl(explicitBaseUrl?: string) {
+  const configuredBase = (explicitBaseUrl ?? import.meta.env.VITE_API_BASE_URL ?? (typeof window !== 'undefined' ? window.location.origin : '')).trim().replace(/\/+$/, '');
+  return configuredBase || (typeof window !== 'undefined' ? window.location.origin : '');
+}
+
+export function buildAdminApiUrl(endpoint: string, explicitBaseUrl?: string) {
+  const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${resolveAdminApiBaseUrl(explicitBaseUrl)}/api/admin${normalizedEndpoint}`;
+}
 
 export function getAdminBasePath() {
   const configuredBase = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -34,8 +42,9 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   }
   headers.set('Content-Type', 'application/json');
 
-  const res = await fetch(`${apiBaseUrl}/api/admin${endpoint}`, {
+  const res = await fetch(buildAdminApiUrl(endpoint), {
     ...options,
+    credentials: options.credentials ?? 'include',
     headers,
   });
 

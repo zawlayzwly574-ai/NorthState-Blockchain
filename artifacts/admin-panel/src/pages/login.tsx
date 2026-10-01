@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { useLocation } from 'wouter';
-import { setAdminKey } from '@/lib/api';
+import { buildAdminApiUrl, setAdminKey } from '@/lib/api';
 import { TerminalSquare, KeyRound, Loader2 } from 'lucide-react';
 
 export default function Login() {
@@ -19,7 +19,8 @@ export default function Login() {
     try {
       // Validate the environment-backed key without requiring database access.
       const normalizedKey = key.trim();
-      const res = await fetch('/api/admin/auth/validate', {
+      const res = await fetch(buildAdminApiUrl('/auth/validate'), {
+        credentials: 'include',
         headers: { 'X-Admin-Key': normalizedKey }
       });
       

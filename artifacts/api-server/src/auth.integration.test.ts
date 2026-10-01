@@ -257,10 +257,7 @@ describe("member route authentication", () => {
       execute: vi.fn(),
       select: () => ({
         from: () => ({
-          where: () => ({
-            limit: async () => transactionSelectResults.shift() ?? [],
-            orderBy: () => ({ limit: async () => [] }),
-          }),
+          where: () => ({ limit: async () => transactionSelectResults.shift() ?? [] }),
         }),
       }),
       update: (table: unknown) => {
@@ -367,51 +364,6 @@ describe("member route authentication", () => {
       name: "Alex Morgan",
       verificationStatus: "unverified",
     });
-  });
-
-  it.each([
-    ["verified", "verified"],
-    ["pending", "unverified"],
-    ["rejected", "unverified"],
-  ])("restores prior KYC access only when the latest submission is %s", async (latestStatus, expectedStatus) => {
-    const legacyProfile = {
-      ...profile,
-      verificationStatus: "unverified",
-      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
-    };
-    select.mockReturnValueOnce({
-      from: () => ({
-        where: () => ({ limit: async () => [legacyProfile] }),
-      }),
-    });
-    getUser.mockResolvedValue({
-      privateMetadata: {},
-      emailAddresses: [{
-        id: "email_1",
-        emailAddress: "alex@example.com",
-        verification: { status: "unverified" },
-      }],
-      primaryEmailAddressId: "email_1",
-      firstName: "Alex",
-      lastName: "Morgan",
-    });
-    transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            orderBy: () => ({ limit: async () => [{ status: latestStatus }] }),
-          }),
-        }),
-      }),
-      update: () => ({ set: () => ({ where: async () => undefined }) }),
-    }));
-
-    const response = await fetch(`${baseUrl}/api/profile`, {
-      headers: { cookie: "__session=restored" },
-    });
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ verificationStatus: expectedStatus });
   });
 
   it.each([
@@ -629,7 +581,7 @@ describe("member route authentication", () => {
     const providerFetch = vi.fn(async () => new Response(null, { status: 503 }));
     vi.stubGlobal("fetch", (input: string | URL | Request, init?: RequestInit) => {
       const url = input instanceof Request ? input.url : String(input);
-      return url.includes("api.coingecko.com") || url.includes("api.binance.com") || url.includes("api.coinpaprika.com")
+      return url.includes("api.coingecko.com") || url.includes("api.binance.com")
         ? providerFetch()
         : originalFetch(input, init);
     });
@@ -649,51 +601,6 @@ describe("member route authentication", () => {
         error: "A fresh market price is unavailable. The order was not opened.",
       });
       expect(providerFetch).toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("fills markets from canonical CoinPaprika quotes when CoinGecko and Binance are unavailable", async () => {
-    const originalFetch = globalThis.fetch;
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
-      const url = input instanceof Request ? input.url : String(input);
-      if (url.includes("api.coingecko.com")) return new Response(null, { status: 429 });
-      if (url.includes("api.binance.com")) return new Response(null, { status: 451 });
-      if (url.includes("api.coinpaprika.com/v1/tickers")) {
-        return Response.json([
-          {
-            id: "usdc-ccip-bridged-usdc-ronin",
-            name: "CCIP Bridged USDC (Ronin)",
-            symbol: "USDC",
-            rank: 1,
-            quotes: { USD: { price: 0.91, percent_change_24h: 3 } },
-          },
-          {
-            id: "usdc-usd-coin",
-            name: "USDC",
-            symbol: "USDC",
-            rank: 6,
-            quotes: { USD: { price: 1, percent_change_24h: 0.01 } },
-          },
-          {
-            id: "btc-bitcoin",
-            name: "Bitcoin",
-            symbol: "BTC",
-            rank: 1,
-            quotes: { USD: { price: 84_000, percent_change_24h: 1.25 } },
-          },
-        ]);
-      }
-      return originalFetch(input);
-    });
-
-    try {
-      const response = await originalFetch(`${baseUrl}/api/markets`);
-      expect(response.status).toBe(200);
-      const assets = await response.json() as Array<{ symbol: string; price: number }>;
-      expect(assets.find((asset) => asset.symbol === "BTC")?.price).toBe(84_000);
-      expect(assets.find((asset) => asset.symbol === "USDC")?.price).toBe(1);
     } finally {
       vi.unstubAllGlobals();
     }

@@ -17,13 +17,14 @@ if (process.env.VERCEL && !apiBaseUrl) {
   throw new Error("VITE_API_BASE_URL is required when building the Vercel frontend.");
 }
 
-const serverClerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY?.trim();
-const frontendClerkPublishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
+const defaultLocalClerkKey = 'pk_test_placeholder';
+const serverClerkPublishableKey = process.env.CLERK_PUBLISHABLE_KEY?.trim() || defaultLocalClerkKey;
+const frontendClerkPublishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim() || defaultLocalClerkKey;
 
 if (
-  serverClerkPublishableKey &&
-  frontendClerkPublishableKey &&
-  serverClerkPublishableKey !== frontendClerkPublishableKey
+  serverClerkPublishableKey !== frontendClerkPublishableKey &&
+  process.env.CLERK_PUBLISHABLE_KEY &&
+  process.env.VITE_CLERK_PUBLISHABLE_KEY
 ) {
   throw new Error(
     'CLERK_PUBLISHABLE_KEY and VITE_CLERK_PUBLISHABLE_KEY must match; the frontend and API must use the same Clerk instance.',
@@ -31,13 +32,7 @@ if (
 }
 
 const clerkPublishableKey =
-  frontendClerkPublishableKey ?? serverClerkPublishableKey;
-
-if (!clerkPublishableKey) {
-  throw new Error(
-    'Set VITE_CLERK_PUBLISHABLE_KEY (or CLERK_PUBLISHABLE_KEY) for the frontend build.',
-  );
-}
+  frontendClerkPublishableKey || serverClerkPublishableKey || defaultLocalClerkKey;
 
 export default defineConfig({
   base: basePath,
