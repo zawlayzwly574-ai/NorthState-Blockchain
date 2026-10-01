@@ -29,9 +29,16 @@ describe("CoinGecko API configuration", () => {
     expect(config.headers).toEqual({ accept: "application/json" });
   });
 
+  it("can explicitly ignore a configured key and use the public API", () => {
+    const config = createCoinGeckoConfig("unused-key", "public");
+
+    expect(config.baseUrl).toBe("https://api.coingecko.com/api/v3");
+    expect(config.headers).toEqual({ accept: "application/json" });
+  });
+
   it("rejects an unknown API key type", () => {
     expect(() => createCoinGeckoConfig("test-key", "unknown")).toThrow(
-      "MARKET_API_KEY_TYPE must be either 'pro' or 'demo'.",
+      "MARKET_API_KEY_TYPE must be 'pro', 'demo', or 'public'.",
     );
   });
 });

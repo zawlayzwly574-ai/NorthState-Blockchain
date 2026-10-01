@@ -26,7 +26,7 @@ Optional:
 
 - `PG_POOL_MAX` — connection limit per Railway process; defaults to `5`. Keep the total across Railway replicas within Neon connection limits.
 - `MARKET_API_KEY` — optional CoinGecko API key for market data. Keys default to Pro; Pro requests use `pro-api.coingecko.com` and the `x-cg-pro-api-key` header.
-- `MARKET_API_KEY_TYPE` — optional `pro` or `demo`; defaults to `pro` when a key is configured. Demo keys use `api.coingecko.com` and the `x-cg-demo-api-key` header.
+- `MARKET_API_KEY_TYPE` — optional `pro`, `demo`, or `public`; defaults to `pro` when a key is configured. Demo keys use `api.coingecko.com` and the `x-cg-demo-api-key` header. Public mode ignores `MARKET_API_KEY` and calls the public API without authentication.
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` — only needed if enabling Twilio-backed phone verification.
 - `PORT` is assigned by Railway; do not hard-code it.
 

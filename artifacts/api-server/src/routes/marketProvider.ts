@@ -3,8 +3,8 @@ const COINGECKO_PRO_API = "https://pro-api.coingecko.com/api/v3";
 
 export function createCoinGeckoConfig(apiKey = "", keyType = "pro") {
   const normalizedKeyType = keyType.trim().toLowerCase();
-  if (apiKey && normalizedKeyType !== "pro" && normalizedKeyType !== "demo") {
-    throw new Error("MARKET_API_KEY_TYPE must be either 'pro' or 'demo'.");
+  if (apiKey && !["pro", "demo", "public"].includes(normalizedKeyType)) {
+    throw new Error("MARKET_API_KEY_TYPE must be 'pro', 'demo', or 'public'.");
   }
 
   const isProKey = Boolean(apiKey) && normalizedKeyType === "pro";
