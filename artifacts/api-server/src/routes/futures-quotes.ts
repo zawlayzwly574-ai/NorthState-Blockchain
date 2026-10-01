@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import type { FuturesQuote } from "./futures";
+import { coinGeckoApiBaseUrl } from "./marketProvider";
 
 const MAX_TRADE_AGE_MS = 15_000;
 const QUOTE_CACHE_MS = 2_000;
@@ -91,7 +92,7 @@ export function createFuturesQuoteFetcher(
 
     try {
       const response = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(definition.id)}&vs_currencies=usd&include_last_updated_at=true`,
+        `${coinGeckoApiBaseUrl}/simple/price?ids=${encodeURIComponent(definition.id)}&vs_currencies=usd&include_last_updated_at=true`,
         { headers: marketHeaders, signal: AbortSignal.timeout(4000) },
       );
       if (!response.ok) return null;
@@ -178,7 +179,7 @@ export function createTradingHistoryFetcher(
 
     try {
       const response = await fetch(
-        `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(definition.id)}/market_chart?vs_currency=usd&days=1`,
+        `${coinGeckoApiBaseUrl}/coins/${encodeURIComponent(definition.id)}/market_chart?vs_currency=usd&days=1`,
         { headers: marketHeaders, signal: AbortSignal.timeout(5000) },
       );
       if (!response.ok) return [];

@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { createFuturesRouter } from "./futures";
 import { createFuturesQuoteFetcher, createTradingHistoryFetcher } from "./futures-quotes";
+import { coinGeckoApiBaseUrl, marketHeaders } from "./marketProvider";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -494,13 +495,6 @@ async function requireVerifiedMember(req: Request, res: Response, next: NextFunc
   next();
 }
 
-const MARKET_API_KEY = process.env.MARKET_API_KEY ?? "";
-const marketHeaders: Record<string, string> = { accept: "application/json" };
-if (MARKET_API_KEY) {
-  marketHeaders["x-cg-pro-api-key"] = MARKET_API_KEY;
-  marketHeaders["x-cg-demo-api-key"] = MARKET_API_KEY;
-}
-
 type MarketQuote = {
   usd?: number;
   usd_24h_change?: number;
@@ -604,7 +598,7 @@ async function fetchFreshMarketAssets(
   allowStale = true,
 ): Promise<MarketAsset[]> {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
-  const endpoint = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
+  const endpoint = `${coinGeckoApiBaseUrl}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
   let liveData: Record<string, MarketQuote> = {};
 
   try {
@@ -849,7 +843,7 @@ router.get("/markets/:symbol", async (req, res) => {
   try {
     const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
+      `${coinGeckoApiBaseUrl}/coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
       { headers: marketHeaders, signal: AbortSignal.timeout(5000) },
     );
     if (response.ok) {
