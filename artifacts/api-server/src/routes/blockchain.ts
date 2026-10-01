@@ -609,7 +609,17 @@ async function fetchFreshMarketAssets(
     if (response.ok) {
       liveData = (await response.json()) as typeof liveData;
     } else {
-      req.log.warn({ status: response.status }, "Market provider returned a non-success status");
+      const providerError = await response.clone().json().catch(() => null) as {
+        status?: { error_message?: string };
+        error?: string;
+      } | null;
+      req.log.warn({
+        status: response.status,
+        host: new URL(endpoint).host,
+        keyType: process.env.MARKET_API_KEY_TYPE ?? "unset",
+        keyConfigured: Boolean(process.env.MARKET_API_KEY?.trim()),
+        providerError: providerError?.status?.error_message ?? providerError?.error,
+      }, "Market provider returned a non-success status");
     }
   } catch (error) {
     req.log.warn({ err: error }, "Market provider could not be reached; trying alternate quotes");
