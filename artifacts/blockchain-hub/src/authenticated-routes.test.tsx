@@ -168,7 +168,13 @@ describe("authenticated portfolio routes", () => {
 
     expect(await screen.findByTestId("select-kyc-document")).toBeInTheDocument();
     expect(screen.getByTestId("input-kyc-id-front")).toBeInTheDocument();
+    expect(screen.queryByTestId("input-kyc-id-back")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("select-kyc-document"), { target: { value: "national_id" } });
     expect(screen.getByTestId("input-kyc-id-back")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("select-kyc-document"), { target: { value: "passport" } });
+    expect(screen.queryByTestId("input-kyc-id-back")).not.toBeInTheDocument();
     expect(screen.queryByText("We could not load this view")).not.toBeInTheDocument();
   });
 

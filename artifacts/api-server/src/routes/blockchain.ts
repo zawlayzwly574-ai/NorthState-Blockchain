@@ -1286,7 +1286,7 @@ router.post("/kyc", async (req, res) => {
   const parsedBody = SubmitKycBody.safeParse(req.body);
   if (!parsedBody.success) {
     res.status(400).json({
-      error: "Check all personal details and upload two valid ID photos. The combined document must be under 100 MB.",
+      error: "Check all personal details and upload a valid document photo. The document must be under 100 MB.",
     });
     return;
   }
@@ -1299,7 +1299,7 @@ router.post("/kyc", async (req, res) => {
   const normalizedDecodedDocument = documentBytes.toString("base64").replace(/=+$/, "");
   const actualFormat = detectImageSignature(documentBytes);
   if (!declaredMime || !actualFormat || actualFormat !== declaredMime || normalizedDecodedDocument !== normalizedDocument) {
-    res.status(400).json({ error: "A valid combined ID document image is required." });
+    res.status(400).json({ error: "A valid document photo is required. Please upload a clear JPG, PNG, WEBP, or GIF image." });
     return;
   }
   const userId = getUserId(req);

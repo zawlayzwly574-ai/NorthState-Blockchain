@@ -1925,6 +1925,7 @@ export function Settings() {
   const share = useCreateReferralShare();
   const [tab, setTab] = useState<'profile' | 'security' | 'verification' | 'referrals'>('profile');
   const [feedback, setFeedback] = useState('');
+  const [documentType, setDocumentType] = useState<'passport' | 'drivers_license' | 'national_id'>('passport');
   const [docFrontPreview, setDocFrontPreview] = useState<string | null>(null);
   const [docBackPreview, setDocBackPreview] = useState<string | null>(null);
   const [docFrontFileName, setDocFrontFileName] = useState('');
@@ -2077,25 +2078,29 @@ export function Settings() {
   const submitKyc = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    if (!docFrontPreview || !docBackPreview) {
-      setDocUploadError('Upload both the Front Side of ID and Back Side of ID before submitting.');
+    const selectedDocumentType = String(form.get('documentType')) as typeof documentType;
+    const needsBackImage = selectedDocumentType !== 'passport';
+    if (!docFrontPreview || (needsBackImage && !docBackPreview)) {
+      setDocUploadError(needsBackImage
+        ? 'Upload both the front and back of your ID before submitting.'
+        : 'Upload a clear photo of your passport photo page before submitting.');
       return;
     }
     setDocUploadError('');
     setKycSubmitError('');
     setDocComposing(true);
     try {
-      // Keep the existing single-image API/database contract backward-compatible
-      // by storing both required sides in one reviewable composite image.
-      const combinedDocument = await composeDocumentImages(docFrontPreview, docBackPreview);
+      const documentImageBase64 = needsBackImage
+        ? await composeDocumentImages(docFrontPreview, docBackPreview!)
+        : docFrontPreview;
       const result = await kyc.mutateAsync({
         data: {
           fullName: String(form.get('fullName')).trim(),
           country: String(form.get('country')).trim(),
           city: String(form.get('city')).trim(),
           occupation: String(form.get('occupation')).trim(),
-          documentType: String(form.get('documentType')) as 'passport' | 'drivers_license' | 'national_id',
-          documentImageBase64: combinedDocument,
+          documentType: selectedDocumentType,
+          documentImageBase64,
         }
       });
       qc.setQueryData(getGetProfileQueryKey(), (old: typeof profileData) => old ? { ...old, verificationStatus: result.status } : old);
@@ -2275,23 +2280,56 @@ export function Settings() {
                     <Field label="Country of residence" name="country" placeholder="United States" required data-testid="input-kyc-country" />
                     <Field label="City / Town / State" name="city" placeholder="New York, NY" required data-testid="input-kyc-city" />
                     <Field label="Occupation / Employment" name="occupation" placeholder="Software Engineer" required data-testid="input-kyc-occupation" />
-                    <SelectField label="Document type" name="documentType" defaultValue="passport" data-testid="select-kyc-document">
+                    <SelectField
+                      label="Document type"
+                      name="documentType"
+                      value={documentType}
+                      onChange={(event) => {
+                        const nextType = event.currentTarget.value as typeof documentType;
+                        setDocumentType(nextType);
+                        setDocUploadError('');
+                        if (nextType === 'passport') {
+                          setDocBackFileName('');
+                          setDocBackPreview(null);
+                        }
+                      }}
+                      data-testid="select-kyc-document"
+                    >
                       <option value="national_id">ID</option>
                       <option value="passport">Passport</option>
                       <option value="drivers_license">Driver License</option>
                     </SelectField>
                   </div>
 
-                  {/* Both ID sides are required; the submit handler preserves the existing API payload. */}
                   <div className="grid gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Upload ID images</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Any photo format (JPG, PNG, WEBP, GIF, HEIC, and more) is accepted and optimized automatically before secure submission.</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {documentType === 'passport' ? 'Upload passport photo page' : 'Upload ID images'}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {documentType === 'passport'
+                          ? 'Upload one clear photo of the page showing your photo and details.'
+                          : 'Upload clear photos of both sides of your ID.'} Any common photo format (JPG, PNG, WEBP, GIF, HEIC, and more) is accepted and optimized automatically.
+                      </p>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {([
-                        { side: 'front' as const, id: 'kyc-id-front', label: 'Front Side of ID', fileName: docFrontFileName, preview: docFrontPreview, testId: 'input-kyc-id-front' },
-                        { side: 'back' as const, id: 'kyc-id-back', label: 'Back Side of ID', fileName: docBackFileName, preview: docBackPreview, testId: 'input-kyc-id-back' },
+                        {
+                          side: 'front' as const,
+                          id: 'kyc-id-front',
+                          label: documentType === 'passport' ? 'Passport photo/details page' : 'Front side of ID',
+                          fileName: docFrontFileName,
+                          preview: docFrontPreview,
+                          testId: 'input-kyc-id-front',
+                        },
+                        ...(documentType === 'passport' ? [] : [{
+                          side: 'back' as const,
+                          id: 'kyc-id-back',
+                          label: 'Back side of ID',
+                          fileName: docBackFileName,
+                          preview: docBackPreview,
+                          testId: 'input-kyc-id-back',
+                        }]),
                       ]).map(({ side, id, label, fileName, preview, testId }) => (
                         <div key={side} className="grid gap-2">
                           <label htmlFor={id} className="text-sm font-semibold text-foreground">{label}</label>
