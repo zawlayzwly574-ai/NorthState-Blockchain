@@ -507,6 +507,13 @@ if (MARKET_API_KEY) {
   marketHeaders["x-cg-demo-api-key"] = MARKET_API_KEY;
 }
 
+const coinPaprikaIdsByMarketId: Record<string, string> = {
+  "usd-coin": "usdc-usd-coin",
+  "leo-token": "leo-leo-token",
+  "usd1-wlfi": "usd1-usd1",
+  "hedera-hashgraph": "hbar-hedera-hashgraph",
+};
+
 type MarketQuote = {
   usd?: number;
   usd_24h_change?: number;
@@ -531,6 +538,25 @@ type BinanceTicker = {
   priceChangePercent?: string;
   quoteVolume?: string;
 };
+
+type CoinPaprikaTicker = {
+  id?: string;
+  name?: string;
+  symbol?: string;
+  rank?: number;
+  quotes?: {
+    USD?: {
+      price?: number;
+      percent_change_24h?: number;
+      market_cap?: number;
+      volume_24h?: number;
+    };
+  };
+};
+
+function normalizedAssetName(value: string | undefined) {
+  return (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 const binanceSymbols: Record<string, string> = {
   bitcoin: "BTCUSDT",
@@ -605,6 +631,46 @@ async function fetchBinanceMarketData(
   }
 }
 
+async function fetchCoinPaprikaMarketData(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+) {
+  try {
+    const response = await fetch("https://api.coinpaprika.com/v1/tickers?quotes=USD", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) {
+      req.log.warn({ status: response.status }, "CoinPaprika market provider returned a non-success status");
+      return {} as Record<string, MarketQuote>;
+    }
+
+    const tickers = await response.json() as CoinPaprikaTicker[];
+    return marketDefinitions.reduce<Record<string, MarketQuote>>((quotes, definition) => {
+      const candidates = tickers.filter((ticker) =>
+        ticker.symbol?.toUpperCase() === definition.symbol.toUpperCase()
+        && isValidMarketQuote({ usd: ticker.quotes?.USD?.price }),
+      );
+      const canonicalId = coinPaprikaIdsByMarketId[definition.id];
+      const ticker = canonicalId
+        ? candidates.find((candidate) => candidate.id === canonicalId)
+        : candidates.find((candidate) => normalizedAssetName(candidate.name) === normalizedAssetName(definition.name));
+      const quote = ticker?.quotes?.USD;
+      if (quote && isValidMarketQuote({ usd: quote.price })) {
+        quotes[definition.id] = {
+          usd: quote.price,
+          usd_24h_change: quote.percent_change_24h,
+          usd_market_cap: quote.market_cap,
+          usd_24h_vol: quote.volume_24h,
+        };
+      }
+      return quotes;
+    }, {});
+  } catch (error) {
+    req.log.warn({ err: error }, "CoinPaprika market provider could not be reached");
+    return {} as Record<string, MarketQuote>;
+  }
+}
+
 async function fetchFreshMarketAssets(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
   allowStale = true,
@@ -633,6 +699,15 @@ async function fetchFreshMarketAssets(
     for (const definition of marketDefinitions) {
       if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(alternateData[definition.id])) {
         liveData[definition.id] = alternateData[definition.id];
+      }
+    }
+  }
+
+  if (marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]))) {
+    const coinPaprikaData = await fetchCoinPaprikaMarketData(req);
+    for (const definition of marketDefinitions) {
+      if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(coinPaprikaData[definition.id])) {
+        liveData[definition.id] = coinPaprikaData[definition.id];
       }
     }
   }

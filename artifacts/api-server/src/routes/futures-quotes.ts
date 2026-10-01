@@ -3,12 +3,39 @@ import type { FuturesQuote } from "./futures";
 
 const MAX_TRADE_AGE_MS = 15_000;
 const QUOTE_CACHE_MS = 2_000;
+const coinbaseProductsByMarketId: Record<string, string> = {
+  bitcoin: "BTC-USD",
+  ethereum: "ETH-USD",
+  binancecoin: "BNB-USD",
+  "usd-coin": "USDC-USD",
+  ripple: "XRP-USD",
+  solana: "SOL-USD",
+  tron: "TRX-USD",
+  zcash: "ZEC-USD",
+  dogecoin: "DOGE-USD",
+  cardano: "ADA-USD",
+  chainlink: "LINK-USD",
+  stellar: "XLM-USD",
+  "bitcoin-cash": "BCH-USD",
+  "hedera-hashgraph": "HBAR-USD",
+  "avalanche-2": "AVAX-USD",
+  sui: "SUI-USD",
+  "shiba-inu": "SHIB-USD",
+  uniswap: "UNI-USD",
+  litecoin: "LTC-USD",
+  bittensor: "TAO-USD",
+  near: "NEAR-USD",
+  tether: "USDT-USD",
+};
 
 // A recently received HTTP response is not proof that the underlying market
 // trade is recent. Require a provider-supplied timestamp as well as a price.
 export function timestampedFuturesQuote(priceValue: unknown, timestampValue: unknown, now = Date.now()): FuturesQuote | null {
   const price = Number(priceValue);
-  const updatedAt = Number(timestampValue);
+  const numericTimestamp = Number(timestampValue);
+  const updatedAt = Number.isFinite(numericTimestamp)
+    ? numericTimestamp
+    : typeof timestampValue === "string" ? Date.parse(timestampValue) : Number.NaN;
   if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(updatedAt)
     || updatedAt > now + 2_000 || now - updatedAt > MAX_TRADE_AGE_MS) return null;
   const rounded = Number(price.toFixed(8));
@@ -42,6 +69,23 @@ export function createFuturesQuoteFetcher(
         }
       } catch (error) {
         req.log.warn({ err: error, symbol }, "Binance Futures reference trade unavailable");
+      }
+    }
+
+    const coinbaseProduct = coinbaseProductsByMarketId[definition.id];
+    if (coinbaseProduct) {
+      try {
+        const response = await fetch(
+          `https://api.exchange.coinbase.com/products/${encodeURIComponent(coinbaseProduct)}/ticker`,
+          { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) },
+        );
+        if (response.ok) {
+          const ticker = await response.json() as { price?: string; time?: string };
+          const quote = timestampedFuturesQuote(ticker.price, ticker.time);
+          if (quote) return quote;
+        }
+      } catch (error) {
+        req.log.warn({ err: error, symbol }, "Coinbase Futures reference quote unavailable");
       }
     }
 
@@ -108,6 +152,30 @@ export function createTradingHistoryFetcher(
         req.log.warn({ err: error, symbol }, "Trading chart candle history unavailable");
       }
     }
+
+    const coinbaseProduct = coinbaseProductsByMarketId[definition.id];
+    if (coinbaseProduct) {
+      try {
+        const response = await fetch(
+          `https://api.exchange.coinbase.com/products/${encodeURIComponent(coinbaseProduct)}/candles?granularity=60`,
+          { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) },
+        );
+        if (response.ok) {
+          const candles = await response.json() as Array<[number, string, string, string, string]>;
+          const points = candles.flatMap((candle) => {
+            const timestamp = Number(candle[0]) * 1000;
+            const price = Number(candle[4]);
+            return Number.isFinite(timestamp) && Number.isFinite(price) && price > 0 && timestamp <= Date.now()
+              ? [{ t: timestamp, price }]
+              : [];
+          }).sort((left, right) => left.t - right.t);
+          if (points.length) return points.slice(-80);
+        }
+      } catch (error) {
+        req.log.warn({ err: error, symbol }, "Coinbase Trading chart history unavailable");
+      }
+    }
+
     try {
       const response = await fetch(
         `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(definition.id)}/market_chart?vs_currency=usd&days=1`,
