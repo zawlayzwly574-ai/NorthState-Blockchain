@@ -261,7 +261,7 @@ function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => 
 }
 
 export default function Users() {
-  const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
+  const { data: users, isLoading, isFetching, isError, error, refetch } = useAdminUsers();
   const updateStatus = useUpdateAdminUserStatus();
   const deleteUser = useDeleteAdminUser();
   const adjustBalance = useAdjustAdminUserBalance();
@@ -279,9 +279,10 @@ export default function Users() {
   const [balanceReason, setBalanceReason] = useState('');
   const [balanceError, setBalanceError] = useState<string | null>(null);
 
+  const normalizedSearch = search.trim().toLocaleLowerCase();
   const filtered = users?.filter(u =>
-    u.displayName.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase())
+    String(u.displayName ?? '').toLocaleLowerCase().includes(normalizedSearch) ||
+    String(u.email ?? '').toLocaleLowerCase().includes(normalizedSearch)
   );
 
   const handleStatusChange = (
@@ -414,6 +415,7 @@ export default function Users() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+              data-testid="input-search-users"
             />
           </div>
         </div>
@@ -430,11 +432,12 @@ export default function Users() {
             <span>Could not refresh the user list. Showing the last loaded results.</span>
             <button
               type="button"
+              disabled={isFetching}
               onClick={() => { void refetch(); }}
-              className="rounded-md border border-amber-400/30 px-3 py-1.5 text-xs font-bold hover:bg-amber-400/10"
+              className="rounded-md border border-amber-400/30 px-3 py-1.5 text-xs font-bold hover:bg-amber-400/10 disabled:cursor-wait disabled:opacity-60"
               data-testid="button-retry-users"
             >
-              Retry
+              {isFetching ? 'Retrying…' : 'Retry'}
             </button>
           </div>
         )}
@@ -473,18 +476,19 @@ export default function Users() {
                     </p>
                     <button
                       type="button"
+                      disabled={isFetching}
                       onClick={() => { void refetch(); }}
-                      className="mt-4 rounded-md border border-primary/30 px-4 py-2 text-xs font-bold text-primary transition hover:bg-primary/10"
+                      className="mt-4 rounded-md border border-primary/30 px-4 py-2 text-xs font-bold text-primary transition hover:bg-primary/10 disabled:cursor-wait disabled:opacity-60"
                       data-testid="button-retry-users"
                     >
-                      Retry
+                      {isFetching ? 'Retrying…' : 'Retry'}
                     </button>
                   </td>
                 </tr>
               ) : !filtered || filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
-                    No users found.
+                    {normalizedSearch ? 'No matching users.' : 'No users found.'}
                   </td>
                 </tr>
               ) : (

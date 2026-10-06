@@ -196,7 +196,12 @@ function PriceChart({
 function CountdownTimer({ expiresAt }: { expiresAt: string }) {
   const [secs, setSecs] = useState(0);
   useEffect(() => {
-    const tick = () => setSecs(Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000)));
+    const expiresAtMs = Date.parse(expiresAt);
+    const tick = () => setSecs(
+      Number.isFinite(expiresAtMs)
+        ? Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000))
+        : 0,
+    );
     tick();
     const iv = setInterval(tick, 500);
     return () => clearInterval(iv);
@@ -1032,7 +1037,27 @@ export function TradingPage() {
             {activeTrades.map(trade => {
               const pct = Math.max(0, 1 - (new Date(trade.expiresAt).getTime() - Date.now()) / (trade.timeframeSecs * 1000));
               return (
-                <div key={trade.id} className="overflow-hidden rounded-xl border border-border/40 bg-secondary/20">
+                <button
+                  type="button"
+                  key={trade.id}
+                  onClick={() => {
+                    const direction = trade.direction;
+                    if (direction !== 'long' && direction !== 'short') return;
+                    setActiveSpotTrade({
+                      id: trade.id,
+                      asset: trade.asset,
+                      direction,
+                      amount: Number(trade.amount),
+                      timeframeSecs: trade.timeframeSecs,
+                      entryPrice: Number(trade.entryPrice),
+                      expiresAt: trade.expiresAt,
+                      payoutRate: Number(trade.payoutRate),
+                    });
+                  }}
+                  aria-label={`View countdown and details for ${trade.asset} ${trade.direction} trade`}
+                  data-testid={`button-active-trade-${trade.id}`}
+                  className="block w-full overflow-hidden rounded-xl border border-border/40 bg-secondary/20 text-left transition hover:border-primary/40 hover:bg-secondary/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   {/* Progress bar */}
                   <div className="h-0.5 w-full bg-border/30">
                     <div
@@ -1062,7 +1087,7 @@ export function TradingPage() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

@@ -157,6 +157,7 @@ export function useAdminUsers() {
   return useQuery<User[]>({
     queryKey: ['admin', 'users'],
     queryFn: () => apiClient('/users'),
+    retry: false,
   });
 }
 
