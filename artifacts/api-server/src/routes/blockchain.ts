@@ -1708,60 +1708,64 @@ router.get("/admin/stats", requireAdmin, async (_req, res) => {
 
 // ─── Admin: users ────────────────────────────────────────────────────────────
 
-router.get("/admin/users", requireAdmin, async (_req, res) => {
+router.get("/admin/users", requireAdmin, async (req, res): Promise<void> => {
   try {
-    let offset = 0;
-    const limit = 100;
-    while (true) {
-      const page = await clerkClient.users.getUserList({ limit, offset });
-      for (const user of page.data) {
-        await ensureSeededUser(user.id);
-      }
-      offset += page.data.length;
-      if (page.data.length < limit || offset >= page.totalCount) break;
-    }
-  } catch {
-    // Preserve availability of locally known users if Clerk is temporarily unavailable.
+    // This is a read-only listing: it must not seed or repair member records.
+    const profiles = await db
+      .select()
+      .from(walletProfilesTable)
+      .orderBy(desc(walletProfilesTable.createdAt));
+    const clerkUserIds = profiles.map((profile) => profile.clerkUserId);
+    const accounts = clerkUserIds.length
+      ? await db.select().from(tradingAccountsTable).where(inArray(tradingAccountsTable.clerkUserId, clerkUserIds))
+      : [];
+    const accountByUser = new Map(accounts.map((account) => [account.clerkUserId, account]));
+    const result = await Promise.all(
+      profiles.map(async (profile) => {
+        const account = accountByUser.get(profile.clerkUserId);
+        const totalHoldings = asNumber(account?.balance) + asNumber(account?.futuresBalance);
+
+        let email = "";
+        let displayName = "";
+        let accountStatus: AccountOperationalStatus | "deleted" = "active";
+        try {
+          const clerkUser = await clerkClient.users.getUser(profile.clerkUserId);
+          const primaryEmail = clerkUser.emailAddresses.find(
+            (address) => address.id === clerkUser.primaryEmailAddressId,
+          );
+          email = (primaryEmail ?? clerkUser.emailAddresses[0])?.emailAddress?.trim() ?? "";
+          displayName =
+            [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim()
+            || emailPrefix(email);
+          const status = clerkUser.privateMetadata?.[accountStatusKey];
+          accountStatus = status === "suspended" || status === "frozen" ? status : "active";
+        } catch (error: unknown) {
+          if ((error as { status?: number })?.status !== 404) throw error;
+          // Clerk no longer has this user; use only the identity already saved locally.
+          email = profile.email;
+          displayName = profile.displayName?.trim() || emailPrefix(email);
+          accountStatus = "deleted";
+        }
+
+        return {
+          id: String(profile.id),
+          clerkUserId: profile.clerkUserId,
+          displayName,
+          email,
+          verificationStatus: profile.verificationStatus,
+          referralCode: profile.referralCode,
+          totalHoldings,
+          createdAt: profile.createdAt.toISOString(),
+          accountStatus,
+          tradeOutcomeMode: accountByUser.get(profile.clerkUserId)?.tradeOutcomeMode ?? "auto",
+        };
+      }),
+    );
+    res.json(result);
+  } catch (error: unknown) {
+    req.log.error({ err: error }, "Admin user listing failed");
+    res.status(503).json({ error: "Unable to load users right now. Please retry." });
   }
-  const profiles = await db
-    .select()
-    .from(walletProfilesTable)
-    .orderBy(desc(walletProfilesTable.createdAt));
-  const clerkUserIds = profiles.map((profile) => profile.clerkUserId);
-  const accounts = clerkUserIds.length
-    ? await db.select().from(tradingAccountsTable).where(inArray(tradingAccountsTable.clerkUserId, clerkUserIds))
-    : [];
-  const accountByUser = new Map(accounts.map((account) => [account.clerkUserId, account]));
-  const result = await Promise.all(
-    profiles.map(async (profile) => {
-      // Real, live trading balance — never a cached or seeded figure — matching
-      // exactly what the user's own Dashboard/Wallet reads.
-      const account = accountByUser.get(profile.clerkUserId);
-      const totalHoldings = asNumber(account?.balance) + asNumber(account?.futuresBalance);
-      const clerkInfo = await fetchClerkUserInfo(profile.clerkUserId);
-      const email = clerkInfo.email || profile.email;
-      let accountStatus: AccountOperationalStatus | "deleted" = "active";
-      try {
-        accountStatus = await getAccountOperationalStatus(profile.clerkUserId);
-      } catch (error: unknown) {
-        if ((error as { status?: number })?.status === 404) accountStatus = "deleted";
-        else throw error;
-      }
-      return {
-        id: String(profile.id),
-        clerkUserId: profile.clerkUserId,
-        displayName: clerkInfo.name || emailPrefix(email),
-        email,
-        verificationStatus: profile.verificationStatus,
-        referralCode: profile.referralCode,
-        totalHoldings,
-        createdAt: profile.createdAt.toISOString(),
-        accountStatus,
-        tradeOutcomeMode: accountByUser.get(profile.clerkUserId)?.tradeOutcomeMode ?? "auto",
-      };
-    }),
-  );
-  res.json(result);
 });
 
 // Exact amount+value fingerprints of the fixed demo holdings that were once
@@ -2621,7 +2625,8 @@ router.post("/trading/trades", async (req, res) => {
   let entryPrice: number;
   try {
     const assets = await fetchMarketAssets(req);
-    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === assetSymbol);
+    const quoteSymbol = assetSymbol === "GOLD" ? "XAUT" : assetSymbol;
+    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === quoteSymbol);
     entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
   } catch {
     entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;

@@ -30,6 +30,12 @@ import {
 } from '@workspace/api-client-react';
 import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
 import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -374,6 +380,181 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
   );
 }
 
+interface ActiveSpotTradeSnapshot {
+  id: number;
+  asset: string;
+  direction: 'long' | 'short';
+  amount: number;
+  timeframeSecs: number;
+  entryPrice: number;
+  expiresAt: string;
+  payoutRate: number;
+}
+
+function ActiveTradeStatusModal({
+  trade,
+  currentPrice,
+  settledTrade,
+  onClose,
+}: {
+  trade: ActiveSpotTradeSnapshot;
+  currentPrice: number | null;
+  settledTrade?: Trade;
+  onClose: () => void;
+}) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const expiresAtMs = Date.parse(trade.expiresAt);
+  const remainingMs = Number.isFinite(expiresAtMs) ? Math.max(0, expiresAtMs - now) : 0;
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const durationMs = trade.timeframeSecs * 1000;
+  const progress = durationMs > 0 ? Math.min(1, remainingMs / durationMs) : 0;
+  const circumference = 2 * Math.PI * 50;
+  const isSettled = settledTrade?.status === 'completed';
+  const realizedProfitLoss = settledTrade?.status === 'completed'
+    ? settledTrade.payout ?? (
+      settledTrade.result === 'win'
+        ? trade.amount * trade.payoutRate
+        : settledTrade.result === 'loss'
+          ? -trade.amount
+          : null
+    )
+    : null;
+  const directionLabel = trade.direction === 'long'
+    ? 'Bullish · Buy / Long'
+    : 'Bearish · Sell / Short';
+  const statusLabel = settledTrade?.status === 'completed'
+    ? settledTrade.result === 'win'
+      ? 'Won'
+      : settledTrade.result === 'loss'
+        ? 'Lost'
+        : 'Completed'
+    : remainingSeconds > 0
+      ? 'Active'
+      : 'Awaiting settlement';
+  const amount = trade.amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const potentialProfit = (trade.amount * trade.payoutRate).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const potentialLoss = trade.amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        className="w-[calc(100vw-2rem)] max-w-md gap-0 overflow-hidden rounded-3xl border border-amber-400/15 bg-[#191919] p-0 text-foreground shadow-[0_24px_90px_rgba(0,0,0,.7)] [&>button]:right-4 [&>button]:top-4 [&>button]:rounded-full [&>button]:p-2 [&>button]:text-primary [&>button]:opacity-100 [&>button]:hover:bg-amber-400/10"
+        data-testid="modal-active-trade-status"
+      >
+        <div className="px-5 pb-6 pt-6 sm:px-7">
+          <div className="flex items-start justify-between gap-10">
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-amber-300/70">
+                Spot trade status
+              </p>
+              <DialogTitle className="mt-1 text-xl font-extrabold tracking-tight text-foreground" data-testid="text-trade-pair">
+                {trade.asset}/USDT
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Live status and countdown for your active spot trade.
+              </DialogDescription>
+            </div>
+            <span className={`mt-1 shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider ${
+              isSettled
+                ? settledTrade?.result === 'win'
+                  ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300'
+                  : 'border-rose-400/25 bg-rose-400/10 text-rose-300'
+                : 'border-amber-400/25 bg-amber-400/10 text-amber-200'
+            }`} data-testid="status-active-trade">
+              {statusLabel}
+            </span>
+          </div>
+
+          <div className="flex justify-center py-6">
+            <div className="relative grid h-44 w-44 place-items-center" role="timer" aria-label={`${remainingSeconds} seconds remaining`}>
+              <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
+                <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="8" />
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  fill="none"
+                  stroke="#f5c542"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={circumference}
+                  strokeDashoffset={circumference * (1 - progress)}
+                  className="transition-[stroke-dashoffset] duration-300 ease-linear"
+                  data-testid="progress-trade-countdown"
+                />
+              </svg>
+              <span className="font-mono text-2xl font-extrabold tabular-nums text-foreground" data-testid="text-trade-countdown">
+                {remainingSeconds}s
+              </span>
+            </div>
+          </div>
+
+          <dl className="divide-y divide-white/[0.07] rounded-2xl border border-white/[0.05] bg-white/[0.025] px-4">
+            <div className="flex items-center justify-between gap-4 py-3">
+              <dt className="text-sm text-muted-foreground">Direction</dt>
+              <dd className={`text-right text-sm font-bold ${trade.direction === 'long' ? 'text-emerald-300' : 'text-rose-300'}`} data-testid="text-trade-direction">
+                {directionLabel}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <dt className="text-sm text-muted-foreground">Purchase Amount</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums" data-testid="text-trade-amount">
+                {amount} USDT
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <dt className="text-sm text-muted-foreground">Current Price</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums" data-testid="text-trade-current-price">
+                {currentPrice === null ? 'Waiting for quote' : `$${formatTradePrice(currentPrice)}`}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-3">
+              <dt className="text-sm text-muted-foreground">Purchase Price</dt>
+              <dd className="font-mono text-sm font-bold tabular-nums" data-testid="text-trade-purchase-price">
+                ${formatTradePrice(trade.entryPrice)}
+              </dd>
+            </div>
+            <div className="flex items-start justify-between gap-4 py-3">
+              <dt className="pt-0.5 text-sm text-muted-foreground">
+                {isSettled ? 'Realized Profit / Loss' : 'Expected Profit / Loss'}
+              </dt>
+              {isSettled ? (
+                <dd className={`text-right font-mono text-sm font-extrabold tabular-nums ${
+                  (realizedProfitLoss ?? 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`} data-testid="text-trade-profit-loss">
+                  {realizedProfitLoss === null
+                    ? '—'
+                    : `${realizedProfitLoss >= 0 ? '+' : '-'}${Math.abs(realizedProfitLoss).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`}
+                </dd>
+              ) : (
+                <dd className="space-y-1 text-right font-mono text-xs font-bold tabular-nums" data-testid="text-trade-profit-loss">
+                  <span className="block text-emerald-300">+{potentialProfit} USDT if correct</span>
+                  <span className="block text-rose-300">−{potentialLoss} USDT if incorrect</span>
+                </dd>
+              )}
+            </div>
+          </dl>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Trading Page ────────────────────────────────────────────────────────
 
 export function TradingPage() {
@@ -393,6 +574,7 @@ export function TradingPage() {
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const [tradeError, setTradeError] = useState('');
+  const [activeSpotTrade, setActiveSpotTrade] = useState<ActiveSpotTradeSnapshot | null>(null);
   const qc = useQueryClient();
 
   const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
@@ -463,7 +645,19 @@ export function TradingPage() {
     setPlacing(true);
     setTradeError('');
     try {
-      await placeTradeHook.mutateAsync({ data: { asset, direction, amount: tradeAmt, timeframeSecs } });
+      const placedTrade = await placeTradeHook.mutateAsync({
+        data: { asset, direction, amount: tradeAmt, timeframeSecs },
+      });
+      setActiveSpotTrade({
+        id: placedTrade.tradeId,
+        asset,
+        direction,
+        amount: tradeAmt,
+        timeframeSecs,
+        entryPrice: placedTrade.entryPrice,
+        expiresAt: placedTrade.expiresAt,
+        payoutRate,
+      });
       await refetchTrades();
       qc.invalidateQueries({ queryKey: getGetTradingAccountQueryKey() });
       qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
@@ -1192,6 +1386,14 @@ export function TradingPage() {
         <TradeDetailModal
           trade={selectedTrade}
           onClose={() => setSelectedTradeId(null)}
+        />
+      )}
+      {activeSpotTrade && (
+        <ActiveTradeStatusModal
+          trade={activeSpotTrade}
+          currentPrice={currentPrice}
+          settledTrade={trades.find(trade => trade.id === activeSpotTrade.id)}
+          onClose={() => setActiveSpotTrade(null)}
         />
       )}
     </div>

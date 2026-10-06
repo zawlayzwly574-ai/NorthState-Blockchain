@@ -261,7 +261,7 @@ function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => 
 }
 
 export default function Users() {
-  const { data: users, isLoading } = useAdminUsers();
+  const { data: users, isLoading, isError, error, refetch } = useAdminUsers();
   const updateStatus = useUpdateAdminUserStatus();
   const deleteUser = useDeleteAdminUser();
   const adjustBalance = useAdjustAdminUserBalance();
@@ -425,6 +425,19 @@ export default function Users() {
             {cleanupMessage}
           </div>
         )}
+        {isError && users && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/10 px-5 py-3 text-sm text-amber-200" role="alert">
+            <span>Could not refresh the user list. Showing the last loaded results.</span>
+            <button
+              type="button"
+              onClick={() => { void refetch(); }}
+              className="rounded-md border border-amber-400/30 px-3 py-1.5 text-xs font-bold hover:bg-amber-400/10"
+              data-testid="button-retry-users"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {actionError && (
           <div className="border-b border-rose-500/20 bg-rose-500/10 px-5 py-3 text-sm text-rose-300" role="alert">
             {actionError}
@@ -447,6 +460,25 @@ export default function Users() {
                   <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-primary" />
                     Loading directory...
+                  </td>
+                </tr>
+              ) : isError && !users ? (
+                <tr>
+                  <td colSpan={5} className="px-5 py-8 text-center" role="alert">
+                    <p className="text-sm font-semibold text-rose-300">
+                      Could not load the user list.
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {error instanceof Error ? error.message : 'The request failed. Please try again.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { void refetch(); }}
+                      className="mt-4 rounded-md border border-primary/30 px-4 py-2 text-xs font-bold text-primary transition hover:bg-primary/10"
+                      data-testid="button-retry-users"
+                    >
+                      Retry
+                    </button>
                   </td>
                 </tr>
               ) : !filtered || filtered.length === 0 ? (
