@@ -3,7 +3,7 @@ import { pool } from "@workspace/db";
 
 const router: IRouter = Router();
 
-router.get("/healthz", async (_req, res) => {
+router.get("/healthz", async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -17,7 +17,14 @@ router.get("/healthz", async (_req, res) => {
       return;
     }
     res.json({ status: "ok", database: "ok" });
-  } catch {
+  } catch (error: unknown) {
+    const databaseError = error && typeof error === "object"
+      ? error as { code?: unknown; name?: unknown }
+      : null;
+    req.log.error({
+      databaseErrorCode: typeof databaseError?.code === "string" ? databaseError.code : undefined,
+      databaseErrorName: typeof databaseError?.name === "string" ? databaseError.name : undefined,
+    }, "Database health check failed");
     res.status(503).json({ status: "not_ready", database: "unavailable" });
   }
 });
