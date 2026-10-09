@@ -408,7 +408,7 @@ function coinGeckoHeaders(mode: CoinGeckoAuthMode): Record<string, string> {
 async function fetchCoinGeckoEndpoint(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
   path: string,
-): Promise<Response | null> {
+): Promise<Awaited<ReturnType<typeof fetch>> | null> {
   if (Date.now() < coinGeckoAuthBlockedUntil || Date.now() < coinGeckoRateLimitedUntil) return null;
   const modes: CoinGeckoAuthMode[] = MARKET_API_KEY
     ? [preferredCoinGeckoAuthMode, preferredCoinGeckoAuthMode === "pro" ? "demo" : "pro"]
@@ -417,7 +417,7 @@ async function fetchCoinGeckoEndpoint(
   for (let index = 0; index < modes.length; index += 1) {
     const mode = modes[index];
     const endpoint = `${coinGeckoBaseUrl(mode)}/${path}`;
-    let response: Response;
+    let response: Awaited<ReturnType<typeof fetch>>;
     try {
       response = await fetch(endpoint, {
         headers: coinGeckoHeaders(mode),
