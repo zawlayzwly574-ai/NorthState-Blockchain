@@ -1,4 +1,4 @@
-name: Temporary market provider typecheck
+name: Temporary market provider build and test
 
 on:
   push:
@@ -22,5 +22,5 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @workspace/api-server run typecheck
+      - run: pnpm --filter @workspace/api-server run build
       - run: pnpm --filter @workspace/api-server run test
