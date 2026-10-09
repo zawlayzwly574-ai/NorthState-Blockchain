@@ -25,6 +25,8 @@ jobs:
       - name: Build API Server
         run: pnpm --filter @workspace/api-server run build
       - name: Build Blockchain Hub
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_build_only
         run: pnpm --filter @workspace/blockchain-hub run build
       - name: Test live market feed and Spot outcome logic
         run: pnpm --filter @workspace/api-server exec vitest run src/routes/live-market-feed.test.ts src/routes/trading-outcome.test.ts
