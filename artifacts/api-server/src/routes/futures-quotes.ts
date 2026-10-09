@@ -13,6 +13,7 @@ type MarketQuote = {
   usd_24h_change?: number;
   usd_market_cap?: number;
   usd_24h_vol?: number;
+  updatedAt?: number;
 };
 type MarketSnapshot = Record<string, MarketQuote>;
 type ApiResult = { response: Response; body: any };
@@ -405,6 +406,7 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
             usd: selected.price,
             usd_24h_change: selected.change,
             usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+            updatedAt: selected.updatedAt,
           };
         }
       }
@@ -420,6 +422,7 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
             base: pair[0] ?? "",
             quote: pair[1] ?? "",
             price,
+            updatedAt: Date.now(),
             change: Number.isFinite(Number(row.change_percentage)) ? Number(row.change_percentage) : undefined,
             volume: Number(row.quote_volume),
           };
@@ -432,6 +435,72 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
             usd: selected.price,
             usd_24h_change: selected.change,
             usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+            updatedAt: selected.updatedAt,
+          };
+        }
+      }
+
+      // Bybit's bulk spot snapshot fills symbols missing from OKX and Gate.
+      const bybitResult = await fetchJson(req, "bybit-snapshot", "https://api.bybit.com/v5/market/tickers?category=spot");
+      if (bybitResult?.response.ok && Number(bybitResult.body?.retCode ?? -1) === 0 &&
+        Array.isArray(bybitResult.body?.result?.list)) {
+        const bybitFetchedAt = Number(bybitResult.body.time) || Date.now();
+        const rows = bybitResult.body.result.list.map((ticker: any) => {
+          const symbol = String(ticker.symbol ?? "").toUpperCase();
+          const quote = ["USDC", "USDT", "USD"].find((suffix) => symbol.endsWith(suffix));
+          return {
+            base: quote ? symbol.slice(0, -quote.length) : "",
+            quote: quote ?? "",
+            price: Number(ticker.lastPrice),
+            updatedAt: bybitFetchedAt,
+            change: Number.isFinite(Number(ticker.price24hPcnt)) ? Number(ticker.price24hPcnt) * 100 : undefined,
+            volume: Number(ticker.turnover24h),
+          };
+        });
+        for (const definition of definitions) {
+          if (data[definition.symbol]?.usd && data[definition.symbol].usd! > 0) continue;
+          const candidates = rows
+            .filter((row: any) => providerSymbolMatch(definition, row.base))
+            .filter((row: any) => row.updatedAt > 0 && Date.now() - row.updatedAt <= 30_000);
+          const selected = chooseSnapshotPair(candidates);
+          if (selected) data[definition.symbol] = {
+            usd: selected.price,
+            usd_24h_change: selected.change,
+            usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+            updatedAt: selected.updatedAt,
+          };
+        }
+      }
+
+      // MEXC's bulk ticker snapshot is another display-only fallback; closeTime
+      // is used when supplied by the exchange, never for executable order marks.
+      const mexcResult = await fetchJson(req, "mexc-snapshot", "https://api.mexc.com/api/v3/ticker/24hr");
+      if (mexcResult?.response.ok && Array.isArray(mexcResult.body)) {
+        const mexcFetchedAt = Date.now();
+        const rows = mexcResult.body.map((ticker: any) => {
+          const symbol = String(ticker.symbol ?? "").toUpperCase();
+          const quote = ["USDC", "USDT", "USD"].find((suffix) => symbol.endsWith(suffix));
+          const closeTime = Number(ticker.closeTime);
+          return {
+            base: quote ? symbol.slice(0, -quote.length) : "",
+            quote: quote ?? "",
+            price: Number(ticker.lastPrice),
+            updatedAt: Number.isFinite(closeTime) && closeTime > 0 ? closeTime : mexcFetchedAt,
+            change: Number.isFinite(Number(ticker.priceChangePercent)) ? Number(ticker.priceChangePercent) : undefined,
+            volume: Number(ticker.quoteVolume),
+          };
+        });
+        for (const definition of definitions) {
+          if (data[definition.symbol]?.usd && data[definition.symbol].usd! > 0) continue;
+          const candidates = rows
+            .filter((row: any) => providerSymbolMatch(definition, row.base))
+            .filter((row: any) => row.updatedAt > 0 && Date.now() - row.updatedAt <= 120_000);
+          const selected = chooseSnapshotPair(candidates);
+          if (selected) data[definition.symbol] = {
+            usd: selected.price,
+            usd_24h_change: selected.change,
+            usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+            updatedAt: selected.updatedAt,
           };
         }
       }
@@ -480,6 +549,7 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
             usd: selected.price,
             usd_24h_change: selected.change,
             usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+            updatedAt: selected.updatedAt,
           };
         }
       }
