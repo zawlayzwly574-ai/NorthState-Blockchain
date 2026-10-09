@@ -193,7 +193,14 @@
   max-width: 100%;
 }
 
-@media (max-width: 767px) {
+/* Use a single-panel conversation layout on phones and compact tablets. */
+@media (max-width: 1023px) {
+  .admin-support-page {
+    height: calc(100dvh - 64px) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
   .admin-support-layout {
     display: flex !important;
     flex-direction: column !important;
@@ -204,6 +211,7 @@
 
   .admin-support-thread-list {
     width: 100% !important;
+    min-width: 0 !important;
     min-height: 0 !important;
     flex: 1 1 auto !important;
   }
@@ -212,12 +220,23 @@
     display: none !important;
   }
 
+  .admin-support-thread-detail {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
   .admin-support-thread-detail.admin-support-thread-detail--active {
     display: flex !important;
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
     flex: 1 1 auto !important;
+  }
+
+  .admin-support-composer {
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .admin-support-composer textarea {
