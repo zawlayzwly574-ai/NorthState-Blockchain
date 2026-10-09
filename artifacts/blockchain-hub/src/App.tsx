@@ -428,6 +428,7 @@ function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
           </p>
         </div>
       </div>
+      <div id="clerk-captcha" data-testid="clerk-signup-captcha" />
       {step === 'phone' ? (
         <form onSubmit={sendCode} className="space-y-4">
           <div>
