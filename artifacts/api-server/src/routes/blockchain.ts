@@ -1738,31 +1738,80 @@ router.delete("/security/passkeys/:id", async (req, res) => {
 });
 
 // ─── SMS OTP store ────────────────────────────────────────────────────────────
-const smsOtpStore = new Map<string, { code: string; expires: number; userId: string }>();
+type SmsOtpEntry = { code: string; expires: number; userId: string; attempts: number };
+const smsOtpStore = new Map<string, SmsOtpEntry>();
+const smsOtpSentAt = new Map<string, number>();
+const smsOtpKey = (userId: string, phone: string) => `${userId}:${phone}`;
+
+function normalizeSmsE164(value: unknown): string | null {
+  const input = String(value ?? "").trim();
+  if (!input) return null;
+  let digits = input.replace(/\D/g, "");
+  if (input.startsWith("00")) digits = digits.slice(2);
+  else if (!input.startsWith("+")) return null;
+  if (!/^\d{8,15}$/.test(digits) || digits.startsWith("0")) return null;
+
+  const nationalLength = (countryPrefix: string) =>
+    digits.startsWith(countryPrefix) ? digits.length - countryPrefix.length : -1;
+  const phoneRules: Record<string, [number, number]> = {
+    "1": [10, 10],
+    "95": [7, 10],
+    "51": [9, 9],
+    "52": [10, 10],
+    "55": [10, 11],
+  };
+  const prefix = Object.keys(phoneRules).sort((a, b) => b.length - a.length).find((candidate) =>
+    digits.startsWith(candidate),
+  );
+  if (prefix) {
+    let national = digits.slice(prefix.length);
+    // Myanmar domestic numbers often include a trunk 0 after the country code.
+    if (prefix === "95" && national.startsWith("0")) national = national.slice(1);
+    const [minLength, maxLength] = phoneRules[prefix];
+    if (national.length < minLength || national.length > maxLength) return null;
+    digits = prefix + national;
+  } else if (digits.length < 8 || digits.length > 15) {
+    return null;
+  }
+  return `+${digits}`;
+}
+
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of smsOtpStore) if (v.expires < now) smsOtpStore.delete(k);
+  for (const [key, entry] of smsOtpStore) {
+    if (entry.expires < now) smsOtpStore.delete(key);
+  }
+  for (const [key, sentAt] of smsOtpSentAt) {
+    if (now - sentAt > 10 * 60_000) smsOtpSentAt.delete(key);
+  }
 }, 120_000);
 
 router.post("/sms/send-otp", async (req, res) => {
   const userId = getUserId(req);
   const { phoneNumber } = req.body as { phoneNumber?: string };
-  const phone = String(phoneNumber ?? "").trim();
-  if (!phone || phone.replace(/\D/g, "").length < 7) {
-    res.status(400).json({ error: "A valid phone number is required." }); return;
+  const phone = normalizeSmsE164(phoneNumber);
+  if (!phone) {
+    res.status(400).json({ error: "Enter a valid international phone number in E.164 format, including the + country code." });
+    return;
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
   if (!accountSid || !authToken || !fromNumber) {
-    res.status(503).json({ error: "SMS service is not yet configured. Please contact support." }); return;
+    res.status(503).json({ error: "SMS service is not configured. Please contact support." });
+    return;
   }
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expires = Date.now() + 5 * 60_000;
-  smsOtpStore.set(phone, { code, expires, userId });
+  const key = smsOtpKey(userId, phone);
+  const lastSentAt = smsOtpSentAt.get(key) ?? 0;
+  const waitSeconds = Math.ceil((60_000 - (Date.now() - lastSentAt)) / 1000);
+  if (waitSeconds > 0) {
+    res.status(429).json({ error: `Please wait ${waitSeconds} seconds before requesting another code.`, retryAfterSeconds: waitSeconds });
+    return;
+  }
 
+  const code = String(randomInt(100000, 1_000_000));
   try {
     const { default: twilio } = await import("twilio");
     const client = twilio(accountSid, authToken);
@@ -1771,32 +1820,45 @@ router.post("/sms/send-otp", async (req, res) => {
       from: fromNumber,
       to: phone,
     });
+    const expires = Date.now() + 5 * 60_000;
+    smsOtpStore.set(key, { code, expires, userId, attempts: 0 });
+    smsOtpSentAt.set(key, Date.now());
     res.json({ sent: true, expiresAt: new Date(expires).toISOString() });
-  } catch (err: any) {
-    smsOtpStore.delete(phone);
-    res.status(500).json({ error: err?.message ?? "Failed to send SMS. Please verify the phone number and try again." });
+  } catch {
+    req.log.warn({ userId, phonePrefix: phone.slice(0, 4) }, "SMS OTP delivery failed");
+    res.status(502).json({ error: "The SMS provider could not deliver the verification code. Check the number and try again." });
   }
 });
 
 router.post("/sms/verify-otp", async (req, res) => {
   const userId = getUserId(req);
   const { phoneNumber, code } = req.body as { phoneNumber?: string; code?: string };
-  const phone = String(phoneNumber ?? "").trim();
+  const phone = normalizeSmsE164(phoneNumber);
   const otp = String(code ?? "").trim();
-  if (!phone || !otp) {
-    res.status(400).json({ error: "Phone number and code are required." }); return;
+  if (!phone || !/^\d{6}$/.test(otp)) {
+    res.status(400).json({ error: "Enter a valid international phone number and the 6-digit verification code." });
+    return;
   }
-  const entry = smsOtpStore.get(phone);
+
+  const key = smsOtpKey(userId, phone);
+  const entry = smsOtpStore.get(key);
   if (!entry || entry.expires < Date.now()) {
-    res.status(400).json({ error: "Code has expired. Please request a new one." }); return;
+    smsOtpStore.delete(key);
+    res.status(400).json({ error: "Code has expired. Please request a new one." });
+    return;
   }
-  if (entry.userId !== userId) {
-    res.status(403).json({ error: "Verification session mismatch." }); return;
+  if (entry.attempts >= 5) {
+    smsOtpStore.delete(key);
+    res.status(429).json({ error: "Too many incorrect codes. Please request a new code." });
+    return;
   }
   if (entry.code !== otp) {
-    res.status(400).json({ error: "Incorrect code. Please check and try again." }); return;
+    entry.attempts += 1;
+    res.status(400).json({ error: "Incorrect code. Please check and try again." });
+    return;
   }
-  smsOtpStore.delete(phone);
+
+  smsOtpStore.delete(key);
   await db
     .update(walletProfilesTable)
     .set({ smsPhoneNumber: phone, smsPhoneVerified: true })
