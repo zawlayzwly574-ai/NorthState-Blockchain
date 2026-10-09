@@ -413,7 +413,9 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
 
       // Gate's bulk snapshot fills instruments not listed on OKX. This is used
       // only for the public visual market summary, never trade execution.
-      const gateResult = await fetchJson(req, "gate-snapshot", "https://api.gateio.ws/api/v4/spot/tickers");
+      const gateResult = definitions.some((definition) => !(data[definition.symbol]?.usd && data[definition.symbol].usd! > 0))
+        ? await fetchJson(req, "gate-snapshot", "https://api.gateio.ws/api/v4/spot/tickers")
+        : null;
       if (gateResult?.response.ok && Array.isArray(gateResult.body)) {
         const rows = gateResult.body.map((row: any) => {
           const pair = String(row.currency_pair ?? "").split("_");
@@ -441,7 +443,9 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
       }
 
       // Bybit's bulk spot snapshot fills symbols missing from OKX and Gate.
-      const bybitResult = await fetchJson(req, "bybit-snapshot", "https://api.bybit.com/v5/market/tickers?category=spot");
+      const bybitResult = definitions.some((definition) => !(data[definition.symbol]?.usd && data[definition.symbol].usd! > 0))
+        ? await fetchJson(req, "bybit-snapshot", "https://api.bybit.com/v5/market/tickers?category=spot")
+        : null;
       if (bybitResult?.response.ok && Number(bybitResult.body?.retCode ?? -1) === 0 &&
         Array.isArray(bybitResult.body?.result?.list)) {
         const bybitFetchedAt = Number(bybitResult.body.time) || Date.now();
@@ -474,7 +478,9 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
 
       // MEXC's bulk ticker snapshot is another display-only fallback; closeTime
       // is used when supplied by the exchange, never for executable order marks.
-      const mexcResult = await fetchJson(req, "mexc-snapshot", "https://api.mexc.com/api/v3/ticker/24hr");
+      const mexcResult = definitions.some((definition) => !(data[definition.symbol]?.usd && data[definition.symbol].usd! > 0))
+        ? await fetchJson(req, "mexc-snapshot", "https://api.mexc.com/api/v3/ticker/24hr")
+        : null;
       if (mexcResult?.response.ok && Array.isArray(mexcResult.body)) {
         const mexcFetchedAt = Date.now();
         const rows = mexcResult.body.map((ticker: any) => {
@@ -511,7 +517,8 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
       const snapshotNow = Date.now();
       if (kucoinSnapshotCache && snapshotNow - kucoinSnapshotCache.fetchedAt < 1_800) {
         // Reuse the recent provider snapshot.
-      } else if (snapshotNow >= kucoinSnapshotRetryAfter) {
+      } else if (snapshotNow >= kucoinSnapshotRetryAfter &&
+          definitions.some((definition) => !(data[definition.symbol]?.usd && data[definition.symbol].usd! > 0))) {
         const kucoinResult = await fetchJson(req, "kucoin-snapshot", "https://api.kucoin.com/api/v1/market/allTickers");
         const body = kucoinResult?.body;
         const sourceAt = Number(body?.data?.time);
