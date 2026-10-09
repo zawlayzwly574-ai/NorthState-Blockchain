@@ -170,3 +170,24 @@ jobs:
           const rows = JSON.parse(fs.readFileSync('/tmp/cp-tickers.json','utf8'));
           console.log('CoinPaprika M / MemeCore candidates:',JSON.stringify(rows.filter(x=>String(x.symbol).toUpperCase()==='M' || /memecore/i.test(String(x.name))).map(x=>({id:x.id,name:x.name,symbol:x.symbol,price:x.quotes?.USD?.price,last_updated:x.last_updated})),null,2));
           NODE
+
+      - name: Probe verified MemeCore market pairs
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://api.mexc.com/api/v3/trades?symbol=MUSDT&limit=1'
+            'https://api.gateio.ws/api/v4/spot/trades?currency_pair=M_USDT&limit=1'
+            'https://api.bitget.com/api/v2/spot/market/fills?symbol=MUSDT&limit=1'
+            'https://www.okx.com/api/v5/market/trades?instId=M-USDT&limit=1'
+            'https://api.kucoin.com/api/v1/market/histories?symbol=M-USDT'
+          )
+          n=0
+          for url in "${urls[@]}"; do
+            n=$((n+1))
+            file="/tmp/memecore-${n}.json"
+            status="$(curl -sS --max-time 10 -A 'Mozilla/5.0 NorthStateBlockchain/1.0' -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "endpoint_${n} HTTP ${status} URL ${url}"
+            head -c 700 "$file" || true
+            echo
+          done
