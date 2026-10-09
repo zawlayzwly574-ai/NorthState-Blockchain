@@ -2995,14 +2995,14 @@ function SupportChatWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!isLoaded ? null : !isSignedIn && !guestId ? (
+            {!isLoaded ? null : (!isSignedIn && !guestId) ? (
               <div className="flex flex-col gap-3">
                 <p className="text-sm font-bold">Contact support before creating an account</p>
                 <p className="text-xs leading-5 text-muted-foreground">Enter your email so our support team can reply here.</p>
                 <input value={guestName} onChange={e => setGuestName(e.target.value)} maxLength={100} placeholder="Your name (optional)" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Your name" />
-                <input value={guestEmail} onChange={e => setGuestEmail(e.target.value)} maxLength={254} type="email" required placeholder="Email address" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Email address" />
+                <input value={guestEmail} onChange={e => setGuestEmail(e.target.value)} maxLength={254} type="email" placeholder="Email address" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Email address" />
               </div>
-            ) : isSignedIn ? (isLoading ? (
+            ) : (isSignedIn && isLoading) ? (
               <div className="flex h-full items-center justify-center">
                 <span className="text-xs text-muted-foreground">Loading…</span>
               </div>
@@ -3011,8 +3011,8 @@ function SupportChatWidget() {
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
                   <MessageCircle size={20} />
                 </div>
-                <p className="text-sm font-bold">How can we help?</p>
-                <p className="text-xs leading-5 text-muted-foreground">Send us a message and our team will get back to you as soon as possible.</p>
+                <p className="text-sm font-bold">{isSignedIn ? 'How can we help?' : 'Support conversation'}</p>
+                <p className="text-xs leading-5 text-muted-foreground">Send a message and our support team will reply in this chat.</p>
               </div>
             ) : (
               messages.map(msg => (
@@ -3020,8 +3020,8 @@ function SupportChatWidget() {
                   {msg.senderRole === 'admin' && (
                     <div className="mr-2 mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">N</div>
                   )}
-                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 ${msg.senderRole === 'user' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-secondary/60 text-foreground'}`}>
-                    <p className="text-sm leading-5 whitespace-pre-wrap">{msg.content}</p>
+                  <div className={`max-w-[88%] rounded-2xl px-3 py-2 ${msg.senderRole === 'user' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-secondary/60 text-foreground'}`}>
+                    <p className="text-sm leading-5 whitespace-pre-wrap break-words">{msg.content}</p>
                     <p className={`mt-1 text-[10px] ${msg.senderRole === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
