@@ -382,11 +382,18 @@ async function requireVerifiedMember(req: Request, res: Response, next: NextFunc
   next();
 }
 
-const MARKET_API_KEY = process.env.MARKET_API_KEY ?? "";
+const MARKET_API_KEY = process.env.MARKET_API_KEY?.trim() ?? "";
+const MARKET_API_KEY_TYPE = (process.env.MARKET_API_KEY_TYPE ?? "demo").trim().toLowerCase();
+const isCoinGeckoPro = Boolean(MARKET_API_KEY) &&
+  ["pro", "paid", "enterprise"].includes(MARKET_API_KEY_TYPE);
+const coinGeckoApiBaseUrl = isCoinGeckoPro
+  ? "https://pro-api.coingecko.com/api/v3"
+  : "https://api.coingecko.com/api/v3";
 const marketHeaders: Record<string, string> = { accept: "application/json" };
 if (MARKET_API_KEY) {
-  marketHeaders["x-cg-pro-api-key"] = MARKET_API_KEY;
-  marketHeaders["x-cg-demo-api-key"] = MARKET_API_KEY;
+  // CoinGecko requires the key header and API host to match the selected plan.
+  // Sending both key headers can cause provider rejection.
+  marketHeaders[isCoinGeckoPro ? "x-cg-pro-api-key" : "x-cg-demo-api-key"] = MARKET_API_KEY;
 }
 
 type MarketQuote = {
@@ -450,7 +457,7 @@ function isValidMarketQuote(quote: MarketQuote | undefined) {
 
 let marketCache: { assets: MarketAsset[]; ts: number } | null = null;
 let marketRefreshPromise: Promise<MarketAsset[]> | null = null;
-const MARKET_DATA_TTL = 3_000;
+const MARKET_DATA_TTL = 30_000;
 
 async function fetchBinanceMarketData(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
@@ -489,7 +496,7 @@ async function fetchBinanceMarketData(
 
 async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]): Promise<MarketAsset[]> {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
-  const endpoint = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
+  const endpoint = `${coinGeckoApiBaseUrl}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
   let liveData: Record<string, MarketQuote> = {};
 
   try {
@@ -500,7 +507,18 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
     if (response.ok) {
       liveData = (await response.json()) as typeof liveData;
     } else {
-      req.log.warn({ status: response.status }, "Market provider returned a non-success status");
+      const providerError = await response.clone().json().catch(() => null) as {
+        status?: { error_message?: string };
+        error?: string;
+        message?: string;
+      } | null;
+      req.log.warn({
+        status: response.status,
+        host: new URL(endpoint).host,
+        keyType: MARKET_API_KEY_TYPE || "unset",
+        keyConfigured: Boolean(MARKET_API_KEY),
+        providerError: providerError?.status?.error_message ?? providerError?.error ?? providerError?.message,
+      }, "Market provider returned a non-success status");
     }
   } catch (error) {
     req.log.warn({ err: error }, "Market provider could not be reached; trying alternate quotes");
@@ -750,7 +768,7 @@ router.get("/markets/:symbol", async (req, res) => {
   try {
     const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
     const response = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
+      `${coinGeckoApiBaseUrl}/coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
       { headers: marketHeaders, signal: AbortSignal.timeout(5000) },
     );
     if (response.ok) {
