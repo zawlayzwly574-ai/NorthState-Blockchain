@@ -1,4 +1,4 @@
-name: Temporary live Trading preview smoke
+name: Temporary live Trading preview smoke # verify the latest provider timestamp fixes
 
 on:
   push:
@@ -81,7 +81,7 @@ jobs:
               if(provider==="okx"){const x=body?.data?.[0];rawPrice=x?.px;rawTime=x?.ts;}
               else if(provider==="gate"){const x=body?.[0];rawPrice=x?.price;rawTime=x?.create_time_ms??(Number(x?.create_time)*1000);}
               else if(provider==="bybit"){const x=body?.result?.list?.[0];rawPrice=x?.price;rawTime=x?.time;}
-              else if(provider==="kucoin"){const x=body?.data?.[0];rawPrice=x?.price;const n=Number(x?.time);rawTime=n>1e14?n/1000:n<1e11?n*1000:n;}
+              else if(provider==="kucoin"){const x=body?.data?.[0];rawPrice=x?.price;const n=Number(x?.time);rawTime=n>1e17?n/1000000:n>1e14?n/1000:n<1e11?n*1000:n;}
               else if(provider==="coinbase"){const x=body?.[0];rawPrice=x?.price;rawTime=Date.parse(x?.time);}
               else if(provider==="kraken"){const x=Object.entries(body?.result??{}).find(([k,v])=>k!=="last"&&Array.isArray(v))?.[1]?.[0];rawPrice=x?.[0];rawTime=Number(x?.[2])*1000;}
               else {const x=body?.[0];rawPrice=x?.price;rawTime=x?.time;}
