@@ -89,3 +89,40 @@ jobs:
           console.log('Kraken matching asset pairs:');
           console.log(JSON.stringify({ errors: payload.error, pairs }, null, 2));
           NODE
+
+      - name: Probe live quote providers and source timestamps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const urls = [
+            ["coinpaprika", "https://api.coinpaprika.com/v1/tickers?quotes=USD"],
+            ["okx-btc", "https://www.okx.com/api/v5/market/ticker?instId=BTC-USDT"],
+            ["okx-ton", "https://www.okx.com/api/v5/market/ticker?instId=TON-USDT"],
+            ["coinbase-btc", "https://api.exchange.coinbase.com/products/BTC-USD/ticker"],
+            ["kraken-btc-trades", "https://api.kraken.com/0/public/Trades?pair=XBTUSD"],
+            ["binance-btc-trades", "https://api.binance.com/api/v3/trades?symbol=BTCUSDT&limit=1"],
+          ];
+          const timeout = AbortSignal.timeout(12000);
+          const result = await Promise.all(urls.map(async ([name, url]) => {
+            try {
+              const response = await fetch(url, { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: timeout });
+              const body = await response.json().catch(() => null);
+              if (name === "coinpaprika" && Array.isArray(body)) {
+                const selected = body.filter((t) => ["BTC","ETH","BNB","TON","GRAM","CC"].includes(String(t.symbol).toUpperCase()))
+                  .slice(0, 12).map((t) => ({
+                    name:t.name,symbol:t.symbol,updatedAt:t.last_updated,
+                    usd:t.quotes?.USD?.price,quoteUpdatedAt:t.quotes?.USD?.last_updated,
+                  }));
+                return { name,status:response.status,count:body.length,selected };
+              }
+              if (name.startsWith("okx")) {
+                return {name,status:response.status,code:body?.code,data:(body?.data??[]).slice(0,1).map(x=>({instId:x.instId,last:x.last,ts:x.ts,open24h:x.open24h}))};
+              }
+              if (name === "coinbase-btc") return {name,status:response.status,price:body?.price,time:body?.time};
+              if (name === "kraken-btc-trades") return {name,status:response.status,error:body?.error,latest:(Object.values(body?.result??{})[0]??[]).slice(-1)};
+              return {name,status:response.status,body};
+            } catch (error) { return {name,error:String(error)}; }
+          }));
+          console.log(JSON.stringify(result,null,2));
+          NODE
