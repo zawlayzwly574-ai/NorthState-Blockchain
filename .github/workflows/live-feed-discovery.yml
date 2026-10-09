@@ -52,3 +52,20 @@ jobs:
             newestTimestamp: rows.map((x) => Date.parse(x.timestamp)).filter(Number.isFinite).sort((a,b)=>b-a)[0] ?? null,
           }, null, 2));
           NODE
+
+      - name: Discover exchange pairs for assets without aggregator streaming
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 20 'https://api.kraken.com/0/public/AssetPairs' -o /tmp/pairs.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync('/tmp/pairs.json', 'utf8'));
+          const wanted = ['FDUSD','LEO','CC','TON','PYUSD','XAUT','TAO','NEAR','M','USD1','USDE','HYPE','ZEC','TRX','CRO'];
+          const rows = Object.entries(payload.result ?? {}).filter(([key, p]) => {
+            const base = String(p.base ?? '').toUpperCase().replace(/^X(?=[A-Z])/, '').replace(/^Z(?=[A-Z])/, '');
+            const name = String(p.wsname ?? p.altname ?? key).toUpperCase();
+            return wanted.some((symbol) => base === symbol || name.startsWith(symbol + '/') || name.startsWith(symbol + 'USD') || name.startsWith(symbol + 'USDT'));
+          }).map(([key,p]) => ({key,altname:p.altname,wsname:p.wsname,base:p.base,quote:p.quote}));
+          console.log(JSON.stringify({errors: payload.error, pairs: rows}, null, 2));
+          NODE
