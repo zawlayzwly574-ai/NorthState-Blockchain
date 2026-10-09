@@ -1961,7 +1961,7 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
     const last = msgs[0];
     return {
       userId: thread.clerkUserId,
-      displayName: profile?.displayName ?? "Unknown",
+      displayName: profile?.displayName ?? (parseGuestSupportId(thread.clerkUserId) ? "Guest" : "Unknown"),
       email: profile?.email ?? parseGuestSupportId(thread.clerkUserId)?.email ?? "",
       threadId: thread.id,
       lastMessage: last?.content ?? "",
@@ -2085,8 +2085,8 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.id, thread.id));
   res.json({
     userId,
-    displayName: profile?.displayName ?? "Unknown",
-    email: profile?.email ?? "",
+    displayName: profile?.displayName ?? (parseGuestSupportId(thread.clerkUserId) ? "Guest" : "Unknown"),
+    email: profile?.email ?? parseGuestSupportId(thread.clerkUserId)?.email ?? "",
     threadId: thread.id,
     messages: messages.map(m => ({
       id: m.id, threadId: m.threadId, senderRole: m.senderRole,
