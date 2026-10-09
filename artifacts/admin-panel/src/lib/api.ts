@@ -398,6 +398,35 @@ export function useAdminSupportReply() {
   });
 }
 
+export function useUpdateAdminSupportMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, messageId, content }: { userId: string; messageId: number; content: string }) =>
+      apiClient(`/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ content }),
+      }),
+    onSuccess: (_data: unknown, variables: { userId: string; messageId: number; content: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support', variables.userId] });
+    },
+  });
+}
+
+export function useDeleteAdminSupportMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, messageId }: { userId: string; messageId: number }) =>
+      apiClient(`/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: (_data: unknown, variables: { userId: string; messageId: number }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support', variables.userId] });
+    },
+  });
+}
+
 // Mutations
 
 export function useApproveTransaction() {
