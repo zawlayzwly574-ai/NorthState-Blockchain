@@ -627,7 +627,7 @@ export function TradingPage() {
   const [activeSpotTrade, setActiveSpotTrade] = useState<ActiveSpotTradeSnapshot | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [], dataUpdatedAt: marketDataUpdatedAt } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
   const { data: account, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: tradesData, error: tradesError, refetch: refetchTrades } = useGetTrades({
@@ -879,7 +879,7 @@ export function TradingPage() {
           quote={futuresQuote}
           history={tradingHistory}
           displayPrice={marketAsset?.price ?? null}
-          displayUpdatedAt={marketAsset?.updatedAt ?? marketDataUpdatedAt}
+          displayUpdatedAt={marketAsset ? marketAsset.updatedAt : null}
           entryPrice={entryPrice}
         />
       </div>
