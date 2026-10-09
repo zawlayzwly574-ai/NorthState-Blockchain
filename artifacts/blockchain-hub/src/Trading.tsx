@@ -117,15 +117,13 @@ function PriceChart({
     });
   }, [history]);
 
-  // Keep the original chart and its live price badge, but plot only real,
-  // provider-timestamped prices. A repeated or stale response is not a tick.
+  // Add only provider-timestamped ticks; chart lines never use generated prices.
   useEffect(() => {
     const time = Date.parse(quote?.updatedAt ?? '');
-    if (!quote?.price || !Number.isFinite(time) || Date.now() - time > 15_000) return;
+    if (!quote?.price || !Number.isFinite(time) || Date.now() - time > 15_000 || time > Date.now() + 2_000) return;
     setData(prev => {
       if (prev.length && prev[prev.length - 1].t >= time) return prev;
-      // A flat starting line displays the first actual quote without inventing a move.
-      if (!prev.length) return [{ t: time - 1, price: quote.price! }, { t: time, price: quote.price! }];
+      if (!prev.length) return [{ t: time, price: quote.price! }];
       return [...prev.slice(-79), { t: time, price: quote.price! }];
     });
   }, [quote?.price, quote?.updatedAt]);
@@ -133,20 +131,23 @@ function PriceChart({
   const prices = data.map(d => d.price);
   const lo = prices.length ? Math.min(...prices) * 0.9992 : 0;
   const hi = prices.length ? Math.max(...prices) * 1.0008 : 1;
-  const current = data[data.length - 1]?.price ?? quote?.price ?? null;
-  const first = data[0]?.price ?? current ?? 0;
-  const live = !!quote?.price && !!quote.updatedAt && Date.now() - Date.parse(quote.updatedAt) < 15_000;
-  const isUp = (current ?? first) >= first;
+  const quoteTimestamp = Date.parse(quote?.updatedAt ?? '');
+  const live = !!quote?.price && Number.isFinite(quoteTimestamp)
+    && Date.now() - quoteTimestamp <= 15_000 && quoteTimestamp <= Date.now() + 2_000;
+  const current = live ? quote!.price! : null;
+  const lastChartPrice = data[data.length - 1]?.price ?? 0;
+  const first = data[0]?.price ?? lastChartPrice;
+  const isUp = lastChartPrice >= first;
   const stroke = isUp ? '#22c55e' : '#ef4444';
 
   return (
     <div className="relative">
       <div className="pointer-events-none absolute left-3 top-2 z-10 flex items-baseline gap-1.5">
         <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }} data-testid="text-live-chart-price">
-          {current === null ? 'Waiting for market price…' : `$${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
+          {current === null ? 'Live quote unavailable' : `${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })`}
         </span>
         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${live ? (isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400') : 'bg-secondary text-muted-foreground'}`} data-testid="status-live-chart">
-          {live ? `${isUp ? '▲' : '▼'} LIVE` : 'PRICE UNAVAILABLE'}
+          {live ? `${isUp ? '▲' : '▼'} LIVE` : 'WAITING FOR LIVE TICK'}
         </span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -594,16 +595,19 @@ export function TradingPage() {
     query: { queryKey: getGetFuturesPositionsQueryKey(), refetchInterval: 3_000 },
   });
   const openFuturesPosition = useOpenFuturesPosition();
-  const { data: futuresQuote } = useGetFuturesQuote(asset, {
-    query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 3_000 },
+  const { data: futuresQuote, error: futuresQuoteError, refetch: refetchFuturesQuote } = useGetFuturesQuote(asset, {
+    query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 1_000, staleTime: 0, placeholderData: (previous) => previous },
   });
-  const { data: tradingHistory } = useGetTradingChart(asset, {
-    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 60_000 },
+  const { data: tradingHistory, error: tradingHistoryError, refetch: refetchTradingHistory } = useGetTradingChart(asset, {
+    query: { queryKey: getGetTradingChartQueryKey(asset), refetchInterval: 1_000, staleTime: 0, placeholderData: (previous) => previous },
   });
 
-  const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
-  const marketAsset = market.find(m => m.symbol === marketSymbol);
-  const currentPrice = marketAsset?.price ?? null;
+  const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
+  const freshFuturesQuote = !!futuresQuote?.price && !!futuresQuote.updatedAt
+    && Number.isFinite(quoteTime) && Date.now() - quoteTime <= 15_000
+    && quoteTime <= Date.now() + 2_000;
+  // Spot and Futures orders both use the same fresh, source-timestamped quote.
+  const currentPrice = freshFuturesQuote ? futuresQuote!.price! : null;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -628,7 +632,6 @@ export function TradingPage() {
   const marginValue = Number(futuresMargin);
   const validFuturesMargin = /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/.test(futuresMargin) && Number.isFinite(marginValue) && marginValue >= 1 && marginValue <= 10_000_000 && marginValue <= futuresAvailable;
   const supportedFuturesMode = futuresContractType === 'Perpetual' && futuresSettlement === 'USDT';
-  const freshFuturesQuote = !!futuresQuote?.price && !!futuresQuote.updatedAt && Date.now() - Date.parse(futuresQuote.updatedAt) < 15_000;
   const canOpenFutures = supportedFuturesMode && validFuturesMargin && freshFuturesQuote && !!account && !accountError && !!futuresPositions && !futuresPositionsError && !openFuturesPosition.isPending;
   const belowMinTrade = tradeAmt < minTrade;
   const balanceBelowMin = !!account && balance < minTrade;
