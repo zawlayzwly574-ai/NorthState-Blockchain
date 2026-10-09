@@ -220,15 +220,41 @@
     flex: 1 1 auto !important;
   }
 
-  .admin-support-composer textarea {
-    display: block !important;
+  .admin-support-composer {
     width: 100% !important;
     min-width: 0 !important;
-    min-height: 120px !important;
-    max-height: 32dvh !important;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .admin-support-composer form,
+  .admin-support-composer .flex {
+    min-width: 0 !important;
+  }
+
+  .admin-support-composer textarea {
+    display: block !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 112px !important;
+    max-height: 35dvh !important;
+    padding: 0.875rem !important;
     font-size: 16px !important;
     line-height: 1.5 !important;
     resize: vertical !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  .admin-support-thread-detail {
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  .admin-support-thread-detail > .admin-support-composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: hsl(var(--card));
   }
 
   .admin-support-thread-detail button {
