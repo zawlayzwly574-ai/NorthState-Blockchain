@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
+import { normalizeSmsE164 } from "../lib/phone";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -1743,38 +1744,6 @@ const smsOtpStore = new Map<string, SmsOtpEntry>();
 const smsOtpSentAt = new Map<string, number>();
 const smsOtpKey = (userId: string, phone: string) => `${userId}:${phone}`;
 
-function normalizeSmsE164(value: unknown): string | null {
-  const input = String(value ?? "").trim();
-  if (!input) return null;
-  let digits = input.replace(/\D/g, "");
-  if (input.startsWith("00")) digits = digits.slice(2);
-  else if (!input.startsWith("+")) return null;
-  if (!/^\d{8,15}$/.test(digits) || digits.startsWith("0")) return null;
-
-  const nationalLength = (countryPrefix: string) =>
-    digits.startsWith(countryPrefix) ? digits.length - countryPrefix.length : -1;
-  const phoneRules: Record<string, [number, number]> = {
-    "1": [10, 10],
-    "95": [7, 10],
-    "51": [9, 9],
-    "52": [10, 10],
-    "55": [10, 11],
-  };
-  const prefix = Object.keys(phoneRules).sort((a, b) => b.length - a.length).find((candidate) =>
-    digits.startsWith(candidate),
-  );
-  if (prefix) {
-    let national = digits.slice(prefix.length);
-    // Myanmar domestic numbers often include a trunk 0 after the country code.
-    if (prefix === "95" && national.startsWith("0")) national = national.slice(1);
-    const [minLength, maxLength] = phoneRules[prefix];
-    if (national.length < minLength || national.length > maxLength) return null;
-    digits = prefix + national;
-  } else if (digits.length < 8 || digits.length > 15) {
-    return null;
-  }
-  return `+${digits}`;
-}
 
 setInterval(() => {
   const now = Date.now();
