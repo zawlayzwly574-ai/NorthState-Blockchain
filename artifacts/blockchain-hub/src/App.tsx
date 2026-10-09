@@ -378,8 +378,12 @@ function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (!resendAt) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    if (!resendAt || resendAt <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+      if (currentTime >= resendAt) window.clearInterval(timer);
+    }, 500);
     return () => window.clearInterval(timer);
   }, [resendAt]);
 
