@@ -2,10 +2,10 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildCommand": "if [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/blockchain-hub\" ]; then pnpm --filter @workspace/blockchain-hub run build; else pnpm --filter @workspace/api-server run build; fi"
+    "buildCommand": "if [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/blockchain-hub\" ]; then pnpm --filter @workspace/blockchain-hub run build; elif [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/admin-panel\" ]; then pnpm --filter @workspace/admin-panel run build; else pnpm --filter @workspace/api-server run build; fi"
   },
   "deploy": {
-    "startCommand": "if [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/blockchain-hub\" ]; then pnpm --filter @workspace/blockchain-hub run serve; else pnpm --filter @workspace/api-server run start; fi",
+    "startCommand": "if [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/blockchain-hub\" ]; then pnpm --filter @workspace/blockchain-hub run serve; elif [ \"${RAILWAY_SERVICE_NAME:-}\" = \"@workspace/admin-panel\" ]; then pnpm --filter @workspace/admin-panel run serve; else pnpm --filter @workspace/api-server run start; fi",
     "healthcheckPath": "/api/healthz",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
