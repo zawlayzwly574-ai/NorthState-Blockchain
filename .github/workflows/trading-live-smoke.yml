@@ -1,0 +1,60 @@
+name: Temporary live Trading preview smoke
+
+on:
+  push:
+    branches:
+      - "verify/trading-live-smoke"
+
+permissions:
+  contents: read
+
+jobs:
+  market-and-chart-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify public markets and real Trading chart history
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://workspaceapi-server-northstate-blockchain-pr-7.up.railway.app/api"
+          markets_file="$(mktemp)"
+          markets_status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$markets_file" -w '%{http_code}' "$base/markets")"
+          echo "markets_http=$markets_status"
+          test "$markets_status" = "200"
+          node - "$markets_file" <<'NODE'
+          const fs = require('node:fs');
+          const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (!Array.isArray(rows) || rows.length !== 35) throw new Error('Expected all 35 supported assets.');
+          const live = rows.filter(x => Number.isFinite(x.price) && x.price > 0);
+          if (live.length < 32) throw new Error('Too few provider-backed quotes: ' + live.length);
+          console.log(JSON.stringify({
+            assets: rows.length,
+            quotesAvailable: live.length,
+            unavailable: rows.filter(x => !(Number.isFinite(x.price) && x.price > 0)).map(x => x.symbol),
+            spotExamples: rows.filter(x => ['BTC','ETH','SOL','XRP'].includes(x.symbol)).map(({symbol,price,change24h})=>({symbol,price,change24h}))
+          }, null, 2));
+          NODE
+
+          chart_file="$(mktemp)"
+          chart_status="$(curl -sS --max-time 25 -H 'Accept: application/json' -o "$chart_file" -w '%{http_code}' "$base/markets/BTC")"
+          echo "market_detail_http=$chart_status"
+          test "$chart_status" = "200"
+          node - "$chart_file" <<'NODE'
+          const fs = require('node:fs');
+          const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const chart = body.chart;
+          if (!body.asset || !Number.isFinite(body.asset.price) || body.asset.price <= 0) throw new Error('BTC market quote is missing.');
+          if (!Array.isArray(chart) || chart.length < 20) throw new Error('Real exchange candle history missing; count=' + (chart?.length ?? 0));
+          if (!chart.every(p => typeof p.time === 'string' && Number.isFinite(p.value) && p.value > 0)) throw new Error('Chart points contain invalid values.');
+          const uniquePrices = new Set(chart.map(p => p.value)).size;
+          if (uniquePrices < 2) throw new Error('Chart does not show movement across actual historical points.');
+          console.log(JSON.stringify({
+            asset: body.asset.symbol,
+            livePrice: body.asset.price,
+            historyPoints: chart.length,
+            distinctPrices: uniquePrices,
+            first: chart[0],
+            last: chart[chart.length - 1]
+          }, null, 2));
+          NODE
