@@ -824,8 +824,30 @@ async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[
 }
 
 router.get("/markets", async (req, res) => {
-  const data = GetMarketSummaryResponse.parse(await fetchMarketAssets(req));
-  res.json(data);
+  const assets = await fetchMarketAssets(req);
+  // The shared live stream covers most assets. Ask the same timestamp-validated
+  // quote layer for the others (Kraken/Bitfinex fallback); stale snapshots are
+  // not returned as if they were current trade prices.
+  const liveAssets = await Promise.all(assets.map(async (asset) => {
+    let quote: { price: number; updatedAt: number } | null = null;
+    try {
+      quote = await getFuturesQuote(req, asset.symbol);
+    } catch (error) {
+      req.log.warn({ err: error, symbol: asset.symbol }, "Market screen live quote unavailable");
+    }
+    if (quote && Number.isFinite(quote.price) && quote.price > 0
+      && Number.isFinite(quote.updatedAt) && Date.now() - quote.updatedAt <= 15_000
+      && quote.updatedAt <= Date.now() + 2_000) {
+      return {
+        ...asset,
+        price: quote.price,
+        updatedAt: new Date(quote.updatedAt).toISOString(),
+        source: "live" as const,
+      };
+    }
+    return { ...asset, price: 0, change24h: 0, updatedAt: null, source: null };
+  }));
+  res.json(GetMarketSummaryResponse.parse(liveAssets));
 });
 
 router.get("/mining-place", async (req, res) => {
@@ -982,47 +1004,46 @@ router.get("/markets/fx-rates", async (req, res) => {
 router.get("/markets/:symbol", async (req, res) => {
   const params = GetMarketDetailParams.parse(req.params);
   const assets = await fetchMarketAssets(req);
-  const asset = assets.find((item) => item.symbol.toLowerCase() === params.symbol.toLowerCase());
+  let asset = assets.find((item) => item.symbol.toLowerCase() === params.symbol.toLowerCase());
   if (!asset) {
     res.status(404).json({ error: "Asset not found" });
     return;
   }
 
-  ensureLiveMarketFeedStarted();
-  const liveHistory = getLiveMarketHistory(asset.symbol, 25);
-  let chart = liveHistory.map((point) => ({
-    time: new Date(point.t).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }),
-    value: point.price,
-  }));
-
-  try {
-    const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
-    const response = await fetchCoinGeckoEndpoint(
-      req,
-      `coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
-    );
-    if (response?.ok) {
-      const body = (await response.json()) as { prices?: [number, number][] };
-      if (liveHistory.length <= 1 && body.prices && body.prices.length > 3) {
-        chart = body.prices.slice(-25).map(([timestamp, value]) => ({
-          time: new Date(timestamp).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-            hour12: false,
-          }),
-          value,
-        }));
-      }
-    }
-  } catch (error) {
-    req.log.warn({ err: error, symbol: asset.symbol }, "Chart provider could not be reached");
+  const liveQuote = await getFuturesQuote(req, asset.symbol).catch((error) => {
+    req.log.warn({ err: error, symbol: asset!.symbol }, "Market detail live quote unavailable");
+    return null;
+  });
+  if (liveQuote && Number.isFinite(liveQuote.price) && liveQuote.price > 0
+    && Number.isFinite(liveQuote.updatedAt) && Date.now() - liveQuote.updatedAt <= 15_000
+    && liveQuote.updatedAt <= Date.now() + 2_000) {
+    asset = {
+      ...asset,
+      price: liveQuote.price,
+      updatedAt: new Date(liveQuote.updatedAt).toISOString(),
+      source: "live",
+    };
+  } else {
+    asset = { ...asset, price: 0, change24h: 0, updatedAt: null, source: null };
   }
+
+  // Use real feed ticks and exchange candles only. The newest live quote is
+  // appended as its own timestamped point; there is no sine-wave chart fallback.
+  const history = await getTradingHistory(req, asset.symbol);
+  const pointsByTime = new Map(history.map((point) => [point.t, point]));
+  if (liveQuote && asset.price > 0) pointsByTime.set(liveQuote.updatedAt, { t: liveQuote.updatedAt, price: liveQuote.price });
+  const chart = [...pointsByTime.values()]
+    .sort((a, b) => a.t - b.t)
+    .slice(-25)
+    .map((point) => ({
+      time: new Date(point.t).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+      value: point.price,
+    }));
 
   res.json(GetMarketDetailResponse.parse({ asset, chart }));
 });
