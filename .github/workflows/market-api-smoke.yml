@@ -46,3 +46,46 @@ jobs:
             process.exit(1);
           }
           NODE
+
+      - name: Inspect missing quote symbols against public providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          paprika_file="$(mktemp)"
+          curl -sS --max-time 25 'https://api.coinpaprika.com/v1/tickers?quotes=USD' -o "$paprika_file"
+          node - "$paprika_file" <<'NODE'
+          const fs = require('node:fs');
+          const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const relevant = rows.filter((t) =>
+            ['CANTON', 'CC', 'TON', 'TONCOIN'].includes(String(t.symbol ?? '').toUpperCase()) ||
+            /canton|toncoin|the open network/i.test(String(t.name ?? ''))
+          ).map((t) => ({
+            id: t.id,
+            name: t.name,
+            symbol: t.symbol,
+            rank: t.rank,
+            usd: t.quotes?.USD?.price,
+            marketCap: t.quotes?.USD?.market_cap,
+          }));
+          console.log('CoinPaprika matching tickers:');
+          console.log(JSON.stringify({ totalTickers: rows.length, relevant }, null, 2));
+          NODE
+
+          kraken_file="$(mktemp)"
+          curl -sS --max-time 25 'https://api.kraken.com/0/public/AssetPairs' -o "$kraken_file"
+          node - "$kraken_file" <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const pairs = Object.entries(payload.result ?? {}).filter(([key, p]) =>
+            /^(TON|CC)/i.test(String(p.base ?? '')) ||
+            /^(TONUSD|CCUSD|TON\/USD|CC\/USD)/i.test(String(p.altname ?? p.wsname ?? key))
+          ).map(([key, p]) => ({
+            key,
+            altname: p.altname,
+            wsname: p.wsname,
+            base: p.base,
+            quote: p.quote,
+          }));
+          console.log('Kraken matching asset pairs:');
+          console.log(JSON.stringify({ errors: payload.error, pairs }, null, 2));
+          NODE
