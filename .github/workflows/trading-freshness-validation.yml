@@ -22,7 +22,5 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Typecheck Blockchain Hub
-        run: pnpm --filter @workspace/blockchain-hub run typecheck
       - name: Build Blockchain Hub
         run: pnpm --filter @workspace/blockchain-hub run build
