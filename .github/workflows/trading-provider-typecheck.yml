@@ -1,4 +1,4 @@
-name: Temporary Trading provider typecheck # use API workspace toolchain
+name: Temporary Trading provider typecheck # include the Express logger type augmentation # use API workspace toolchain
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
           pnpm --filter @workspace/api-server run build
           pnpm --filter @workspace/blockchain-hub run build
       - name: Standalone typecheck of new timestamped quote/history provider
-        run: pnpm --filter @workspace/api-server exec tsc --noEmit --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler src/routes/futures-quotes.ts
+        run: pnpm --filter @workspace/api-server exec tsc --noEmit --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --types node,pino-http src/routes/futures-quotes.ts
       - name: Existing API project typecheck diagnostic
         continue-on-error: true
         run: pnpm --filter @workspace/api-server run typecheck
