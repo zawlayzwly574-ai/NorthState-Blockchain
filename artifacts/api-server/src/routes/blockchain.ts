@@ -1,5 +1,5 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
 import { eq, desc, count, and, inArray, sql } from "drizzle-orm";
 import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, verifySync as totpVerifySync } from "otplib";
@@ -479,6 +479,7 @@ type CoinPaprikaTicker = {
   symbol?: string;
   name?: string;
   rank?: number;
+  last_updated?: string;
   quotes?: { USD?: CoinPaprikaQuote };
 };
 
@@ -573,11 +574,13 @@ async function fetchCoinPaprikaMarketData(
     if (candidates.length > 1 && candidates[0].nameScore === 0) continue;
     const quote = candidates[0].ticker.quotes?.USD;
     if (!quote || !Number.isFinite(quote.price) || (quote.price ?? 0) <= 0) continue;
+    const sourceTimestamp = Date.parse(candidates[0].ticker.last_updated ?? "");
     quotes[definition.id] = {
       usd: quote.price,
       usd_24h_change: quote.percent_change_24h,
       usd_market_cap: quote.market_cap,
       usd_24h_vol: quote.volume_24h,
+      updatedAt: Number.isFinite(sourceTimestamp) ? sourceTimestamp : undefined,
     };
   }
   req.log.info({ supportedQuotes: Object.keys(quotes).length }, "CoinPaprika fallback quotes mapped");
@@ -589,6 +592,7 @@ type MarketQuote = {
   usd_24h_change?: number;
   usd_market_cap?: number;
   usd_24h_vol?: number;
+  updatedAt?: number;
 };
 
 type MarketAsset = {
@@ -600,6 +604,7 @@ type MarketAsset = {
   volume24h: number;
   rank: number;
   color: string;
+  updatedAt: string | null;
 };
 
 type BinanceTicker = {
@@ -607,6 +612,7 @@ type BinanceTicker = {
   lastPrice?: string;
   priceChangePercent?: string;
   quoteVolume?: string;
+  closeTime?: string | number;
 };
 
 const binanceSymbols: Record<string, string> = {
@@ -683,10 +689,12 @@ async function fetchBinanceMarketData(
       const marketId = Object.entries(binanceSymbols).find(([, symbol]) => symbol === ticker.symbol)?.[0];
       const price = Number(ticker.lastPrice);
       if (marketId && Number.isFinite(price) && price > 0) {
+        const sourceTimestamp = Number(ticker.closeTime);
         quotes[marketId] = {
           usd: price,
           usd_24h_change: Number(ticker.priceChangePercent),
           usd_24h_vol: Number(ticker.quoteVolume),
+          updatedAt: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : undefined,
         };
       }
       return quotes;
@@ -720,13 +728,20 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
     try {
       const response = await fetchCoinGeckoEndpoint(
         req,
-        `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+        `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true&include_last_updated_at=true`,
       );
       if (response) {
-        const data = await response.json() as Record<string, MarketQuote>;
+        const data = await response.json() as Record<string, MarketQuote & { last_updated_at?: number }>;
         for (const definition of marketDefinitions) {
           if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(data[definition.id])) {
-            liveData[definition.id] = data[definition.id];
+            const quote = data[definition.id];
+            const sourceTimestamp = Number(quote.last_updated_at);
+            liveData[definition.id] = {
+              ...quote,
+              updatedAt: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+                ? sourceTimestamp * 1000
+                : undefined,
+            };
           }
         }
       }
@@ -779,6 +794,7 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         volume24h: 0,
         rank: definition.rank,
         color: definition.color,
+        updatedAt: null,
       };
     }
 
@@ -797,6 +813,9 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         : previous?.volume24h ?? 0,
       rank: definition.rank,
       color: definition.color,
+      updatedAt: Number.isFinite(provider.updatedAt) && provider.updatedAt! > 0
+        ? new Date(provider.updatedAt!).toISOString()
+        : previous?.updatedAt ?? null,
     };
   });
 }
