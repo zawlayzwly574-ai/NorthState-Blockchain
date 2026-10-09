@@ -1,4 +1,4 @@
-name: Temporary preview market API smoke check # retry after Railway preview is online
+name: Temporary preview market API smoke check # verify Canton and Toncoin aliases
 
 on:
   push:
