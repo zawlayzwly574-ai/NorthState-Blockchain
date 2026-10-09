@@ -494,11 +494,39 @@ function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
   );
 }
 
-function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
+type AppLanguage = 'en' | 'es' | 'pt' | 'my' | 'fr' | 'de' | 'zh' | 'ja' | 'hi' | 'ar';
+const APP_LANGUAGES: Array<{ code: AppLanguage; label: string }> = [
+  { code: 'en', label: 'English' }, { code: 'es', label: 'Español' },
+  { code: 'pt', label: 'Português' }, { code: 'my', label: 'မြန်မာ' },
+  { code: 'fr', label: 'Français' }, { code: 'de', label: 'Deutsch' },
+  { code: 'zh', label: '中文' }, { code: 'ja', label: '日本語' },
+  { code: 'hi', label: 'हिन्दी' }, { code: 'ar', label: 'العربية' },
+];
+const AUTH_COPY: Record<AppLanguage, { signIn: string; signInSub: string; signUp: string; signUpSub: string; phone: string; security: string; support: string; supportEmail: string; guestName: string; message: string; send: string }> = {
+  en: { signIn: 'Welcome back', signInSub: 'Sign in to access your North State Blockchain account', signUp: 'Open your North State Blockchain account', signUpSub: 'Create a secure account to begin', phone: 'Sign up with international phone OTP', security: 'North State Blockchain uses secure identity verification to protect every account.', support: 'Contact support before creating an account', supportEmail: 'Enter your email so our support team can reply here.', guestName: 'Your name (optional)', message: 'Type a message…', send: 'Send message' },
+  es: { signIn: 'Bienvenido de nuevo', signInSub: 'Inicia sesión en tu cuenta de North State Blockchain', signUp: 'Crea tu cuenta de North State Blockchain', signUpSub: 'Crea una cuenta segura para comenzar', phone: 'Registrarse con código OTP por teléfono', security: 'Usamos verificación segura para proteger cada cuenta.', support: 'Contacta con soporte antes de registrarte', supportEmail: 'Introduce tu correo para recibir una respuesta aquí.', guestName: 'Tu nombre (opcional)', message: 'Escribe un mensaje…', send: 'Enviar mensaje' },
+  pt: { signIn: 'Bem-vindo de volta', signInSub: 'Entre na sua conta North State Blockchain', signUp: 'Crie sua conta North State Blockchain', signUpSub: 'Crie uma conta segura para começar', phone: 'Cadastrar com código OTP por telefone', security: 'Usamos verificação segura para proteger cada conta.', support: 'Fale com o suporte antes de criar uma conta', supportEmail: 'Informe seu e-mail para receber uma resposta aqui.', guestName: 'Seu nome (opcional)', message: 'Digite uma mensagem…', send: 'Enviar mensagem' },
+  my: { signIn: 'ပြန်လည်ကြိုဆိုပါတယ်', signInSub: 'North State Blockchain အကောင့်သို့ ဝင်ပါ', signUp: 'North State Blockchain အကောင့်ဖွင့်ပါ', signUpSub: 'စတင်ရန် လုံခြုံသောအကောင့်ဖန်တီးပါ', phone: 'နိုင်ငံတကာဖုန်း OTP ဖြင့် စာရင်းသွင်းရန်', security: 'အကောင့်တိုင်းကို ကာကွယ်ရန် လုံခြုံသောအတည်ပြုမှုကို အသုံးပြုသည်။', support: 'အကောင့်မဖွင့်မီ Support ကို ဆက်သွယ်ပါ', supportEmail: 'ပြန်လည်ဖြေကြားနိုင်ရန် အီးမေးလ်ထည့်ပါ။', guestName: 'အမည် (မဖြစ်မနေမဟုတ်ပါ)', message: 'စာရိုက်ထည့်ပါ…', send: 'စာပို့မည်' },
+  fr: { signIn: 'Heureux de vous revoir', signInSub: 'Connectez-vous à votre compte North State Blockchain', signUp: 'Créez votre compte North State Blockchain', signUpSub: 'Créez un compte sécurisé pour commencer', phone: 'Inscription par code OTP téléphonique', security: 'Nous utilisons une vérification sécurisée pour protéger chaque compte.', support: 'Contacter le support avant de créer un compte', supportEmail: 'Saisissez votre e-mail pour recevoir une réponse ici.', guestName: 'Votre nom (facultatif)', message: 'Écrire un message…', send: 'Envoyer' },
+  de: { signIn: 'Willkommen zurück', signInSub: 'Melde dich bei deinem North State Blockchain-Konto an', signUp: 'Erstelle dein North State Blockchain-Konto', signUpSub: 'Erstelle ein sicheres Konto, um zu beginnen', phone: 'Mit internationalem Telefon-OTP registrieren', security: 'Wir schützen jedes Konto mit sicherer Identitätsprüfung.', support: 'Support vor der Registrierung kontaktieren', supportEmail: 'Gib deine E-Mail-Adresse für eine Antwort ein.', guestName: 'Name (optional)', message: 'Nachricht schreiben…', send: 'Nachricht senden' },
+  zh: { signIn: '欢迎回来', signInSub: '登录 North State Blockchain 账户', signUp: '创建 North State Blockchain 账户', signUpSub: '创建安全账户以开始使用', phone: '使用国际手机号验证码注册', security: '我们使用安全身份验证来保护每个账户。', support: '注册前联系客户支持', supportEmail: '输入邮箱，以便客服在此回复。', guestName: '姓名（可选）', message: '输入消息…', send: '发送消息' },
+  ja: { signIn: 'おかえりなさい', signInSub: 'North State Blockchain アカウントにサインイン', signUp: 'North State Blockchain アカウントを作成', signUpSub: '安全なアカウントを作成して開始', phone: '国際電話OTPで登録', security: '安全な本人確認で各アカウントを保護します。', support: '登録前にサポートへ問い合わせる', supportEmail: 'ここで返信を受け取るためメールを入力してください。', guestName: 'お名前（任意）', message: 'メッセージを入力…', send: '送信' },
+  hi: { signIn: 'वापसी पर स्वागत है', signInSub: 'अपने North State Blockchain खाते में साइन इन करें', signUp: 'अपना North State Blockchain खाता बनाएँ', signUpSub: 'शुरू करने के लिए सुरक्षित खाता बनाएँ', phone: 'अंतरराष्ट्रीय फोन OTP से साइन अप करें', security: 'हम हर खाते की सुरक्षा के लिए सुरक्षित पहचान सत्यापन का उपयोग करते हैं।', support: 'खाता बनाने से पहले सहायता से संपर्क करें', supportEmail: 'यहाँ जवाब पाने के लिए अपना ईमेल दर्ज करें।', guestName: 'आपका नाम (वैकल्पिक)', message: 'संदेश लिखें…', send: 'संदेश भेजें' },
+  ar: { signIn: 'مرحبًا بعودتك', signInSub: 'سجّل الدخول إلى حساب North State Blockchain', signUp: 'أنشئ حساب North State Blockchain', signUpSub: 'أنشئ حسابًا آمنًا للبدء', phone: 'التسجيل برمز الهاتف الدولي OTP', security: 'نستخدم التحقق الآمن من الهوية لحماية كل حساب.', support: 'تواصل مع الدعم قبل إنشاء الحساب', supportEmail: 'أدخل بريدك الإلكتروني ليتمكن الدعم من الرد هنا.', guestName: 'اسمك (اختياري)', message: 'اكتب رسالة…', send: 'إرسال الرسالة' },
+};
+
+function ClerkAuthPage({ signUp = false, language, onLanguageChange }: { signUp?: boolean; language: AppLanguage; onLanguageChange: (value: AppLanguage) => void }) {
   const [usePhoneOtp, setUsePhoneOtp] = useState(false);
+  const copy = AUTH_COPY[language];
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
-      <div className="mb-8 flex justify-center"><Logo /></div>
+      <div className="mb-5 flex justify-center"><Logo /></div>
+      <label className="mb-5 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+        <span>Language / Idioma</span>
+        <select value={language} onChange={e => onLanguageChange(e.target.value as AppLanguage)} className="max-w-full rounded-xl border border-border bg-secondary px-3 py-2 text-sm text-foreground" aria-label="Choose language">
+          {APP_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.label}</option>)}
+        </select>
+      </label>
       {signUp
         ? usePhoneOtp
           ? <PhoneOtpSignUp onBack={() => setUsePhoneOtp(false)} />
@@ -506,12 +534,12 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
               <button type="button" onClick={() => setUsePhoneOtp(true)}
                 className="mb-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/5 px-4 text-sm font-extrabold text-primary transition hover:bg-primary/10"
                 data-testid="button-signup-with-phone-otp">
-                <Smartphone size={16} /> Sign up with international phone OTP
+                <Smartphone size={16} /> {copy.phone}
               </button>
               <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
             </>
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
-      <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
+      <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">{copy.security}</p>
     </div>
   </main>;
 }
@@ -2882,7 +2910,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router({ language, onLanguageChange }: { language: AppLanguage; onLanguageChange: (value: AppLanguage) => void }) { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage language={language} onLanguageChange={onLanguageChange} />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp language={language} onLanguageChange={onLanguageChange} />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);
@@ -3085,6 +3113,17 @@ function ClerkQueryClientCacheInvalidator() {
 
 function ClerkApp() {
   const [, setLocation] = useLocation();
+  const [language, setLanguage] = useState<AppLanguage>(() => {
+    try {
+      const saved = localStorage.getItem('nsb-language') as AppLanguage | null;
+      return saved && APP_LANGUAGES.some(item => item.code === saved) ? saved : 'en';
+    } catch { return 'en'; }
+  });
+  const changeLanguage = (value: AppLanguage) => {
+    setLanguage(value);
+    try { localStorage.setItem('nsb-language', value); } catch { /* language remains active for this session */ }
+  };
+  const copy = AUTH_COPY[language];
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
   return <ClerkProvider
     publishableKey={clerkPubKey}
@@ -3102,15 +3141,21 @@ function ClerkApp() {
       },
       signUp: {
         start: {
-          title: 'Open your North State Blockchain account',
-          subtitle: 'Create a secure account to begin',
+          title: copy.signUp,
+          subtitle: copy.signUpSub,
+        },
+      },
+      signIn: {
+        start: {
+          title: copy.signIn,
+          subtitle: copy.signInSub,
         },
       },
     }}
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router language={language} onLanguageChange={changeLanguage} /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 
