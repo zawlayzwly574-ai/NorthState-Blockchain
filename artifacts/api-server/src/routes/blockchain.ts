@@ -518,19 +518,30 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
 
   const previousAssets = new Map(marketCache?.assets.map((asset) => [asset.symbol, asset]));
 
-  return marketDefinitions.flatMap((definition): MarketAsset[] => {
+  // Keep the complete supported-asset directory visible even when both quote
+  // providers are unavailable. Never invent prices: use the last good quote
+  // when available, otherwise return zero so the UI can label the quote as
+  // unavailable instead of silently removing the asset or showing a fake price.
+  return marketDefinitions.map((definition): MarketAsset => {
     const provider = liveData[definition.id];
+    const previous = previousAssets.get(definition.symbol);
     if (!isValidMarketQuote(provider)) {
-      const previous = previousAssets.get(definition.symbol);
-      return previous ? [previous] : [];
+      return previous ?? {
+        symbol: definition.symbol,
+        name: definition.name,
+        price: 0,
+        change24h: 0,
+        marketCap: 0,
+        volume24h: 0,
+        rank: definition.rank,
+        color: definition.color,
+      };
     }
 
-    const price = Number(provider!.usd);
-    const previous = previousAssets.get(definition.symbol);
-    return [{
+    return {
       symbol: definition.symbol,
       name: definition.name,
-      price,
+      price: Number(provider!.usd),
       change24h: Number.isFinite(provider.usd_24h_change)
         ? provider.usd_24h_change!
         : previous?.change24h ?? 0,
@@ -542,7 +553,7 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         : previous?.volume24h ?? 0,
       rank: definition.rank,
       color: definition.color,
-    }];
+    };
   });
 }
 
