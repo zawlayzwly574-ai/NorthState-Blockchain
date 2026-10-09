@@ -1010,11 +1010,12 @@ router.get("/markets/:symbol", async (req, res) => {
     );
     if (response?.ok) {
       const body = (await response.json()) as { prices?: [number, number][] };
-      if (body.prices && body.prices.length > 3) {
+      if (liveHistory.length <= 1 && body.prices && body.prices.length > 3) {
         chart = body.prices.slice(-25).map(([timestamp, value]) => ({
           time: new Date(timestamp).toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
+            second: "2-digit",
             hour12: false,
           }),
           value,
