@@ -42,8 +42,10 @@ const KRAKEN_PAIRS: Record<string, string> = {
 
 function aliasesFor(symbolValue: string): string[] {
   const symbol = symbolValue.toUpperCase() === "GOLD" ? "XAUT" : symbolValue.toUpperCase();
-  if (symbol === "CANTON") return ["CC", "CANTON"];
-  if (symbol === "TON") return ["GRAM", "TON", "TONCOIN"];
+  // Do not use CoinPaprika's alternate symbols (CANTON -> CC, TON -> GRAM)
+  // against exchange trade endpoints: exchange tickers contain no token ID and
+  // both symbols are ambiguous across unrelated assets. Public display metadata
+  // uses the provider's explicit asset ID separately.
   return [symbol];
 }
 
