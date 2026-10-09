@@ -99,3 +99,25 @@ jobs:
           } catch (error) { console.log(String(error)); }
           NODE
           done
+
+      - name: Probe extra public exchange feeds for FDUSD and LEO
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://www.okx.com/api/v5/market/trades?instId=FDUSD-USDT&limit=1'
+            'https://www.okx.com/api/v5/market/trades?instId=FDUSD-USD&limit=1'
+            'https://api.kucoin.com/api/v1/market/histories?symbol=FDUSD-USDT'
+            'https://api.bitget.com/api/v2/spot/market/fills?symbol=FDUSDUSDT&limit=1'
+            'https://min-api.cryptocompare.com/data/price?fsym=FDUSD&tsyms=USD'
+            'https://min-api.cryptocompare.com/data/price?fsym=LEO&tsyms=USD'
+          )
+          n=0
+          for url in "${urls[@]}"; do
+            n=$((n+1))
+            file="/tmp/market-extra-${n}.json"
+            status="$(curl -sS --max-time 10 -A 'Mozilla/5.0 NorthStateBlockchain/1.0' -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "endpoint_${n} HTTP ${status} URL ${url}"
+            head -c 1000 "$file" || true
+            echo
+          done
