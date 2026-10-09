@@ -2911,7 +2911,8 @@ function MiningPlaceDetail() {
 }
 
 function Router({ language, onLanguageChange }: { language: AppLanguage; onLanguageChange: (value: AppLanguage) => void }) { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage language={language} onLanguageChange={onLanguageChange} />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp language={language} onLanguageChange={onLanguageChange} />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
-function SupportChatWidget() {
+function SupportChatWidget({ language }: { language: AppLanguage }) {
+  const copy = AUTH_COPY[language];
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -3025,9 +3026,9 @@ function SupportChatWidget() {
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {!isLoaded ? null : (!isSignedIn && !guestId) ? (
               <div className="flex flex-col gap-3">
-                <p className="text-sm font-bold">Contact support before creating an account</p>
-                <p className="text-xs leading-5 text-muted-foreground">Enter your email so our support team can reply here.</p>
-                <input value={guestName} onChange={e => setGuestName(e.target.value)} maxLength={100} placeholder="Your name (optional)" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Your name" />
+                <p className="text-sm font-bold">{copy.support}</p>
+                <p className="text-xs leading-5 text-muted-foreground">{copy.supportEmail}</p>
+                <input value={guestName} onChange={e => setGuestName(e.target.value)} maxLength={100} placeholder={copy.guestName} className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Your name" />
                 <input value={guestEmail} onChange={e => setGuestEmail(e.target.value)} maxLength={254} type="email" placeholder="Email address" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Email address" />
               </div>
             ) : (isSignedIn && isLoading) ? (
@@ -3069,7 +3070,7 @@ function SupportChatWidget() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void handleSend(); } }}
-                  placeholder="Type a message…"
+                  placeholder={copy.message}
                   rows={2}
                   maxLength={4000}
                   className="min-h-[72px] max-h-[25dvh] w-full resize-y rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
@@ -3082,7 +3083,7 @@ function SupportChatWidget() {
                   aria-label="Send message"
                   data-testid="button-support-send"
                 >
-                  <Send size={16} /> {sending ? 'Sending…' : 'Send message'}
+                  <Send size={16} /> {sending ? 'Sending…' : copy.send}
                 </button>
               </form>
             </div>
@@ -3155,7 +3156,7 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router language={language} onLanguageChange={changeLanguage} /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router language={language} onLanguageChange={changeLanguage} /><Toaster /><SupportChatWidget language={language} /></TooltipProvider></QueryClientProvider>
   </ClerkProvider>;
 }
 
