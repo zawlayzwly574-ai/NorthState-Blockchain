@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           response_file="$(mktemp)"
-          status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$response_file" -w '%{http_code}' 'https://workspaceapi-server-production-838d.up.railway.app/api/markets')"
+          status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$response_file" -w '%{http_code}' 'https://workspaceapi-server-northstate-blockchain-pr-6.up.railway.app/api/markets')"
           echo "http_status=$status"
           if [ "$status" != "200" ]; then
             echo "Market API returned HTTP $status" >&2
@@ -40,4 +40,8 @@ jobs:
             quotesUnavailable: body.length - quoteAvailable.length,
             firstAssets: body.slice(0, 8).map(({ symbol, name, price }) => ({ symbol, name, price })),
           }, null, 2));
+          if (quoteAvailable.length === 0) {
+            console.error('No live market quotes returned from the preview API.');
+            process.exit(1);
+          }
           NODE
