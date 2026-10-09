@@ -1948,6 +1948,84 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
   res.json({ sent: true, messageId: message.id });
 });
 
+router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (req, res) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
+  const messageId = Number(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId);
+  const content = String(req.body?.content ?? "").trim();
+
+  if (!Number.isSafeInteger(messageId) || messageId <= 0) {
+    res.status(400).json({ error: "Invalid support message ID." }); return;
+  }
+  if (!content || content.length > 4000) {
+    res.status(400).json({ error: "Message must contain 1–4000 characters." }); return;
+  }
+
+  const [thread] = await db.select({ id: supportThreadsTable.id })
+    .from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, userId))
+    .limit(1);
+  if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
+
+  const [existing] = await db.select({ id: supportMessagesTable.id })
+    .from(supportMessagesTable)
+    .where(and(
+      eq(supportMessagesTable.id, messageId),
+      eq(supportMessagesTable.threadId, thread.id),
+    ))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Message not found in this support thread." }); return; }
+
+  const [updated] = await db.update(supportMessagesTable)
+    .set({ content })
+    .where(and(
+      eq(supportMessagesTable.id, messageId),
+      eq(supportMessagesTable.threadId, thread.id),
+    ))
+    .returning();
+  await db.update(supportThreadsTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+
+  res.json({
+    updated: true,
+    message: {
+      id: updated.id,
+      threadId: updated.threadId,
+      senderRole: updated.senderRole,
+      content: updated.content,
+      createdAt: updated.createdAt.toISOString(),
+    },
+  });
+});
+
+router.delete("/admin/support/:userId/messages/:messageId", requireAdmin, async (req, res) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
+  const messageId = Number(Array.isArray(req.params.messageId) ? req.params.messageId[0] : req.params.messageId);
+
+  if (!Number.isSafeInteger(messageId) || messageId <= 0) {
+    res.status(400).json({ error: "Invalid support message ID." }); return;
+  }
+
+  const [thread] = await db.select({ id: supportThreadsTable.id })
+    .from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, userId))
+    .limit(1);
+  if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
+
+  const [deleted] = await db.delete(supportMessagesTable)
+    .where(and(
+      eq(supportMessagesTable.id, messageId),
+      eq(supportMessagesTable.threadId, thread.id),
+    ))
+    .returning({ id: supportMessagesTable.id });
+  if (!deleted) { res.status(404).json({ error: "Message not found in this support thread." }); return; }
+
+  await db.update(supportThreadsTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+  res.json({ deleted: true, messageId: deleted.id });
+});
+
 // ─── Admin middleware ────────────────────────────────────────────────────────
 
 function requireAdmin(
