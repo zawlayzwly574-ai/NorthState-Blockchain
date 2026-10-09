@@ -36,9 +36,15 @@ const KRAKEN_PAIR_BY_ID: Record<string, string> = {
   "zcash": "ZECUSD",
 };
 
+const BITFINEX_PAIR_BY_ID: Record<string, string> = {
+  // Bitfinex uses a timestamped public trade feed for UNUS SED LEO.
+  "leo-token": "tLEOUSD",
+};
+
 let binanceBlockedUntil = 0;
 let coinGeckoAuthBlockedUntil = 0;
 let krakenBlockedUntil = 0;
+let bitfinexBlockedUntil = 0;
 
 function toFreshQuote(priceValue: unknown, timestampValue: unknown, now = Date.now()): FuturesQuote | null {
   const price = Number(priceValue);
@@ -113,6 +119,32 @@ async function fetchLatestKrakenTrade(
     return latest ? toFreshQuote(latest[0], Number(latest[2]) * 1000) : null;
   } catch (error) {
     req.log.warn({ err: error, pair }, "Kraken reference trade unavailable");
+    return null;
+  }
+}
+
+async function fetchLatestBitfinexTrade(
+  req: Request,
+  pair: string,
+): Promise<FuturesQuote | null> {
+  if (Date.now() < bitfinexBlockedUntil) return null;
+  try {
+    const response = await fetch(
+      `https://api-pub.bitfinex.com/v2/trades/${encodeURIComponent(pair)}/hist?limit=1`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) },
+    );
+    if (response.status === 429) {
+      bitfinexBlockedUntil = Date.now() + 60_000;
+      req.log.warn({ status: response.status }, "Bitfinex reference trade rate limited; cooling down");
+      return null;
+    }
+    if (!response.ok) return null;
+    // Bitfinex public trade rows are [id, millisecond timestamp, amount, price].
+    const trades = await response.json() as Array<[number, number, number, number]>;
+    const latest = trades[0];
+    return latest ? toFreshQuote(latest[3], latest[1]) : null;
+  } catch (error) {
+    req.log.warn({ err: error, pair }, "Bitfinex reference trade unavailable");
     return null;
   }
 }
@@ -195,6 +227,12 @@ export function createFuturesQuoteFetcher(
       if (quote) return quote;
     }
 
+    const bitfinexPair = BITFINEX_PAIR_BY_ID[definition.id];
+    if (bitfinexPair) {
+      const quote = await fetchLatestBitfinexTrade(req, bitfinexPair);
+      if (quote) return quote;
+    }
+
     const gecko = await fetchCoinGeckoJson<Record<string, { usd?: number; last_updated_at?: number }>>(
       req,
       `simple/price?ids=${encodeURIComponent(definition.id)}&vs_currencies=usd&include_last_updated_at=true`,
@@ -266,6 +304,11 @@ export function createTradingHistoryFetcher(
       const candles = await fetchHistoricalKraken(req, krakenPair);
       if (candles.length) return candles;
     }
+    const bitfinexPair = BITFINEX_PAIR_BY_ID[definition.id];
+    if (bitfinexPair) {
+      const candles = await fetchHistoricalBitfinex(req, bitfinexPair);
+      if (candles.length) return candles;
+    }
     const gecko = await fetchCoinGeckoJson<{ prices?: [number, number][] }>(
       req,
       `coins/${encodeURIComponent(definition.id)}/market_chart?vs_currency=usd&days=1`,
@@ -279,6 +322,28 @@ export function createTradingHistoryFetcher(
 }
 
 const MAX_HISTORY_POINTS_FOR_CHART = 180;
+
+async function fetchHistoricalBitfinex(req: Request, pair: string): Promise<LivePricePoint[]> {
+  if (Date.now() < bitfinexBlockedUntil) return [];
+  try {
+    const response = await fetch(
+      `https://api-pub.bitfinex.com/v2/candles/trade:1m:${encodeURIComponent(pair)}/hist?limit=80`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5_000) },
+    );
+    if (response.status === 429) bitfinexBlockedUntil = Date.now() + 60_000;
+    if (!response.ok) return [];
+    // Bitfinex candles are [MTS, OPEN, CLOSE, HIGH, LOW, VOLUME].
+    const candles = await response.json() as Array<[number, number, number, number, number, number]>;
+    return candles.flatMap((candle) => {
+      const t = Number(candle[0]), price = Number(candle[2]);
+      return Number.isFinite(t) && Number.isFinite(price) && price > 0 && t <= Date.now()
+        ? [{ t, price }] : [];
+    }).slice(-MAX_HISTORY_POINTS_FOR_CHART).reverse();
+  } catch (error) {
+    req.log.warn({ err: error, pair }, "Bitfinex chart history unavailable");
+    return [];
+  }
+}
 
 async function fetchHistoricalBinance(req: Request, pair: string): Promise<LivePricePoint[]> {
   if (Date.now() < binanceBlockedUntil) return [];
