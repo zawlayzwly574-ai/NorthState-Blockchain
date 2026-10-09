@@ -1,0 +1,26 @@
+name: Temporary market provider typecheck
+
+on:
+  push:
+    branches:
+      - "verify/market-provider-typecheck"
+
+permissions:
+  contents: read
+
+jobs:
+  api-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/api-server run typecheck
+      - run: pnpm --filter @workspace/api-server run test
