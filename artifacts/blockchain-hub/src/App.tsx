@@ -2888,6 +2888,13 @@ function SupportChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestId, setGuestId] = useState(() => {
+    try { return localStorage.getItem('nsb-guest-support-id') ?? ''; } catch { return ''; }
+  });
+  const [guestMessages, setGuestMessages] = useState<Array<{ id: number; senderRole: 'user' | 'admin'; content: string; createdAt: string }>>([]);
+  const [guestError, setGuestError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
@@ -2895,7 +2902,25 @@ function SupportChatWidget() {
     query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn, refetchInterval: open ? 5000 : false },
   });
   const sendMut = useSendSupportMessage();
-  const messages = data?.messages ?? [];
+  const messages = isSignedIn ? (data?.messages ?? []) : guestMessages;
+
+  useEffect(() => {
+    if (!open || isSignedIn || !guestId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}/messages`);
+        if (!response.ok) throw new Error('Could not load support messages.');
+        const body = await response.json();
+        if (!cancelled) setGuestMessages(body.messages ?? []);
+      } catch (error) {
+        if (!cancelled) setGuestError(error instanceof Error ? error.message : 'Could not load support messages.');
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 5000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [open, isSignedIn, guestId]);
 
   useEffect(() => {
     if (open && messagesEndRef.current) {
@@ -2909,10 +2934,32 @@ function SupportChatWidget() {
     setSending(true);
     setInput('');
     try {
-      await sendMut.mutateAsync({ data: { content: text } });
-      qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey() });
-    } catch {
-      setInput(text);
+      if (isSignedIn) {
+        await sendMut.mutateAsync({ data: { content: text } });
+        qc.invalidateQueries({ queryKey: getGetSupportMessagesQueryKey() });
+      } else if (guestId) {
+        const response = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}/messages`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: text }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? 'Could not send your message.');
+        setGuestMessages(prev => [...prev, body.message]);
+      } else {
+        const response = await fetch(`${apiBaseUrl}/api/support/guest`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: guestName, email: guestEmail, content: text }),
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error ?? 'Could not contact support.');
+        setGuestId(body.guestId);
+        try { localStorage.setItem('nsb-guest-support-id', body.guestId); } catch { /* session still works */ }
+        setGuestMessages(body.messages ?? []);
+        setGuestError('');
+      }
+      setInput('');
+      setGuestError('');
+    } catch (error) {
+      setGuestError(error instanceof Error ? error.message : 'Could not send your message.');
     } finally {
       setSending(false);
     }
@@ -2948,15 +2995,14 @@ function SupportChatWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!isLoaded ? null : !isSignedIn ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
-                  <Lock size={20} />
-                </div>
-                <p className="text-sm font-bold">Sign in to chat with support</p>
-                <p className="text-xs leading-5 text-muted-foreground">Create an account or sign in to get personalised help from our team.</p>
+            {!isLoaded ? null : !isSignedIn && !guestId ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-bold">Contact support before creating an account</p>
+                <p className="text-xs leading-5 text-muted-foreground">Enter your email so our support team can reply here.</p>
+                <input value={guestName} onChange={e => setGuestName(e.target.value)} maxLength={100} placeholder="Your name (optional)" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Your name" />
+                <input value={guestEmail} onChange={e => setGuestEmail(e.target.value)} maxLength={254} type="email" required placeholder="Email address" className="w-full rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base outline-none focus:border-primary" aria-label="Email address" />
               </div>
-            ) : isLoading ? (
+            ) : isSignedIn ? (isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="text-xs text-muted-foreground">Loading…</span>
               </div>
@@ -2987,26 +3033,28 @@ function SupportChatWidget() {
           </div>
 
           {/* Input */}
-          {isSignedIn && (
+          {(isSignedIn || !guestId || guestId) && (
             <div className="shrink-0 border-t border-border p-3">
-              <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex items-end gap-2">
+              {guestError && <p role="alert" className="mb-2 text-xs leading-5 text-red-400">{guestError}</p>}
+              <form onSubmit={e => { e.preventDefault(); void handleSend(); }} className="flex flex-col items-stretch gap-2">
                 <textarea
                   value={input}
                   onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void handleSend(); } }}
                   placeholder="Type a message…"
-                  rows={1}
-                  className="min-h-[40px] max-h-[100px] flex-1 resize-none rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-sm leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  rows={2}
+                  maxLength={4000}
+                  className="min-h-[72px] max-h-[25dvh] w-full resize-y rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-base leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
                   data-testid="input-support-message"
                 />
                 <button
                   type="submit"
-                  disabled={!input.trim() || sending}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground transition disabled:opacity-40 hover:scale-105 active:scale-95"
+                  disabled={!input.trim() || sending || (!isSignedIn && !guestId && !guestEmail.trim())}
+                  className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 text-sm font-bold text-primary-foreground transition disabled:opacity-40"
                   aria-label="Send message"
                   data-testid="button-support-send"
                 >
-                  <Send size={16} />
+                  <Send size={16} /> {sending ? 'Sending…' : 'Send message'}
                 </button>
               </form>
             </div>
