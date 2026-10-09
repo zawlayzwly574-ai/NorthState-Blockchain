@@ -12,11 +12,12 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const basePath = process.env.BASE_PATH?.trim() || "/";
-const apiBaseUrl = process.env.VITE_API_BASE_URL?.trim();
-if (process.env.VERCEL && !apiBaseUrl) {
-  throw new Error("VITE_API_BASE_URL is required when building the Vercel frontend.");
-}
-
+const apiBaseUrl =
+  process.env.VITE_API_BASE_URL?.trim() ||
+  (process.env.VERCEL
+    ? 'https://workspaceapi-server-production-838d.up.railway.app'
+    : '');
+ 
 // The frontend is wired to authenticate against the same Clerk application
 // the backend verifies sessions against (CLERK_PUBLISHABLE_KEY), rather than
 // the separate VITE_CLERK_PUBLISHABLE_KEY value, so sign-in on the client and
@@ -33,6 +34,7 @@ if (!serverClerkPublishableKey) {
 export default defineConfig({
   base: basePath,
   define: {
+    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiBaseUrl),
     'import.meta.env.VITE_CLERK_PUBLISHABLE_KEY': JSON.stringify(
       serverClerkPublishableKey,
     ),
