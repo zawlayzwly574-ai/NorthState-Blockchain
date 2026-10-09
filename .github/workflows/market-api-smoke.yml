@@ -1,4 +1,4 @@
-name: Temporary PR 10 market feed smoke check # latest preview build
+name: Temporary production market and admin-route smoke check # latest main deployment
 
 on:
   push:
@@ -293,4 +293,23 @@ jobs:
             process.exit(1);
           }
           NODE
+          done
+
+      - name: Verify support edit/delete routes are present and admin-protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          for method in PATCH DELETE; do
+            response_file="$(mktemp)"
+            status="$(curl -sS --max-time 15 -X "$method" \
+              -H 'Content-Type: application/json' \
+              --data '{"content":"unauthenticated route probe"}' \
+              -o "$response_file" -w '%{http_code}' \
+              'https://workspaceapi-server-production-838d.up.railway.app/api/admin/support/smoke-user/messages/1')"
+            echo "$method /api/admin/support/:userId/messages/:messageId => HTTP $status"
+            if [ "$status" != "401" ]; then
+              echo "Expected the admin guard to reject the unauthenticated $method request with 401" >&2
+              head -c 800 "$response_file" >&2 || true
+              exit 1
+            fi
           done
