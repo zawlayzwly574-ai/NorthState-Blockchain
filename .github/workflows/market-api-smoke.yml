@@ -251,3 +251,39 @@ jobs:
           for symbol in XAUTUSDT GRAMUSDT CCUSDT; do
             probe "Bybit trades $symbol" "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=$symbol&limit=1"
           done
+
+      - name: Verify public chart history returns real provider points
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='https://workspaceapi-server-production-838d.up.railway.app/api/markets'
+          for symbol in BTC XAUT CANTON TON HYPE XMR; do
+            file="$(mktemp)"
+            status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$file" -w '%{http_code}' "$base/$symbol")"
+            echo "symbol=$symbol http_status=$status"
+            if [ "$status" != "200" ]; then
+              echo "Chart API returned HTTP $status for $symbol" >&2
+              head -c 1000 "$file" >&2 || true
+              exit 1
+            fi
+            node - "$file" "$symbol" <<'NODE'
+          const fs = require('node:fs');
+          const [file, requestedSymbol] = process.argv.slice(2);
+          const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+          const points = Array.isArray(body.chart) ? body.chart : [];
+          const prices = points.filter(p => Number.isFinite(p.value) && p.value > 0);
+          console.log(JSON.stringify({
+            requestedSymbol,
+            returnedSymbol: body.asset?.symbol,
+            livePrice: body.asset?.price,
+            chartPoints: points.length,
+            validChartPoints: prices.length,
+            first: points[0],
+            last: points[points.length - 1],
+          }));
+          if (!Number.isFinite(body.asset?.price) || body.asset.price <= 0 || !prices.length) {
+            console.error('Expected an actual asset quote and at least one real exchange chart point.');
+            process.exit(1);
+          }
+          NODE
+          done
