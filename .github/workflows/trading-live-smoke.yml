@@ -1,4 +1,4 @@
-name: Temporary live Trading preview smoke # verify the latest provider timestamp fixes
+name: Temporary production Trading smoke # verify the latest provider timestamp fixes
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="https://workspaceapi-server-northstate-blockchain-pr-7.up.railway.app/api"
+          base="https://workspaceapi-server-production-838d.up.railway.app/api"
           markets_file="$(mktemp)"
           markets_status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$markets_file" -w '%{http_code}' "$base/markets")"
           echo "markets_http=$markets_status"
