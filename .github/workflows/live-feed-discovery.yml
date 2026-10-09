@@ -141,3 +141,32 @@ jobs:
             head -c 1000 "$file" || true
             echo
           done
+
+      - name: Verify remaining public pair identities and FDUSD markets
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://api.kraken.com/0/public/Trades?pair=MUSD'
+            'https://api.exchange.coinbase.com/products/FDUSD-USD/ticker'
+            'https://api.exchange.coinbase.com/products/FDUSD-USDT/ticker'
+            'https://api.gateio.ws/api/v4/spot/trades?currency_pair=FDUSD_USDT&limit=1'
+            'https://api.mexc.com/api/v3/trades?symbol=FDUSDUSDT&limit=1'
+            'https://api-pub.bitfinex.com/v2/trades/tFDUSD:UST/hist?limit=1'
+            'https://api-pub.bitfinex.com/v2/trades/tFDUSD:USDT/hist?limit=1'
+          )
+          n=0
+          for url in "${urls[@]}"; do
+            n=$((n+1))
+            file="/tmp/last-provider-${n}.json"
+            status="$(curl -sS --max-time 10 -A 'Mozilla/5.0 NorthStateBlockchain/1.0' -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "endpoint_${n} HTTP ${status} URL ${url}"
+            head -c 650 "$file" || true
+            echo
+          done
+          curl -sS --max-time 20 'https://api.coinpaprika.com/v1/tickers?quotes=USD' -o /tmp/cp-tickers.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const rows = JSON.parse(fs.readFileSync('/tmp/cp-tickers.json','utf8'));
+          console.log('CoinPaprika M / MemeCore candidates:',JSON.stringify(rows.filter(x=>String(x.symbol).toUpperCase()==='M' || /memecore/i.test(String(x.name))).map(x=>({id:x.id,name:x.name,symbol:x.symbol,price:x.quotes?.USD?.price,last_updated:x.last_updated})),null,2));
+          NODE
