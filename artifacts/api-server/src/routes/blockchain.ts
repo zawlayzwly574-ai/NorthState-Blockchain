@@ -384,16 +384,195 @@ async function requireVerifiedMember(req: Request, res: Response, next: NextFunc
 
 const MARKET_API_KEY = process.env.MARKET_API_KEY?.trim() ?? "";
 const MARKET_API_KEY_TYPE = (process.env.MARKET_API_KEY_TYPE ?? "demo").trim().toLowerCase();
+type CoinGeckoAuthMode = "demo" | "pro";
 const isCoinGeckoPro = Boolean(MARKET_API_KEY) &&
   ["pro", "paid", "enterprise"].includes(MARKET_API_KEY_TYPE);
-const coinGeckoApiBaseUrl = isCoinGeckoPro
-  ? "https://pro-api.coingecko.com/api/v3"
-  : "https://api.coingecko.com/api/v3";
-const marketHeaders: Record<string, string> = { accept: "application/json" };
-if (MARKET_API_KEY) {
-  // CoinGecko requires the key header and API host to match the selected plan.
-  // Sending both key headers can cause provider rejection.
-  marketHeaders[isCoinGeckoPro ? "x-cg-pro-api-key" : "x-cg-demo-api-key"] = MARKET_API_KEY;
+let preferredCoinGeckoAuthMode: CoinGeckoAuthMode = isCoinGeckoPro ? "pro" : "demo";
+let coinGeckoAuthBlockedUntil = 0;
+let coinGeckoRateLimitedUntil = 0;
+
+function coinGeckoBaseUrl(mode: CoinGeckoAuthMode) {
+  return mode === "pro"
+    ? "https://pro-api.coingecko.com/api/v3"
+    : "https://api.coingecko.com/api/v3";
+}
+
+function coinGeckoHeaders(mode: CoinGeckoAuthMode): Record<string, string> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (MARKET_API_KEY) {
+    headers[mode === "pro" ? "x-cg-pro-api-key" : "x-cg-demo-api-key"] = MARKET_API_KEY;
+  }
+  return headers;
+}
+
+async function fetchCoinGeckoEndpoint(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+  path: string,
+): Promise<Response | null> {
+  if (Date.now() < coinGeckoAuthBlockedUntil || Date.now() < coinGeckoRateLimitedUntil) return null;
+  const modes: CoinGeckoAuthMode[] = MARKET_API_KEY
+    ? [preferredCoinGeckoAuthMode, preferredCoinGeckoAuthMode === "pro" ? "demo" : "pro"]
+    : [preferredCoinGeckoAuthMode];
+
+  for (let index = 0; index < modes.length; index += 1) {
+    const mode = modes[index];
+    const endpoint = `${coinGeckoBaseUrl(mode)}/${path}`;
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        headers: coinGeckoHeaders(mode),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch (error) {
+      req.log.warn({ err: error, host: new URL(endpoint).host }, "CoinGecko provider could not be reached");
+      return null;
+    }
+    if (response.ok) {
+      if (preferredCoinGeckoAuthMode !== mode) {
+        req.log.info({ authMode: mode }, "CoinGecko alternate authentication mode succeeded");
+      }
+      preferredCoinGeckoAuthMode = mode;
+      coinGeckoAuthBlockedUntil = 0;
+      coinGeckoRateLimitedUntil = 0;
+      return response;
+    }
+
+    const providerError = await response.clone().json().catch(() => null) as {
+      status?: { error_message?: string };
+      error?: string;
+      message?: string;
+    } | null;
+    const details = {
+      status: response.status,
+      host: new URL(endpoint).host,
+      authMode: mode,
+      configuredKeyType: MARKET_API_KEY_TYPE || "unset",
+      keyConfigured: Boolean(MARKET_API_KEY),
+      providerError: providerError?.status?.error_message ?? providerError?.error ?? providerError?.message,
+    };
+    if (response.status === 429) {
+      coinGeckoRateLimitedUntil = Date.now() + 60_000;
+      req.log.warn(details, "CoinGecko rate limit reached; cooling down provider requests");
+      return null;
+    }
+    if ([400, 401, 403].includes(response.status) && index < modes.length - 1) {
+      req.log.warn(details, "CoinGecko auth mode rejected; retrying alternate documented mode");
+      continue;
+    }
+    if ([400, 401, 403].includes(response.status)) coinGeckoAuthBlockedUntil = Date.now() + 60_000;
+    req.log.warn(details, "CoinGecko provider returned a non-success status");
+    return null;
+  }
+  return null;
+}
+
+const marketHeaders = coinGeckoHeaders(preferredCoinGeckoAuthMode);
+
+type CoinPaprikaQuote = {
+  price?: number;
+  market_cap?: number;
+  volume_24h?: number;
+  percent_change_24h?: number;
+};
+type CoinPaprikaTicker = {
+  id?: string;
+  symbol?: string;
+  name?: string;
+  rank?: number;
+  quotes?: { USD?: CoinPaprikaQuote };
+};
+
+let coinPaprikaCache: { tickers: CoinPaprikaTicker[]; ts: number } | null = null;
+let coinPaprikaRefreshPromise: Promise<CoinPaprikaTicker[]> | null = null;
+let coinPaprikaRetryAfter = 0;
+const COINPAPRIKA_CACHE_TTL = 180_000;
+
+async function fetchCoinPaprikaTickers(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+): Promise<CoinPaprikaTicker[]> {
+  const now = Date.now();
+  if (coinPaprikaCache && now - coinPaprikaCache.ts < COINPAPRIKA_CACHE_TTL) return coinPaprikaCache.tickers;
+  if (now < coinPaprikaRetryAfter) return coinPaprikaCache?.tickers ?? [];
+  if (!coinPaprikaRefreshPromise) {
+    coinPaprikaRefreshPromise = (async () => {
+      try {
+        const response = await fetch("https://api.coinpaprika.com/v1/tickers?quotes=USD", {
+          headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) {
+          coinPaprikaRetryAfter = Date.now() + 60_000;
+          req.log.warn({ status: response.status }, "CoinPaprika fallback returned a non-success status");
+          return coinPaprikaCache?.tickers ?? [];
+        }
+        const tickers = await response.json() as CoinPaprikaTicker[];
+        if (!Array.isArray(tickers)) {
+          coinPaprikaRetryAfter = Date.now() + 60_000;
+          req.log.warn({}, "CoinPaprika fallback returned an unexpected response");
+          return coinPaprikaCache?.tickers ?? [];
+        }
+        coinPaprikaCache = { tickers, ts: Date.now() };
+        coinPaprikaRetryAfter = 0;
+        req.log.info({ tickerCount: tickers.length }, "CoinPaprika fallback ticker cache refreshed");
+        return tickers;
+      } catch (error) {
+        coinPaprikaRetryAfter = Date.now() + 60_000;
+        req.log.warn({ err: error }, "CoinPaprika fallback could not be reached");
+        return coinPaprikaCache?.tickers ?? [];
+      }
+    })().finally(() => {
+      coinPaprikaRefreshPromise = null;
+    });
+  }
+  return coinPaprikaRefreshPromise;
+}
+
+function normalizeMarketName(value: string | undefined): string {
+  return (value ?? "").normalize("NFKD").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function marketNameMatchScore(expected: string, actual: string | undefined): number {
+  const left = normalizeMarketName(expected);
+  const right = normalizeMarketName(actual);
+  if (!left || !right) return 0;
+  if (left === right) return 4;
+  if (left.includes(right) || right.includes(left)) return 2;
+  return 0;
+}
+
+async function fetchCoinPaprikaMarketData(
+  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
+): Promise<Record<string, MarketQuote>> {
+  const tickers = await fetchCoinPaprikaTickers(req);
+  const quotes: Record<string, MarketQuote> = {};
+  for (const definition of marketDefinitions) {
+    const candidates = tickers
+      .filter((ticker) =>
+        ticker.symbol?.toUpperCase() === definition.symbol.toUpperCase() &&
+        Number.isFinite(ticker.quotes?.USD?.price) &&
+        (ticker.quotes?.USD?.price ?? 0) > 0,
+      )
+      .map((ticker) => ({
+        ticker,
+        nameScore: marketNameMatchScore(definition.name, ticker.name),
+        rank: Number.isFinite(ticker.rank) && (ticker.rank ?? 0) > 0
+          ? ticker.rank!
+          : Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => b.nameScore - a.nameScore || a.rank - b.rank);
+    if (candidates.length === 0) continue;
+    if (candidates.length > 1 && candidates[0].nameScore === 0) continue;
+    const quote = candidates[0].ticker.quotes?.USD;
+    if (!quote || !Number.isFinite(quote.price) || (quote.price ?? 0) <= 0) continue;
+    quotes[definition.id] = {
+      usd: quote.price,
+      usd_24h_change: quote.percent_change_24h,
+      usd_market_cap: quote.market_cap,
+      usd_24h_vol: quote.volume_24h,
+    };
+  }
+  req.log.info({ supportedQuotes: Object.keys(quotes).length }, "CoinPaprika fallback quotes mapped");
+  return quotes;
 }
 
 type MarketQuote = {
@@ -457,11 +636,13 @@ function isValidMarketQuote(quote: MarketQuote | undefined) {
 
 let marketCache: { assets: MarketAsset[]; ts: number } | null = null;
 let marketRefreshPromise: Promise<MarketAsset[]> | null = null;
+let binanceBlockedUntil = 0;
 const MARKET_DATA_TTL = 30_000;
 
 async function fetchBinanceMarketData(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
 ) {
+  if (Date.now() < binanceBlockedUntil) return {} as Record<string, MarketQuote>;
   const symbols = Object.values(binanceSymbols);
   const endpoint = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbols))}`;
 
@@ -471,6 +652,8 @@ async function fetchBinanceMarketData(
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) {
+      if (response.status === 451) binanceBlockedUntil = Date.now() + 15 * 60_000;
+      else if (response.status === 429) binanceBlockedUntil = Date.now() + 60_000;
       req.log.warn({ status: response.status }, "Alternate market provider returned a non-success status");
       return {} as Record<string, MarketQuote>;
     }
@@ -496,40 +679,34 @@ async function fetchBinanceMarketData(
 
 async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]): Promise<MarketAsset[]> {
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
-  const endpoint = `${coinGeckoApiBaseUrl}/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`;
   let liveData: Record<string, MarketQuote> = {};
 
   try {
-    const response = await fetch(endpoint, {
-      headers: marketHeaders,
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.ok) {
-      liveData = (await response.json()) as typeof liveData;
-    } else {
-      const providerError = await response.clone().json().catch(() => null) as {
-        status?: { error_message?: string };
-        error?: string;
-        message?: string;
-      } | null;
-      req.log.warn({
-        status: response.status,
-        host: new URL(endpoint).host,
-        keyType: MARKET_API_KEY_TYPE || "unset",
-        keyConfigured: Boolean(MARKET_API_KEY),
-        providerError: providerError?.status?.error_message ?? providerError?.error ?? providerError?.message,
-      }, "Market provider returned a non-success status");
-    }
+    const response = await fetchCoinGeckoEndpoint(
+      req,
+      `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+    );
+    if (response) liveData = (await response.json()) as typeof liveData;
   } catch (error) {
-    req.log.warn({ err: error }, "Market provider could not be reached; trying alternate quotes");
+    req.log.warn({ err: error }, "CoinGecko market quote response could not be parsed");
   }
 
-  const missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
+  let missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
   if (missingIds) {
     const alternateData = await fetchBinanceMarketData(req);
     for (const definition of marketDefinitions) {
       if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(alternateData[definition.id])) {
         liveData[definition.id] = alternateData[definition.id];
+      }
+    }
+    missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
+  }
+
+  if (missingIds) {
+    const fallbackData = await fetchCoinPaprikaMarketData(req);
+    for (const definition of marketDefinitions) {
+      if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(fallbackData[definition.id])) {
+        liveData[definition.id] = fallbackData[definition.id];
       }
     }
   }
@@ -767,11 +944,11 @@ router.get("/markets/:symbol", async (req, res) => {
 
   try {
     const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
-    const response = await fetch(
-      `${coinGeckoApiBaseUrl}/coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
-      { headers: marketHeaders, signal: AbortSignal.timeout(5000) },
+    const response = await fetchCoinGeckoEndpoint(
+      req,
+      `coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
     );
-    if (response.ok) {
+    if (response?.ok) {
       const body = (await response.json()) as { prices?: [number, number][] };
       if (body.prices && body.prices.length > 3) {
         chart = body.prices.slice(-25).map(([timestamp, value]) => ({
