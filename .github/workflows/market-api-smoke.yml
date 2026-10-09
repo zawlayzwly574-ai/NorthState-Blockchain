@@ -145,7 +145,7 @@ jobs:
               const payload = await response.json().catch(()=>null);
               let rows=[];
               if(provider==="okx") rows=(payload?.data??[]).map(x=>({symbol:String(x.instId??"").split("-")[0].toUpperCase(),pair:x.instId,price:x.last,ts:x.ts}));
-              if(provider==="gate") rows=(Array.isArray(payload)?payload:[]).map(x=>({symbol:String(x.currency_pair??"").split("_")[0].toUpperCase(),pair:x.currency_pair,price:x.last,ts:x.update}});
+              if(provider==="gate") rows=(Array.isArray(payload)?payload:[]).map(x=>({symbol:String(x.currency_pair??"").split("_")[0].toUpperCase(),pair:x.currency_pair,price:x.last,ts:x.update}));
               if(provider==="kucoin") rows=(payload?.data?.ticker??[]).map(x=>({symbol:String(x.symbol??"").split("-")[0].toUpperCase(),pair:x.symbol,price:x.last,ts:x.time}));
               if(provider==="bybit") rows=(payload?.result?.list??[]).map(x=>({symbol:String(x.symbol??"").replace(/USDT$/,"").toUpperCase(),pair:x.symbol,price:x.lastPrice,ts:x.time??payload?.time}));
               const aliases={CANTON:["CC"],TON:["GRAM"],XAUT:["XAUT"],USDE:["USDE"],USD1:["USD1"],PYUSD:["PYUSD"],FDUSD:["FDUSD"]};
