@@ -63,6 +63,33 @@ export function timestampedFuturesQuote(priceValue: unknown, timestampValue: unk
   return toFreshQuote(priceValue, timestampValue, now);
 }
 
+export function parseGateTradeQuote(
+  row: { price?: unknown; create_time_ms?: unknown; create_time?: unknown } | undefined,
+  now = Date.now(),
+): FuturesQuote | null {
+  const timestamp = Number(row?.create_time_ms ?? row?.create_time);
+  const updatedAt = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+  return toFreshQuote(row?.price, updatedAt, now);
+}
+
+export function parseMexcTradeQuote(
+  row: { price?: unknown; time?: unknown } | undefined,
+  now = Date.now(),
+): FuturesQuote | null {
+  return toFreshQuote(row?.price, row?.time, now);
+}
+
+export function parseBitfinexMidpoint(
+  ticker: unknown,
+  now = Date.now(),
+): FuturesQuote | null {
+  if (!Array.isArray(ticker)) return null;
+  const bid = Number(ticker[0]);
+  const ask = Number(ticker[2]);
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) return null;
+  return toFreshQuote((bid + ask) / 2, now, now);
+}
+
 async function fetchLatestBinanceTrade(
   req: Request,
   pair: string,
@@ -166,12 +193,9 @@ async function fetchLatestBitfinexMidQuote(
       return null;
     }
     if (!response.ok) return null;
-    const ticker = await response.json() as number[];
-    const bid = Number(ticker[0]);
-    const ask = Number(ticker[2]);
-    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) return null;
+    const ticker = await response.json();
     // This is an observed exchange bid/ask midpoint, not a fabricated last trade.
-    return toFreshQuote((bid + ask) / 2, Date.now());
+    return parseBitfinexMidpoint(ticker);
   } catch (error) {
     req.log.warn({ err: error, pair }, "Bitfinex order-book midpoint unavailable");
     return null;
@@ -191,10 +215,7 @@ async function fetchLatestGateTrade(req: Request): Promise<FuturesQuote | null> 
     }
     if (!response.ok) return null;
     const rows = await response.json() as Array<{ price?: string; create_time_ms?: string; create_time?: string }>;
-    const row = rows[0];
-    const timestamp = Number(row?.create_time_ms ?? row?.create_time);
-    const updatedAt = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-    return toFreshQuote(row?.price, updatedAt);
+    return parseGateTradeQuote(rows[0]);
   } catch (error) {
     req.log.warn({ err: error }, "Gate.io FDUSD reference trade unavailable");
     return null;
@@ -214,7 +235,7 @@ async function fetchLatestMexcTrade(req: Request): Promise<FuturesQuote | null> 
     }
     if (!response.ok) return null;
     const rows = await response.json() as Array<{ price?: string; time?: number }>;
-    return toFreshQuote(rows[0]?.price, rows[0]?.time);
+    return parseMexcTradeQuote(rows[0]);
   } catch (error) {
     req.log.warn({ err: error }, "MEXC FDUSD reference trade unavailable");
     return null;
