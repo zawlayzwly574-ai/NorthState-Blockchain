@@ -989,9 +989,16 @@ router.get("/markets/:symbol", async (req, res) => {
     return;
   }
 
-  let chart = Array.from({ length: 25 }, (_, index) => ({
-    time: `${String(index).padStart(2, "0")}:00`,
-    value: asset.price * (1 + Math.sin(index / 3.4) * 0.012 + (index - 12) * 0.00035),
+  ensureLiveMarketFeedStarted();
+  const liveHistory = getLiveMarketHistory(asset.symbol, 25);
+  let chart = liveHistory.map((point) => ({
+    time: new Date(point.t).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }),
+    value: point.price,
   }));
 
   try {
