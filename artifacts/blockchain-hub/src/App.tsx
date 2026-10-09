@@ -1879,9 +1879,9 @@ function MarketRow({ item }: { item: MarketAsset }) {
         <CoinLogo symbol={item.symbol} name={item.name} color={item.color ?? '#0ea5e9'} size={40} />
         <div><p className="text-sm font-bold">{item.name}</p><p className="font-mono-ui text-xs text-muted-foreground">{item.symbol}</p></div>
       </div>
-      <p className={`font-mono-ui text-sm ${priceDirection ? `quote-flash-${priceDirection}` : ''}`}>{money(item.price)}</p>
-      <p className={`text-sm font-bold ${item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive'} ${priceDirection ? `quote-change-${priceDirection}` : ''}`}>{pct(item.change24h)}</p>
-      <p className="hidden font-mono-ui text-sm text-muted-foreground md:block">${compact(item.marketCap)}</p>
+      <p className={`font-mono-ui text-sm ${priceDirection ? `quote-flash-${priceDirection}` : ''} ${item.price > 0 ? '' : 'text-muted-foreground'}`}>{item.price > 0 ? money(item.price) : 'Quote unavailable'}</p>
+      <p className={`text-sm font-bold ${item.price > 0 ? (item.change24h >= 0 ? 'text-[#2db87a]' : 'text-destructive') : 'text-muted-foreground'} ${priceDirection ? `quote-change-${priceDirection}` : ''}`}>{item.price > 0 ? pct(item.change24h) : '—'}</p>
+      <p className="hidden font-mono-ui text-sm text-muted-foreground md:block">{item.price > 0 && item.marketCap > 0 ? `${compact(item.marketCap)}` : '—'}</p>
       <span className="hidden items-center justify-end text-primary md:flex"><ArrowUpRight size={17} /></span>
     </Link>
   );
