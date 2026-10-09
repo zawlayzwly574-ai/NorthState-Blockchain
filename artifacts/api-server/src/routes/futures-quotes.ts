@@ -152,12 +152,10 @@ async function fetchGateTrade(req: Request, symbol: string): Promise<FuturesQuot
       continue;
     }
     const newest = result.body.reduce((best: any, row: any) => {
-      const time = Number(row.create_time_ms ?? Number(row.create_time) * 1000);
-      return !best || time > Number(best.create_time_ms ?? Number(best.create_time) * 1000) ? row : best;
+      const time = gateTradeTime(row.create_time_ms ?? row.create_time);
+      return !best || time > gateTradeTime(best.create_time_ms ?? best.create_time) ? row : best;
     }, null);
-    const timestamp = newest?.create_time_ms !== undefined
-      ? Number(newest.create_time_ms)
-      : Number(newest?.create_time) * 1000;
+    const timestamp = gateTradeTime(newest?.create_time_ms ?? newest?.create_time);
     const quote = validTrade(newest?.price, timestamp);
     if (quote) return quote;
   }
@@ -192,6 +190,22 @@ function kucoinTime(value: unknown): number {
   if (n < 1e11) return n * 1000; // seconds -> milliseconds
   return n;
 }
+
+function gateTradeTime(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // Gate's spot-trades endpoint returns create_time in milliseconds with a
+  // fractional part on current payloads, although older examples use seconds.
+  return n >= 1e12 ? n : n * 1000;
+}
+
+function exchangeSymbolForAsset(definition: AssetDefinition): string {
+  if (definition.id === "tether-gold") return "XAUT";
+  if (definition.id === "canton-network") return "CC";
+  if (definition.id === "the-open-network") return "GRAM";
+  return definition.symbol.toUpperCase() === "GOLD" ? "XAUT" : definition.symbol.toUpperCase();
+}
+
 async function fetchKucoinTrade(req: Request, symbol: string): Promise<FuturesQuote | null> {
   const provider = "kucoin";
   for (const pair of kucoinPairs(symbol)) {
@@ -297,19 +311,32 @@ async function fetchLiveQuote(
   definition: AssetDefinition,
   binanceSymbols: Record<string, string>,
 ): Promise<FuturesQuote | null> {
-  const symbol = definition.symbol.toUpperCase() === "GOLD" ? "XAUT" : definition.symbol.toUpperCase();
+  const symbol = exchangeSymbolForAsset(definition);
   // Provider order puts exchanges known to be reachable in this deployment
-  // first. Each quote must contain its own recent trade timestamp.
-  const providers: Array<() => Promise<FuturesQuote | null>> = [
-    () => fetchOkxTrade(req, symbol),
-    () => fetchGateTrade(req, symbol),
-    () => fetchCoinbaseTrade(req, symbol),
-    () => fetchMexcTrade(req, symbol),
-    () => fetchKucoinTrade(req, symbol),
-    () => fetchKrakenTrade(req, symbol),
-    () => fetchBybitTrade(req, symbol),
-    () => fetchBinanceTrade(req, definition, binanceSymbols),
-  ];
+  // first. Each quote must contain its own recent trade timestamp. Provider
+  // symbols are based on the supported asset ID, not just the UI ticker:
+  // Canton trades as CC and the Toncoin market is currently listed as GRAM.
+  // For provider-specific tickers, use only exchanges where we verified the
+  // identity-matched pair. "CC" and "GRAM" can identify unrelated tokens on
+  // some venues, so don't fall through to ambiguous pairs if the trusted
+  // Canton/Toncoin market is temporarily unavailable.
+  const hasProviderSpecificSymbol = definition.id === "canton-network" || definition.id === "the-open-network";
+  const providers: Array<() => Promise<FuturesQuote | null>> = hasProviderSpecificSymbol
+    ? [
+        () => fetchOkxTrade(req, symbol),
+        () => fetchGateTrade(req, symbol),
+        () => fetchKucoinTrade(req, symbol),
+      ]
+    : [
+        () => fetchOkxTrade(req, symbol),
+        () => fetchGateTrade(req, symbol),
+        () => fetchCoinbaseTrade(req, symbol),
+        () => fetchMexcTrade(req, symbol),
+        () => fetchKucoinTrade(req, symbol),
+        () => fetchKrakenTrade(req, symbol),
+        () => fetchBybitTrade(req, symbol),
+        () => fetchBinanceTrade(req, definition, binanceSymbols),
+      ];
   for (const provider of providers) {
     const quote = await provider().catch((error) => {
       req.log.debug({ err: error, symbol }, "Live quote provider failed");
@@ -324,7 +351,7 @@ async function fetchLiveQuote(
 }
 
 function providerSymbolMatch(definition: AssetDefinition, rawSymbol: string): boolean {
-  return aliasesFor(definition.symbol).includes(rawSymbol.toUpperCase());
+  return exchangeSymbolForAsset(definition) === rawSymbol.toUpperCase();
 }
 function chooseSnapshotPair(candidates: any[]): any | null {
   const valid = candidates.filter((row) =>
@@ -589,16 +616,26 @@ export function createTradingHistoryFetcher(
   _marketHeaders: Record<string, string>,
 ) {
   return async (req: Request, asset: string): Promise<ChartPoint[]> => {
-    const symbol = asset.toUpperCase() === "GOLD" ? "XAUT" : asset.toUpperCase();
-    const definition = definitions.find((item) => item.symbol.toUpperCase() === symbol);
+    const lookupSymbol = asset.toUpperCase() === "GOLD" ? "XAUT" : asset.toUpperCase();
+    const definition = definitions.find((item) => item.symbol.toUpperCase() === lookupSymbol);
     if (!definition) return [];
-    const providers = [
-      () => fetchOkxHistory(req, symbol),
-      () => fetchGateHistory(req, symbol),
-      () => fetchKucoinHistory(req, symbol),
-      () => fetchCoinbaseHistory(req, symbol),
-      () => fetchKrakenHistory(req, symbol),
-    ];
+    const symbol = exchangeSymbolForAsset(definition);
+    // As with executable quotes, do not use Kraken's ambiguous CC/USD market
+    // (CloudChat) for Canton Network, or a separate TON token for Toncoin.
+    const hasProviderSpecificSymbol = definition.id === "canton-network" || definition.id === "the-open-network";
+    const providers = hasProviderSpecificSymbol
+      ? [
+          () => fetchOkxHistory(req, symbol),
+          () => fetchGateHistory(req, symbol),
+          () => fetchKucoinHistory(req, symbol),
+        ]
+      : [
+          () => fetchOkxHistory(req, symbol),
+          () => fetchGateHistory(req, symbol),
+          () => fetchKucoinHistory(req, symbol),
+          () => fetchCoinbaseHistory(req, symbol),
+          () => fetchKrakenHistory(req, symbol),
+        ];
     for (const provider of providers) {
       const history = await provider().catch((error) => {
         req.log.debug({ err: error, symbol }, "Trading chart history provider failed");

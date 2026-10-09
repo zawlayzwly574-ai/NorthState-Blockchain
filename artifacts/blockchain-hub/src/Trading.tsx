@@ -101,10 +101,14 @@ function payoutRateFor(asset: string, amount: number): number {
 function PriceChart({
   quote,
   history,
+  displayPrice,
+  displayUpdatedAt,
   entryPrice,
 }: {
   quote: { price: number | null; updatedAt: string | null } | undefined;
   history: { t: number; price: number }[] | undefined;
+  displayPrice?: number | null;
+  displayUpdatedAt?: number;
   entryPrice?: number;
 }) {
   const [data, setData] = useState<{ t: number; price: number }[]>([]);
@@ -124,30 +128,50 @@ function PriceChart({
     });
   }, [history]);
 
-  // Keep the original chart and its live price badge, but plot only real,
-  // provider-timestamped prices. A repeated or stale response is not a tick.
+  const quoteTime = Date.parse(quote?.updatedAt ?? '');
+  const quoteAge = now - quoteTime;
+  const liveQuote = !!quote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
+  const snapshotAge = now - (displayUpdatedAt ?? Number.NaN);
+  const liveSnapshot = !!displayPrice && displayPrice > 0 &&
+    Number.isFinite(displayUpdatedAt) && snapshotAge >= -2_000 && snapshotAge <= 15_000;
+
+  // The chart remains useful while the stricter executable trade quote is
+  // temporarily missing: sample only the actual exchange-backed market summary
+  // or the provider-timestamped trade. Never interpolate a made-up price.
   useEffect(() => {
-    const time = Date.parse(quote?.updatedAt ?? '');
-    const age = now - time;
-    if (!quote?.price || !Number.isFinite(time) || age < -2_000 || age > 15_000) return;
+    const displayTime = displayUpdatedAt ?? Number.NaN;
+    if (liveSnapshot && displayPrice && Number.isFinite(displayTime)) {
+      setData(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.price === displayPrice) return prev;
+        const next = [...prev, { t: displayTime, price: displayPrice }];
+        return next.sort((a, b) => a.t - b.t).slice(-80);
+      });
+      return;
+    }
+
+    const time = quoteTime;
+    if (!liveQuote || !quote?.price || !Number.isFinite(time)) return;
     setData(prev => {
-      if (prev.length && prev[prev.length - 1].t >= time) return prev;
-      // A flat starting line displays the first actual quote without inventing a move.
-      if (!prev.length) return [{ t: time - 1, price: quote.price! }, { t: time, price: quote.price! }];
-      return [...prev.slice(-79), { t: time, price: quote.price! }];
+      const last = prev[prev.length - 1];
+      if (last && (last.t >= time || last.price === quote.price)) return prev;
+      const next = [...prev, { t: time, price: quote.price! }];
+      return next.sort((a, b) => a.t - b.t).slice(-80);
     });
-  }, [quote?.price, quote?.updatedAt, now]);
+  }, [displayPrice, displayUpdatedAt, liveSnapshot, liveQuote, quote?.price, quoteTime]);
 
   const prices = data.map(d => d.price);
   const lo = prices.length ? Math.min(...prices) * 0.9992 : 0;
   const hi = prices.length ? Math.max(...prices) * 1.0008 : 1;
-  const current = data[data.length - 1]?.price ?? quote?.price ?? null;
+  const current = liveQuote ? quote?.price ?? null : liveSnapshot ? displayPrice ?? null : null;
   const first = data[0]?.price ?? current ?? 0;
-  const quoteTime = Date.parse(quote?.updatedAt ?? '');
-  const quoteAge = now - quoteTime;
-  const live = !!quote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
   const isUp = (current ?? first) >= first;
   const stroke = isUp ? '#22c55e' : '#ef4444';
+  const statusLabel = liveQuote
+    ? 'LIVE QUOTE'
+    : liveSnapshot
+      ? 'MARKET FEED · ORDERS PAUSED'
+      : 'PRICE UNAVAILABLE';
 
   return (
     <div className="relative">
@@ -155,8 +179,8 @@ function PriceChart({
         <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }} data-testid="text-live-chart-price">
           {current === null ? 'Waiting for market price…' : `$${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
         </span>
-        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${live ? (isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400') : 'bg-secondary text-muted-foreground'}`} data-testid="status-live-chart">
-          {live ? `${isUp ? '▲' : '▼'} LIVE` : 'PRICE UNAVAILABLE'}
+        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${liveQuote ? (isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400') : liveSnapshot ? 'bg-sky-500/10 text-sky-300' : 'bg-secondary text-muted-foreground'}`} data-testid="status-live-chart">
+          {statusLabel}
         </span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
@@ -593,7 +617,7 @@ export function TradingPage() {
   const [activeSpotTrade, setActiveSpotTrade] = useState<ActiveSpotTradeSnapshot | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
+  const { data: market = [], dataUpdatedAt: marketDataUpdatedAt } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
   const { data: account, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: tradesData, error: tradesError, refetch: refetchTrades } = useGetTrades({
@@ -840,7 +864,14 @@ export function TradingPage() {
 
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
-        <PriceChart key={asset} quote={futuresQuote} history={tradingHistory} entryPrice={entryPrice} />
+        <PriceChart
+          key={asset}
+          quote={futuresQuote}
+          history={tradingHistory}
+          displayPrice={marketAsset?.price ?? null}
+          displayUpdatedAt={marketDataUpdatedAt}
+          entryPrice={entryPrice}
+        />
       </div>
 
       {/* ── Order Panel ── */}
