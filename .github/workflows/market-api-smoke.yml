@@ -1,4 +1,4 @@
-name: Temporary PR 10 market feed smoke check # quotes and timestamps
+name: Temporary PR 10 market feed smoke check # latest preview build
 
 on:
   push:
