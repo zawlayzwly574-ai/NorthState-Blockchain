@@ -39,6 +39,7 @@ jobs:
             quotesAvailable: quoteAvailable.length,
             quotesUnavailable: body.length - quoteAvailable.length,
             firstAssets: body.slice(0, 8).map(({ symbol, name, price }) => ({ symbol, name, price })),
+            missingAssets: body.filter((item) => !(Number.isFinite(item.price) && item.price > 0)).map(({ symbol, name }) => ({ symbol, name })),
           }, null, 2));
           if (quoteAvailable.length === 0) {
             console.error('No live market quotes returned from the preview API.');
