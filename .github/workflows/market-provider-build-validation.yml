@@ -1,0 +1,26 @@
+name: Temporary market provider build validation
+
+on:
+  push:
+    branches:
+      - "verify/market-provider-build3"
+
+permissions:
+  contents: read
+
+jobs:
+  api-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @workspace/api-server run build
+      - run: pnpm --filter @workspace/api-server run test -- src/kyc-schema.test.ts
