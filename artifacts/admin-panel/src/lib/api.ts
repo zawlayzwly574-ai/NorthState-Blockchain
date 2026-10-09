@@ -402,7 +402,7 @@ export function useUpdateAdminSupportMessage() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ userId, messageId, content }: { userId: string; messageId: number; content: string }) =>
-      apiClient(`/admin/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
+      apiClient(`/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
         method: 'PATCH',
         body: JSON.stringify({ content }),
       }),
@@ -417,7 +417,7 @@ export function useDeleteAdminSupportMessage() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ userId, messageId }: { userId: string; messageId: number }) =>
-      apiClient(`/admin/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
+      apiClient(`/support/${encodeURIComponent(userId)}/messages/${messageId}`, {
         method: 'DELETE',
       }),
     onSuccess: (_data: unknown, variables: { userId: string; messageId: number }) => {
