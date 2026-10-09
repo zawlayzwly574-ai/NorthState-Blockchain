@@ -160,3 +160,41 @@ jobs:
           }));
           console.log(JSON.stringify(out,null,2));
           NODE
+
+      - name: Inspect timestamped exchange quotes for Trading asset coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets='["BTC","ETH","XAUT","HYPE","LEO","XMR","CANTON","CC","TON","GRAM","USD1","USDE","XAUT"]'
+          okx_file="$(mktemp)"
+          curl -sS --max-time 25 'https://www.okx.com/api/v5/market/tickers?instType=SPOT' -o "$okx_file"
+          node - "$okx_file" <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const targets = new Set(['BTC','ETH','XAUT','HYPE','LEO','XMR','CANTON','CC','TON','GRAM','USD1','USDE']);
+          const pairs = (payload.data ?? []).filter((r) => targets.has(String(r.instId ?? '').split('-')[0].toUpperCase()) && /-(USDT|USDC|USD)$/.test(String(r.instId ?? '')));
+          console.log('OKX direct timestamped ticker candidates:');
+          console.log(JSON.stringify({code:payload.code,count:pairs.length,pairs:pairs.map(({instId,last,ts,volCcy24h})=>({instId,last,ts,ageMs:Date.now()-Number(ts),volCcy24h}))}, null, 2));
+          NODE
+
+          kucoin_file="$(mktemp)"
+          curl -sS --max-time 25 'https://api.kucoin.com/api/v1/market/allTickers' -o "$kucoin_file"
+          node - "$kucoin_file" <<'NODE'
+          const fs = require('node:fs');
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const targets = new Set(['BTC','ETH','XAUT','HYPE','LEO','XMR','CANTON','CC','TON','GRAM','USD1','USDE']);
+          const pairs = (payload.data?.ticker ?? []).filter((r) => targets.has(String(r.symbol ?? '').split('-')[0].toUpperCase()) && /-(USDT|USDC|USD)$/.test(String(r.symbol ?? '')));
+          console.log('KuCoin provider-time ticker candidates:');
+          console.log(JSON.stringify({code:payload.code,sourceAt:payload.data?.time,ageMs:Date.now()-Number(payload.data?.time),count:pairs.length,pairs:pairs.map(({symbol,last,changeRate,volValue})=>({symbol,last,changeRate,volValue}))}, null, 2));
+          NODE
+
+          gate_file="$(mktemp)"
+          curl -sS --max-time 25 'https://api.gateio.ws/api/v4/spot/tickers' -o "$gate_file"
+          node - "$gate_file" <<'NODE'
+          const fs = require('node:fs');
+          const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const targets = new Set(['BTC','ETH','XAUT','HYPE','LEO','XMR','CANTON','CC','TON','GRAM','USD1','USDE']);
+          const pairs = rows.filter((r) => targets.has(String(r.currency_pair ?? '').split('_')[0].toUpperCase()) && /_(USDT|USDC|USD)$/.test(String(r.currency_pair ?? '')));
+          console.log('Gate.io display ticker candidates (not used as executable quotes without timestamps):');
+          console.log(JSON.stringify({count:pairs.length,pairs:pairs.map(({currency_pair,last,change_percentage,quote_volume})=>({currency_pair,last,change_percentage,quote_volume}))}, null, 2));
+          NODE
