@@ -109,7 +109,7 @@ export default function Support() {
   const totalUnread = threads.reduce((sum, t) => sum + t.unreadCount, 0);
 
   return (
-    <div className="flex h-[calc(100dvh-64px)] min-h-0 w-full min-w-0 flex-col">
+    <div className="admin-support-page flex h-[calc(100dvh-64px)] min-h-0 w-full min-w-0 flex-col">
       {/* Page header */}
       <div className="shrink-0 mb-5">
         <div className="flex items-center gap-3">
@@ -123,9 +123,9 @@ export default function Support() {
         <p className="mt-1 text-sm text-muted-foreground">Manage and respond to user support threads in real time</p>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 gap-4">
+      <div className="admin-support-layout flex min-h-0 min-w-0 flex-1 gap-4">
         {/* ── Thread list ── */}
-        <div className={`w-full md:w-72 xl:w-80 shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`admin-support-thread-list w-full md:w-72 xl:w-80 shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'admin-support-thread-list--hidden hidden md:flex' : 'flex'}`}>
           <div className="shrink-0 px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-sm font-semibold">Threads</span>
             <span className="text-xs font-mono text-muted-foreground">{threads.length}</span>
@@ -180,7 +180,7 @@ export default function Support() {
         </div>
 
         {/* ── Thread detail ── */}
-        <div className={`min-w-0 flex-1 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`admin-support-thread-detail min-w-0 flex-1 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'admin-support-thread-detail--active flex' : 'hidden md:flex'}`}>
           {!selectedUserId ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center p-6">
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/8 text-primary/40">
@@ -304,7 +304,7 @@ export default function Support() {
               </div>
 
               {/* Reply input */}
-              <div className="shrink-0 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+              <div className="admin-support-composer shrink-0 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
                 {(replyError || messageActionError) && (
                   <div role="alert" className="mb-2 break-words rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     {replyError || messageActionError}
