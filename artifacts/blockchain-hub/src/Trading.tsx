@@ -108,11 +108,18 @@ function PriceChart({
   entryPrice?: number;
 }) {
   const [data, setData] = useState<{ t: number; price: number }[]>([]);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!history?.length) return;
     setData(prev => {
-      const points = new Map([...history, ...prev].map(point => [point.t, point]));
+      // A refreshed candle with the same timestamp must replace the older close.
+      const points = new Map([...prev, ...history].map(point => [point.t, point]));
       return [...points.values()].sort((a, b) => a.t - b.t).slice(-80);
     });
   }, [history]);
@@ -121,21 +128,24 @@ function PriceChart({
   // provider-timestamped prices. A repeated or stale response is not a tick.
   useEffect(() => {
     const time = Date.parse(quote?.updatedAt ?? '');
-    if (!quote?.price || !Number.isFinite(time) || Date.now() - time > 15_000) return;
+    const age = now - time;
+    if (!quote?.price || !Number.isFinite(time) || age < -2_000 || age > 15_000) return;
     setData(prev => {
       if (prev.length && prev[prev.length - 1].t >= time) return prev;
       // A flat starting line displays the first actual quote without inventing a move.
       if (!prev.length) return [{ t: time - 1, price: quote.price! }, { t: time, price: quote.price! }];
       return [...prev.slice(-79), { t: time, price: quote.price! }];
     });
-  }, [quote?.price, quote?.updatedAt]);
+  }, [quote?.price, quote?.updatedAt, now]);
 
   const prices = data.map(d => d.price);
   const lo = prices.length ? Math.min(...prices) * 0.9992 : 0;
   const hi = prices.length ? Math.max(...prices) * 1.0008 : 1;
   const current = data[data.length - 1]?.price ?? quote?.price ?? null;
   const first = data[0]?.price ?? current ?? 0;
-  const live = !!quote?.price && !!quote.updatedAt && Date.now() - Date.parse(quote.updatedAt) < 15_000;
+  const quoteTime = Date.parse(quote?.updatedAt ?? '');
+  const quoteAge = now - quoteTime;
+  const live = !!quote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
   const isUp = (current ?? first) >= first;
   const stroke = isUp ? '#22c55e' : '#ef4444';
 
@@ -170,7 +180,8 @@ function PriceChart({
             fill="url(#tg)"
             dot={false}
             activeDot={false}
-            isAnimationActive={false}
+            isAnimationActive
+            animationDuration={450}
           />
           {entryPrice && (
             <ReferenceLine
@@ -582,7 +593,7 @@ export function TradingPage() {
   const [activeSpotTrade, setActiveSpotTrade] = useState<ActiveSpotTradeSnapshot | null>(null);
   const qc = useQueryClient();
 
-  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 3_000, placeholderData: (prev) => prev } });
+  const { data: market = [] } = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
   const { data: account, isLoading: accountLoading, error: accountError, refetch: refetchAccount } = useGetTradingAccount({ query: { queryKey: getGetTradingAccountQueryKey(), refetchInterval: 5_000 } });
   const { data: portfolio } = useGetPortfolio({ query: { queryKey: getGetPortfolioQueryKey(), refetchInterval: 5_000 } });
   const { data: tradesData, error: tradesError, refetch: refetchTrades } = useGetTrades({
@@ -595,15 +606,19 @@ export function TradingPage() {
   });
   const openFuturesPosition = useOpenFuturesPosition();
   const { data: futuresQuote } = useGetFuturesQuote(asset, {
-    query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 3_000 },
+    query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 1_000, staleTime: 0 },
   });
   const { data: tradingHistory } = useGetTradingChart(asset, {
-    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 60_000 },
+    query: { queryKey: getGetTradingChartQueryKey(asset), staleTime: 0, refetchInterval: 5_000, placeholderData: (prev) => prev },
   });
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
-  const currentPrice = marketAsset?.price ?? null;
+  const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
+  const quoteAge = Date.now() - quoteTime;
+  const currentQuoteFresh = !!futuresQuote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
+  // Spot entry uses the same recent exchange trade as Futures, never the slower display snapshot.
+  const currentPrice = currentQuoteFresh ? futuresQuote?.price ?? null : null;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -628,7 +643,7 @@ export function TradingPage() {
   const marginValue = Number(futuresMargin);
   const validFuturesMargin = /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/.test(futuresMargin) && Number.isFinite(marginValue) && marginValue >= 1 && marginValue <= 10_000_000 && marginValue <= futuresAvailable;
   const supportedFuturesMode = futuresContractType === 'Perpetual' && futuresSettlement === 'USDT';
-  const freshFuturesQuote = !!futuresQuote?.price && !!futuresQuote.updatedAt && Date.now() - Date.parse(futuresQuote.updatedAt) < 15_000;
+  const freshFuturesQuote = currentQuoteFresh;
   const canOpenFutures = supportedFuturesMode && validFuturesMargin && freshFuturesQuote && !!account && !accountError && !!futuresPositions && !futuresPositionsError && !openFuturesPosition.isPending;
   const belowMinTrade = tradeAmt < minTrade;
   const balanceBelowMin = !!account && balance < minTrade;
