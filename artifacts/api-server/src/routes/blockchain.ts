@@ -546,9 +546,18 @@ async function fetchCoinPaprikaMarketData(
   const tickers = await fetchCoinPaprikaTickers(req);
   const quotes: Record<string, MarketQuote> = {};
   for (const definition of marketDefinitions) {
+    // CoinPaprika uses provider-specific symbols for two assets in our
+    // supported list: Canton Network is CC and Toncoin is currently listed
+    // as GRAM ("Gram (prev. Toncoin)"). The name-score below confirms these
+    // aliases before using the quote.
+    const providerSymbols = definition.id === "canton-network"
+      ? ["CANTON", "CC"]
+      : definition.id === "the-open-network"
+        ? ["TON", "TONCOIN", "GRAM"]
+        : [definition.symbol.toUpperCase()];
     const candidates = tickers
       .filter((ticker) =>
-        ticker.symbol?.toUpperCase() === definition.symbol.toUpperCase() &&
+        providerSymbols.includes((ticker.symbol ?? "").toUpperCase()) &&
         Number.isFinite(ticker.quotes?.USD?.price) &&
         (ticker.quotes?.USD?.price ?? 0) > 0,
       )
