@@ -1,0 +1,47 @@
+name: Temporary live market feed discovery
+
+on:
+  push:
+    branches:
+      - "verify/live-feed-discovery"
+
+permissions:
+  contents: read
+
+jobs:
+  discover-live-feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect supported CoinPaprika streaming assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 20 'https://live.coinpaprika.com/assets' -o /tmp/assets.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/assets.json', 'utf8'));
+          const wanted = ['BTC','ETH','USDT','BNB','USDC','DAI','FDUSD','XRP','SOL','TRX','HYPE','ZEC','DOGE','LEO','XMR','LINK','ADA','XLM','BCH','CC','CANTON','USD1','USDE','LTC','GRAM','TON','HBAR','AVAX','SUI','SHIB','UNI','PYUSD','CRO','XAUT','TAO','NEAR','M'];
+          const assets = Array.isArray(body.assets) ? body.assets : [];
+          const names = assets.map((x) => typeof x === 'string' ? x : x.asset);
+          const supported = wanted.filter((x) => names.includes(x));
+          const unsupported = wanted.filter((x) => !names.includes(x));
+          console.log(JSON.stringify({count: body.count, wanted, supported, unsupported, sample: assets.slice(0, 20)}, null, 2));
+          NODE
+      - name: Verify streaming ticks update over time
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sS --max-time 15 'https://live.coinpaprika.com/stream?asset=BTC,ETH,SOL,CC,GRAM&interval=1s&limit=40' -o /tmp/stream.txt
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = fs.readFileSync('/tmp/stream.txt', 'utf8').split(/\r?\n/).filter((line) => line.startsWith('data:'));
+          const rows = lines.map((line) => { try { return JSON.parse(line.slice(5).trim()); } catch { return null; } }).filter(Boolean);
+          console.log(JSON.stringify({
+            eventCount: rows.length,
+            assets: [...new Set(rows.map((x) => x.asset ?? x.pair?.Base))],
+            sample: rows.slice(0, 12),
+            oldestTimestamp: rows.map((x) => Date.parse(x.timestamp)).filter(Number.isFinite).sort((a,b)=>a-b)[0] ?? null,
+            newestTimestamp: rows.map((x) => Date.parse(x.timestamp)).filter(Number.isFinite).sort((a,b)=>b-a)[0] ?? null,
+          }, null, 2));
+          NODE
