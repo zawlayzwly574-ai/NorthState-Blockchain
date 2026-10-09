@@ -619,7 +619,6 @@ type BinanceTicker = {
   lastPrice?: string;
   priceChangePercent?: string;
   quoteVolume?: string;
-  closeTime?: number;
 };
 
 const binanceSymbols: Record<string, string> = {
@@ -689,7 +688,6 @@ async function fetchBinanceMarketData(
           usd: price,
           usd_24h_change: Number(ticker.priceChangePercent),
           usd_24h_vol: Number(ticker.quoteVolume),
-          updatedAt: Number.isFinite(ticker.closeTime) ? ticker.closeTime : undefined,
           source: "binance",
         };
       }
