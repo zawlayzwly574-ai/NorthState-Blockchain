@@ -126,3 +126,37 @@ jobs:
           }));
           console.log(JSON.stringify(result,null,2));
           NODE
+
+      - name: Count live exchange ticker coverage for supported trading assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const expected = ["BTC","ETH","USDT","BNB","USDC","DAI","FDUSD","XRP","SOL","TRX","HYPE","ZEC","DOGE","LEO","XMR","LINK","ADA","XLM","BCH","CANTON","USD1","USDE","LTC","TON","HBAR","AVAX","SUI","SHIB","UNI","PYUSD","CRO","XAUT","TAO","NEAR","M"];
+          const urls = [
+            ["okx","https://www.okx.com/api/v5/market/tickers?instType=SPOT"],
+            ["gate","https://api.gateio.ws/api/v4/spot/tickers"],
+            ["kucoin","https://api.kucoin.com/api/v1/market/allTickers"],
+            ["bybit","https://api.bybit.com/v5/market/tickers?category=spot"],
+          ];
+          const out = await Promise.all(urls.map(async ([provider,url]) => {
+            try {
+              const response = await fetch(url,{headers:{accept:"application/json","user-agent":"NorthStateBlockchain/1.0"},signal:AbortSignal.timeout(15000)});
+              const payload = await response.json().catch(()=>null);
+              let rows=[];
+              if(provider==="okx") rows=(payload?.data??[]).map(x=>({symbol:String(x.instId??"").split("-")[0].toUpperCase(),pair:x.instId,price:x.last,ts:x.ts}));
+              if(provider==="gate") rows=(Array.isArray(payload)?payload:[]).map(x=>({symbol:String(x.currency_pair??"").split("_")[0].toUpperCase(),pair:x.currency_pair,price:x.last,ts:x.update}});
+              if(provider==="kucoin") rows=(payload?.data?.ticker??[]).map(x=>({symbol:String(x.symbol??"").split("-")[0].toUpperCase(),pair:x.symbol,price:x.last,ts:x.time}));
+              if(provider==="bybit") rows=(payload?.result?.list??[]).map(x=>({symbol:String(x.symbol??"").replace(/USDT$/,"").toUpperCase(),pair:x.symbol,price:x.lastPrice,ts:x.time??payload?.time}));
+              const aliases={CANTON:["CC"],TON:["GRAM"],XAUT:["XAUT"],USDE:["USDE"],USD1:["USD1"],PYUSD:["PYUSD"],FDUSD:["FDUSD"]};
+              const found=expected.map(symbol=> {
+                const candidates=rows.filter(x=>([symbol,...(aliases[symbol]??[])].includes(x.symbol)) && Number(x.price)>0);
+                const quotePairs=candidates.filter(x=>/[-_](USDT|USD|USDC)$/.test(x.pair));
+                const c=quotePairs[0]??candidates[0];
+                return c?{symbol,pair:c.pair,price:c.price,ts:c.ts}:null;
+              }).filter(Boolean);
+              return {provider,status:response.status,count:rows.length,matched:found.length,missing:expected.filter(s=>!found.some(x=>x.symbol===s)),examples:found.slice(0,8)};
+            } catch(e) {return {provider,error:String(e)};}
+          }));
+          console.log(JSON.stringify(out,null,2));
+          NODE
