@@ -2115,19 +2115,7 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
 
 // ─── Admin middleware ────────────────────────────────────────────────────────
 
-function requireAdmin(
-  req: Parameters<Parameters<IRouter["get"]>[1]>[0],
-  res: Parameters<Parameters<IRouter["get"]>[1]>[1],
-  next: Parameters<Parameters<IRouter["get"]>[1]>[2],
-) {
-  const secret = process.env.ADMIN_SECRET;
-  const provided = req.headers["x-admin-key"];
-  if (!secret || provided !== secret) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  next();
-}
+
 
 // Authentication-only endpoint: intentionally performs no database work.
 router.get("/admin/auth/validate", requireAdmin, (_req, res) => {
