@@ -58,3 +58,37 @@ jobs:
             last: chart[chart.length - 1]
           }, null, 2));
           NODE
+
+      - name: Verify recent-trade endpoints carry usable timestamps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const urls = [
+            ["okx", "https://www.okx.com/api/v5/market/trades?instId=BTC-USDT&limit=1"],
+            ["gate", "https://api.gateio.ws/api/v4/spot/trades?currency_pair=BTC_USDT&limit=1"],
+            ["bybit", "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=BTCUSDT&limit=1"],
+            ["kucoin", "https://api.kucoin.com/api/v1/market/histories?symbol=BTC-USDT"],
+            ["coinbase", "https://api.exchange.coinbase.com/products/BTC-USD/trades?limit=10"],
+            ["kraken", "https://api.kraken.com/0/public/Trades?pair=XBTUSD"],
+            ["mexc", "https://api.mexc.com/api/v3/trades?symbol=BTCUSDT&limit=1"],
+          ];
+          const out = await Promise.all(urls.map(async ([provider, url]) => {
+            try {
+              const response = await fetch(url,{headers:{accept:"application/json","user-agent":"NorthStateBlockchain/1.0"},signal:AbortSignal.timeout(10_000)});
+              const body = await response.json().catch(()=>null);
+              let rawPrice, rawTime;
+              if(provider==="okx"){const x=body?.data?.[0];rawPrice=x?.px;rawTime=x?.ts;}
+              else if(provider==="gate"){const x=body?.[0];rawPrice=x?.price;rawTime=x?.create_time_ms??(Number(x?.create_time)*1000);}
+              else if(provider==="bybit"){const x=body?.result?.list?.[0];rawPrice=x?.price;rawTime=x?.time;}
+              else if(provider==="kucoin"){const x=body?.data?.[0];rawPrice=x?.price;const n=Number(x?.time);rawTime=n>1e14?n/1000:n<1e11?n*1000:n;}
+              else if(provider==="coinbase"){const x=body?.[0];rawPrice=x?.price;rawTime=Date.parse(x?.time);}
+              else if(provider==="kraken"){const x=Object.entries(body?.result??{}).find(([k,v])=>k!=="last"&&Array.isArray(v))?.[1]?.[0];rawPrice=x?.[0];rawTime=Number(x?.[2])*1000;}
+              else {const x=body?.[0];rawPrice=x?.price;rawTime=x?.time;}
+              const price=Number(rawPrice), updatedAt=Number(rawTime), age=Date.now()-updatedAt;
+              return {provider,status:response.status,price,updatedAt:Number.isFinite(updatedAt)?new Date(updatedAt).toISOString():null,ageMs:Number.isFinite(age)?age:null,fresh:Number.isFinite(price)&&price>0&&Number.isFinite(age)&&age>=-2_000&&age<=15_000};
+            } catch(error) { return {provider,error:String(error)}; }
+          }));
+          console.log(JSON.stringify(out,null,2));
+          if(!out.some(x=>x.fresh)) throw new Error('No public exchange returned a recent timestamped trade.');
+          NODE
