@@ -2875,9 +2875,18 @@ router.post("/trading/trades", async (req, res) => {
   if (!["long", "short"].includes(direction)) {
     res.status(400).json({ error: "Invalid direction." }); return;
   }
+  const assetSymbol = asset.toUpperCase();
+  if (assetSymbol !== "GOLD" && !marketDefinitions.some((definition) => definition.symbol === assetSymbol)) {
+    res.status(400).json({ error: "This asset is not available for Spot trading." });
+    return;
+  }
+  const supportedTimeframes = new Set([60, 90, 120, 180, 300, 900, 1800, 3600, 86400, 259200, 864000, 1296000, 2592000]);
+  if (!Number.isSafeInteger(timeframeSecs) || !supportedTimeframes.has(timeframeSecs)) {
+    res.status(400).json({ error: "Select a supported Spot trade expiry timeframe." });
+    return;
+  }
   const amountString = normalizeStablecoinAmount(String(amount));
   if (!amountString) { res.status(400).json({ error: "Amount must be a positive value with up to 8 decimal places." }); return; }
-  const assetSymbol = asset.toUpperCase();
   const minTrade = minTradeAmountFor(assetSymbol);
   const amountNumber = Number(amountString);
   if (amountNumber < minTrade) {
@@ -2891,15 +2900,20 @@ router.post("/trading/trades", async (req, res) => {
     return;
   }
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
-  let entryPrice: number;
+  let entryQuote: { price: number; updatedAt: number } | null;
   try {
-    const assets = await fetchMarketAssets(req);
-    const quoteSymbol = assetSymbol === "GOLD" ? "XAUT" : assetSymbol;
-    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === quoteSymbol);
-    entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
-  } catch {
-    entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;
+    entryQuote = await getFuturesQuote(req, assetSymbol);
+  } catch (error) {
+    req.log.warn({ err: error, asset: assetSymbol }, "Spot entry quote unavailable");
+    entryQuote = null;
   }
+  if (!entryQuote || !Number.isFinite(entryQuote.price) || entryQuote.price <= 0
+    || !Number.isFinite(entryQuote.updatedAt) || Date.now() - entryQuote.updatedAt > 15_000
+    || entryQuote.updatedAt > Date.now() + 2_000) {
+    res.status(503).json({ error: "A fresh live market price is unavailable. The Spot order was not opened; please retry when the quote is live." });
+    return;
+  }
+  const entryPrice = entryQuote.price;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
   const result = await db.transaction(async (tx) => {
