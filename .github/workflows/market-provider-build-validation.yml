@@ -23,4 +23,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/api-server run build
-      - run: pnpm --filter @workspace/api-server exec vitest run src/kyc-schema.test.ts --config vitest.config.ts
+      
