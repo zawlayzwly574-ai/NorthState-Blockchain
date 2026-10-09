@@ -1,4 +1,4 @@
-name: Temporary production Trading market smoke check # verify post-merge deploy
+name: Temporary PR 10 market feed smoke check # quotes and timestamps
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           response_file="$(mktemp)"
-          status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$response_file" -w '%{http_code}' 'https://workspaceapi-server-production-838d.up.railway.app/api/markets')"
+          status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$response_file" -w '%{http_code}' 'https://workspaceapi-server-northstate-blockchain-pr-10.up.railway.app/api/markets')"
           echo "http_status=$status"
           if [ "$status" != "200" ]; then
             echo "Market API returned HTTP $status" >&2
@@ -39,10 +39,17 @@ jobs:
             quotesAvailable: quoteAvailable.length,
             quotesUnavailable: body.length - quoteAvailable.length,
             firstAssets: body.slice(0, 8).map(({ symbol, name, price }) => ({ symbol, name, price })),
+            timestampedAssets: body.filter((item) => typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt))).length,
             missingAssets: body.filter((item) => !(Number.isFinite(item.price) && item.price > 0)).map(({ symbol, name }) => ({ symbol, name })),
+            missingTimestamps: body.filter((item) => typeof item.updatedAt !== 'string' || !Number.isFinite(Date.parse(item.updatedAt))).map(({ symbol, name, updatedAt }) => ({ symbol, name, updatedAt })),
           }, null, 2));
           if (quoteAvailable.length === 0) {
             console.error('No live market quotes returned from the preview API.');
+            process.exit(1);
+          }
+          const timestamped = body.filter((item) => typeof item.updatedAt === 'string' && Number.isFinite(Date.parse(item.updatedAt)));
+          if (timestamped.length < 25) {
+            console.error(`Expected at least 25 assets with a source timestamp; found ${timestamped.length}.`);
             process.exit(1);
           }
           NODE
@@ -256,7 +263,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base='https://workspaceapi-server-production-838d.up.railway.app/api/markets'
+          base='https://workspaceapi-server-northstate-blockchain-pr-10.up.railway.app/api/markets'
           for symbol in BTC XAUT CANTON TON HYPE XMR; do
             file="$(mktemp)"
             status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$file" -w '%{http_code}' "$base/$symbol")"
