@@ -1027,10 +1027,21 @@ router.use((req, res, next) => {
   void requireVerifiedMember(req, res, next).catch((error) => next(error));
 });
 
-router.use(createFuturesRouter(
-  createFuturesQuoteFetcher(marketDefinitions, binanceSymbols, marketHeaders),
-  createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders),
-));
+const getFuturesQuote = createFuturesQuoteFetcher(
+  marketDefinitions,
+  binanceSymbols,
+  marketHeaders,
+  async (req, asset) => {
+    const symbol = asset === "GOLD" ? "XAUT" : asset.toUpperCase();
+    const marketAsset = (await fetchMarketAssets(req)).find((item) => item.symbol === symbol);
+    if (!marketAsset || !Number.isFinite(marketAsset.price) || marketAsset.price <= 0) return null;
+    const updatedAt = Date.parse(marketAsset.updatedAt ?? "");
+    if (!Number.isFinite(updatedAt) || updatedAt > Date.now() + 2_000 || Date.now() - updatedAt > 15_000) return null;
+    return { price: marketAsset.price, updatedAt };
+  },
+);
+const getTradingHistory = createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders);
+router.use(createFuturesRouter(getFuturesQuote, getTradingHistory));
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
