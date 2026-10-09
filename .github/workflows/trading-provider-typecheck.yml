@@ -1,0 +1,36 @@
+name: Temporary Trading provider typecheck
+
+on:
+  push:
+    branches:
+      - "verify/trading-typecheck"
+
+permissions:
+  contents: read
+
+jobs:
+  trading-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build API and frontend
+        run: |
+          pnpm --filter @workspace/api-server run build
+          pnpm --filter @workspace/blockchain-hub run build
+      - name: Standalone typecheck of new timestamped quote/history provider
+        run: pnpm exec tsc --noEmit --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --types node artifacts/api-server/src/routes/futures-quotes.ts
+      - name: Existing API project typecheck diagnostic
+        continue-on-error: true
+        run: pnpm --filter @workspace/api-server run typecheck
+      - name: Frontend project typecheck diagnostic
+        continue-on-error: true
+        run: pnpm --filter @workspace/blockchain-hub run typecheck
