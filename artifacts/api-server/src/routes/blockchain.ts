@@ -1112,7 +1112,7 @@ router.get("/notifications", async (req, res) => {
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const account = await requireTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
   const spotValue = asNumber(account.balance);
@@ -2690,7 +2690,35 @@ function mapTrade(t: typeof tradesTable.$inferSelect) {
   };
 }
 
-async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss") {
+async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss", req?: Request) {
+  // Resolve the real exit quote before opening the balance/settlement transaction.
+  // A provider outage leaves the trade active rather than inventing an outcome.
+  let liveExitQuote: { price: number; updatedAt: number } | null = null;
+  if (!forcedOutcome && req) {
+    const [candidate] = await db.select().from(tradesTable).where(eq(tradesTable.id, tradeId)).limit(1);
+    if (!candidate || candidate.status !== "active") {
+      return { trade: candidate, settled: false, error: null };
+    }
+    const [modeAccount] = await db.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
+      .from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, candidate.clerkUserId)).limit(1);
+    const explicitlyOverridden = Boolean(candidate.adminOverride)
+      || modeAccount?.tradeOutcomeMode === "always_win"
+      || modeAccount?.tradeOutcomeMode === "always_lose";
+    if (!explicitlyOverridden) {
+      try {
+        liveExitQuote = await getFuturesQuote(req, candidate.asset);
+      } catch (error) {
+        req.log.warn({ err: error, asset: candidate.asset }, "Spot settlement live quote unavailable");
+      }
+      if (!liveExitQuote || !Number.isFinite(liveExitQuote.price) || liveExitQuote.price <= 0
+        || !Number.isFinite(liveExitQuote.updatedAt)
+        || Date.now() - liveExitQuote.updatedAt > 15_000
+        || liveExitQuote.updatedAt > Date.now() + 2_000) {
+        return { trade: candidate, settled: false, error: "A fresh live market quote is unavailable. The trade remains active until the market can be priced." };
+      }
+    }
+  }
+
   return db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from ${tradesTable}
@@ -2725,7 +2753,15 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
           ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
           : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
       } else {
-        exitPrice = entry * (1 + (Math.random() * 0.04 - 0.02));
+        if (!liveExitQuote
+          || Date.now() - liveExitQuote.updatedAt > 15_000
+          || liveExitQuote.updatedAt > Date.now() + 2_000) {
+          return { trade, settled: false, error: "A fresh live market quote is unavailable. The trade remains active until the market can be priced." };
+        }
+        exitPrice = liveExitQuote.price;
+        if (exitPrice === entry) {
+          return { trade, settled: false, error: "Waiting for the next live market price change before settling this trade." };
+        }
         const priceRose = exitPrice > entry;
         outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
       }
@@ -2777,13 +2813,13 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
   });
 }
 
-async function autoSettleExpiredTrades(userId: string) {
+async function autoSettleExpiredTrades(userId: string, req: Request) {
   const active = await db.select().from(tradesTable)
     .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
   const now = new Date();
   for (const trade of active) {
     if (trade.expiresAt <= now) {
-      await settleActiveTrade(trade.id);
+      await settleActiveTrade(trade.id, undefined, req);
     }
   }
 }
@@ -2791,7 +2827,7 @@ async function autoSettleExpiredTrades(userId: string) {
 router.get("/trading/account", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const acct = await requireTradingAccount(userId);
   res.json(tradingAccountResponse(acct));
 });
@@ -2857,7 +2893,7 @@ router.post("/trading/transfer", async (req, res): Promise<void> => {
 
 router.get("/trading/trades", async (req, res) => {
   const userId = getUserId(req);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const trades = await db.select().from(tradesTable)
     .where(eq(tradesTable.clerkUserId, userId))
     .orderBy(desc(tradesTable.createdAt)).limit(50);
