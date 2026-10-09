@@ -23,6 +23,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build API and frontend
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
         run: |
           pnpm --filter @workspace/api-server run build
           pnpm --filter @workspace/blockchain-hub run build
