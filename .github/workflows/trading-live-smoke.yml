@@ -1,4 +1,4 @@
-name: Temporary production Trading smoke # verify the latest provider timestamp fixes
+name: Temporary production Trading smoke # verify final Spot null guard deployment # verify the latest provider timestamp fixes
 
 on:
   push:
