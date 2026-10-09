@@ -27,7 +27,13 @@ const KRAKEN_PAIR_BY_ID: Record<string, string> = {
   "tether-gold": "XAUTUSD",
   "bittensor": "TAOUSD",
   "near": "NEARUSD",
-  "crypto-com-chain": "CROUSD",
+  "litecoin": "LTCUSD",
+  "ripple": "XRPUSD",
+  "dogecoin": "DOGEUSD",
+  "cardano": "ADAUSD",
+  "stellar": "XLMUSD",
+  "bitcoin-cash": "BCHUSD",
+  "zcash": "ZECUSD",
 };
 
 let binanceBlockedUntil = 0;
