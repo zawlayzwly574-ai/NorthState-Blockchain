@@ -152,12 +152,10 @@ async function fetchGateTrade(req: Request, symbol: string): Promise<FuturesQuot
       continue;
     }
     const newest = result.body.reduce((best: any, row: any) => {
-      const time = Number(row.create_time_ms ?? Number(row.create_time) * 1000);
-      return !best || time > Number(best.create_time_ms ?? Number(best.create_time) * 1000) ? row : best;
+      const time = gateTradeTime(row.create_time_ms ?? row.create_time);
+      return !best || time > gateTradeTime(best.create_time_ms ?? best.create_time) ? row : best;
     }, null);
-    const timestamp = newest?.create_time_ms !== undefined
-      ? Number(newest.create_time_ms)
-      : Number(newest?.create_time) * 1000;
+    const timestamp = gateTradeTime(newest?.create_time_ms ?? newest?.create_time);
     const quote = validTrade(newest?.price, timestamp);
     if (quote) return quote;
   }
@@ -192,6 +190,22 @@ function kucoinTime(value: unknown): number {
   if (n < 1e11) return n * 1000; // seconds -> milliseconds
   return n;
 }
+
+function gateTradeTime(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // Gate's spot-trades endpoint returns create_time in milliseconds with a
+  // fractional part on current payloads, although older examples use seconds.
+  return n >= 1e12 ? n : n * 1000;
+}
+
+function exchangeSymbolForAsset(definition: AssetDefinition): string {
+  if (definition.id === "tether-gold") return "XAUT";
+  if (definition.id === "canton-network") return "CC";
+  if (definition.id === "the-open-network") return "GRAM";
+  return definition.symbol.toUpperCase() === "GOLD" ? "XAUT" : definition.symbol.toUpperCase();
+}
+
 async function fetchKucoinTrade(req: Request, symbol: string): Promise<FuturesQuote | null> {
   const provider = "kucoin";
   for (const pair of kucoinPairs(symbol)) {
@@ -297,9 +311,11 @@ async function fetchLiveQuote(
   definition: AssetDefinition,
   binanceSymbols: Record<string, string>,
 ): Promise<FuturesQuote | null> {
-  const symbol = definition.symbol.toUpperCase() === "GOLD" ? "XAUT" : definition.symbol.toUpperCase();
+  const symbol = exchangeSymbolForAsset(definition);
   // Provider order puts exchanges known to be reachable in this deployment
-  // first. Each quote must contain its own recent trade timestamp.
+  // first. Each quote must contain its own recent trade timestamp. Provider
+  // symbols are based on the supported asset ID, not just the UI ticker:
+  // Canton trades as CC and the Toncoin market is currently listed as GRAM.
   const providers: Array<() => Promise<FuturesQuote | null>> = [
     () => fetchOkxTrade(req, symbol),
     () => fetchGateTrade(req, symbol),
