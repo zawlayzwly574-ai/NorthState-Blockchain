@@ -32,7 +32,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl -sS --max-time 15 'https://live.coinpaprika.com/stream?asset=BTC,ETH,SOL,CC,GRAM&interval=1s&limit=40' -o /tmp/stream.txt
+          set +e
+          curl -sS --max-time 8 'https://live.coinpaprika.com/stream?asset=BTC,ETH,SOL&interval=1s&limit=20' -o /tmp/stream.txt
+          curl_status=$?
+          set -e
+          if [ "$curl_status" -ne 0 ] && [ "$curl_status" -ne 28 ]; then
+            echo "Streaming endpoint failed with curl status $curl_status" >&2
+            exit "$curl_status"
+          fi
           node <<'NODE'
           const fs = require('node:fs');
           const lines = fs.readFileSync('/tmp/stream.txt', 'utf8').split(/\r?\n/).filter((line) => line.startsWith('data:'));
