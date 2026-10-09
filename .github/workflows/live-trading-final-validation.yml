@@ -1,0 +1,32 @@
+name: Live Trading build and provider tests
+
+on:
+  push:
+    branches:
+      - "verify/live-trading-final"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build API Server
+        run: pnpm --filter @workspace/api-server run build
+      - name: Build Blockchain Hub
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_build_only
+        run: pnpm --filter @workspace/blockchain-hub run build
+      - name: Test live feed, provider quote parsing, and Spot outcome logic
+        run: pnpm --filter @workspace/api-server exec vitest run src/routes/live-market-feed.test.ts src/routes/futures-quotes.test.ts src/routes/trading-outcome.test.ts
