@@ -12,6 +12,7 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 const basePath = process.env.BASE_PATH?.trim() || "/";
+// Vercel member builds can use the production Railway API when no explicit base URL is set.
 const apiBaseUrl =
   process.env.VITE_API_BASE_URL?.trim() ||
   (process.env.VERCEL
