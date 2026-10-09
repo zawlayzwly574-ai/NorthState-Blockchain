@@ -108,7 +108,7 @@ function PriceChart({
   quote: { price: number | null; updatedAt: string | null } | undefined;
   history: { t: number; price: number }[] | undefined;
   displayPrice?: number | null;
-  displayUpdatedAt?: number;
+  displayUpdatedAt?: string | number | null;
   entryPrice?: number;
 }) {
   const [data, setData] = useState<{ t: number; price: number }[]>([]);
@@ -131,15 +131,21 @@ function PriceChart({
   const quoteTime = Date.parse(quote?.updatedAt ?? '');
   const quoteAge = now - quoteTime;
   const liveQuote = !!quote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
-  const snapshotAge = now - (displayUpdatedAt ?? Number.NaN);
-  const liveSnapshot = !!displayPrice && displayPrice > 0 &&
-    Number.isFinite(displayUpdatedAt) && snapshotAge >= -2_000 && snapshotAge <= 15_000;
+  const snapshotTime = typeof displayUpdatedAt === 'number'
+    ? displayUpdatedAt
+    : Date.parse(displayUpdatedAt ?? '');
+  const snapshotAge = now - snapshotTime;
+  const hasSnapshotPrice = !!displayPrice && displayPrice > 0 && Number.isFinite(snapshotTime);
+  const liveSnapshot = hasSnapshotPrice && snapshotAge >= -2_000 && snapshotAge <= 15_000;
+  const staleSnapshot = hasSnapshotPrice && !liveSnapshot;
 
   // The chart remains useful while the stricter executable trade quote is
   // temporarily missing: sample only the actual exchange-backed market summary
   // or the provider-timestamped trade. Never interpolate a made-up price.
   useEffect(() => {
-    const displayTime = displayUpdatedAt ?? Number.NaN;
+    const displayTime = typeof displayUpdatedAt === 'number'
+      ? displayUpdatedAt
+      : Date.parse(displayUpdatedAt ?? '');
     if (liveSnapshot && displayPrice && Number.isFinite(displayTime)) {
       setData(prev => {
         const last = prev[prev.length - 1];
@@ -163,15 +169,19 @@ function PriceChart({
   const prices = data.map(d => d.price);
   const lo = prices.length ? Math.min(...prices) * 0.9992 : 0;
   const hi = prices.length ? Math.max(...prices) * 1.0008 : 1;
-  const current = liveQuote ? quote?.price ?? null : liveSnapshot ? displayPrice ?? null : null;
+  const current = liveQuote ? quote?.price ?? null : hasSnapshotPrice ? displayPrice ?? null : null;
   const first = data[0]?.price ?? current ?? 0;
   const isUp = (current ?? first) >= first;
   const stroke = isUp ? '#22c55e' : '#ef4444';
   const statusLabel = liveQuote
-    ? 'LIVE QUOTE'
+    ? 'LIVE EXECUTION QUOTE'
     : liveSnapshot
-      ? 'MARKET FEED · ORDERS PAUSED'
-      : 'PRICE UNAVAILABLE';
+      ? 'LIVE MARKET FEED · ORDERS REQUIRE FRESH TRADE'
+      : staleSnapshot
+        ? 'LAST MARKET PRICE · FEED REFRESHING'
+        : data.length
+          ? 'HISTORY ONLY · ORDERS PAUSED'
+          : 'WAITING FOR MARKET DATA';
 
   return (
     <div className="relative">
@@ -869,7 +879,7 @@ export function TradingPage() {
           quote={futuresQuote}
           history={tradingHistory}
           displayPrice={marketAsset?.price ?? null}
-          displayUpdatedAt={marketDataUpdatedAt}
+          displayUpdatedAt={marketAsset?.updatedAt ?? marketDataUpdatedAt}
           entryPrice={entryPrice}
         />
       </div>
