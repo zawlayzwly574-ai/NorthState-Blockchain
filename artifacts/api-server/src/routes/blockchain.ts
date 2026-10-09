@@ -18,8 +18,8 @@ import {
   transactionsTable,
   walletProfilesTable,
 } from "@workspace/db";
-import { createFuturesRouter } from "./futures";
-import { createFuturesQuoteFetcher, createTradingHistoryFetcher } from "./futures-quotes";
+import { createFuturesRouter, type FuturesQuote } from "./futures";
+import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -639,6 +639,17 @@ const binanceSymbols: Record<string, string> = {
   near: "NEARUSDT",
 };
 
+// Spot and Futures execution both use recent provider-timestamped exchange trades.
+// The public bulk snapshot is only for display; it is never an execution price.
+const getFuturesQuote = createFuturesQuoteFetcher(marketDefinitions, binanceSymbols, marketHeaders);
+const getTradingHistory = createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders);
+const getExchangeMarketSnapshot = createMarketSnapshotFetcher(marketDefinitions);
+const VALID_SPOT_TIMEFRAMES = new Set([60, 90, 120, 180, 300, 900, 1800, 3600, 86400, 259200, 864000, 1296000, 2592000]);
+const isFreshExecutionQuote = (quote: FuturesQuote | null | undefined, now = Date.now()) =>
+  !!quote && Number.isFinite(quote.price) && quote.price > 0 &&
+  Number.isFinite(quote.updatedAt) && quote.updatedAt <= now + 2_000 &&
+  now - quote.updatedAt <= 15_000;
+
 function isValidMarketQuote(quote: MarketQuote | undefined) {
   return Number.isFinite(quote?.usd) && (quote?.usd ?? 0) > 0;
 }
@@ -646,7 +657,7 @@ function isValidMarketQuote(quote: MarketQuote | undefined) {
 let marketCache: { assets: MarketAsset[]; ts: number } | null = null;
 let marketRefreshPromise: Promise<MarketAsset[]> | null = null;
 let binanceBlockedUntil = 0;
-const MARKET_DATA_TTL = 30_000;
+const MARKET_DATA_TTL = 750;
 
 async function fetchBinanceMarketData(
   req: Parameters<Parameters<IRouter["get"]>[1]>[0],
@@ -690,17 +701,41 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
   const ids = marketDefinitions.map((asset) => asset.id).join(",");
   let liveData: Record<string, MarketQuote> = {};
 
+  // Exchange tickers are refreshed about once a second and drive the public
+  // Markets table. Preserve market-cap data from the slower summary provider.
   try {
-    const response = await fetchCoinGeckoEndpoint(
-      req,
-      `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
-    );
-    if (response) liveData = (await response.json()) as typeof liveData;
+    const snapshot = await getExchangeMarketSnapshot(req);
+    for (const definition of marketDefinitions) {
+      const quote = snapshot[definition.symbol];
+      if (isValidMarketQuote(quote)) {
+        liveData[definition.id] = { ...liveData[definition.id], ...quote };
+      }
+    }
   } catch (error) {
-    req.log.warn({ err: error }, "CoinGecko market quote response could not be parsed");
+    req.log.warn({ err: error }, "Exchange market snapshot could not be parsed");
   }
 
   let missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
+  if (missingIds) {
+    try {
+      const response = await fetchCoinGeckoEndpoint(
+        req,
+        `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+      );
+      if (response) {
+        const data = await response.json() as Record<string, MarketQuote>;
+        for (const definition of marketDefinitions) {
+          if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(data[definition.id])) {
+            liveData[definition.id] = data[definition.id];
+          }
+        }
+      }
+    } catch (error) {
+      req.log.warn({ err: error }, "CoinGecko market quote response could not be parsed");
+    }
+  }
+
+  missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
   if (missingIds) {
     const alternateData = await fetchBinanceMarketData(req);
     for (const definition of marketDefinitions) {
@@ -708,9 +743,9 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         liveData[definition.id] = alternateData[definition.id];
       }
     }
-    missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
   }
 
+  missingIds = marketDefinitions.some((definition) => !isValidMarketQuote(liveData[definition.id]));
   if (missingIds) {
     const fallbackData = await fetchCoinPaprikaMarketData(req);
     for (const definition of marketDefinitions) {
@@ -946,32 +981,20 @@ router.get("/markets/:symbol", async (req, res) => {
     return;
   }
 
-  let chart = Array.from({ length: 25 }, (_, index) => ({
-    time: `${String(index).padStart(2, "0")}:00`,
-    value: asset.price * (1 + Math.sin(index / 3.4) * 0.012 + (index - 12) * 0.00035),
-  }));
-
+  let chart: { time: string; value: number }[] = [];
   try {
-    const definition = marketDefinitions.find((item) => item.symbol === asset.symbol);
-    const response = await fetchCoinGeckoEndpoint(
-      req,
-      `coins/${definition?.id}/market_chart?vs_currency=usd&days=1&interval=hourly`,
-    );
-    if (response?.ok) {
-      const body = (await response.json()) as { prices?: [number, number][] };
-      if (body.prices && body.prices.length > 3) {
-        chart = body.prices.slice(-25).map(([timestamp, value]) => ({
-          time: new Date(timestamp).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          }),
-          value,
-        }));
-      }
-    }
+    const history = await getTradingHistory(req, asset.symbol);
+    chart = history.slice(-80).map(({ t, price }) => ({
+      time: new Date(t).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }),
+      value: price,
+    }));
   } catch (error) {
-    req.log.warn({ err: error, symbol: asset.symbol }, "Chart provider could not be reached");
+    req.log.warn({ err: error, symbol: asset.symbol }, "Live market chart history unavailable");
   }
 
   res.json(GetMarketDetailResponse.parse({ asset, chart }));
@@ -984,10 +1007,7 @@ router.use((req, res, next) => {
   void requireVerifiedMember(req, res, next).catch((error) => next(error));
 });
 
-router.use(createFuturesRouter(
-  createFuturesQuoteFetcher(marketDefinitions, binanceSymbols, marketHeaders),
-  createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders),
-));
+router.use(createFuturesRouter(getFuturesQuote, getTradingHistory));
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });
@@ -1058,7 +1078,7 @@ router.get("/notifications", async (req, res) => {
 router.get("/portfolio", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const account = await requireTradingAccount(userId);
   const holdings = await db.select().from(holdingsTable).where(eq(holdingsTable.clerkUserId, userId));
   const spotValue = asNumber(account.balance);
@@ -2636,7 +2656,11 @@ function mapTrade(t: typeof tradesTable.$inferSelect) {
   };
 }
 
-async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss") {
+async function settleActiveTrade(
+  tradeId: number,
+  forcedOutcome?: "win" | "loss",
+  liveQuote?: FuturesQuote | null,
+) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`
       select id from ${tradesTable}
@@ -2666,14 +2690,27 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
       const [tradeAccount] = await tx.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
         .from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, trade.clerkUserId)).limit(1);
       if (tradeAccount?.tradeOutcomeMode === "always_win" || tradeAccount?.tradeOutcomeMode === "always_lose") {
+        // Preserve the existing explicit admin-controlled outcome mode.
         outcome = tradeAccount.tradeOutcomeMode === "always_win" ? "win" : "loss";
         exitPrice = outcome === "win"
           ? (trade.direction === "long" ? entry * 1.01 : entry * 0.99)
           : (trade.direction === "long" ? entry * 0.99 : entry * 1.01);
       } else {
-        exitPrice = entry * (1 + (Math.random() * 0.04 - 0.02));
-        const priceRose = exitPrice > entry;
-        outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
+        // Ordinary Spot trades settle only against a real provider trade made
+        // at or after expiry. If the feed is stale, leave the trade and balance
+        // untouched until a qualifying timestamped trade becomes available.
+        if (!isFreshExecutionQuote(liveQuote)
+          || liveQuote!.updatedAt < trade.expiresAt.getTime()) {
+          return { trade, settled: false, error: "A fresh post-expiry market trade is unavailable. Trade remains pending." };
+        }
+        exitPrice = liveQuote!.price;
+        if (!Number.isFinite(entry) || entry <= 0) {
+          return { trade, settled: false, error: "The stored entry price is invalid. Trade remains pending." };
+        }
+        const move = exitPrice - entry;
+        outcome = move === 0
+          ? "loss"
+          : (trade.direction === "long" ? move > 0 : move < 0) ? "win" : "loss";
       }
     }
 
@@ -2723,21 +2760,29 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
   });
 }
 
-async function autoSettleExpiredTrades(userId: string) {
+async function autoSettleExpiredTrades(userId: string, req: Request) {
   const active = await db.select().from(tradesTable)
     .where(and(eq(tradesTable.clerkUserId, userId), eq(tradesTable.status, "active")));
+  const [tradeAccount] = await db.select({ tradeOutcomeMode: tradingAccountsTable.tradeOutcomeMode })
+    .from(tradingAccountsTable).where(eq(tradingAccountsTable.clerkUserId, userId)).limit(1);
+  const adminControlledMode = tradeAccount?.tradeOutcomeMode === "always_win" ||
+    tradeAccount?.tradeOutcomeMode === "always_lose";
   const now = new Date();
   for (const trade of active) {
-    if (trade.expiresAt <= now) {
+    if (trade.expiresAt > now) continue;
+    if (trade.adminOverride || adminControlledMode) {
       await settleActiveTrade(trade.id);
+      continue;
     }
+    const quote = await getFuturesQuote(req, trade.asset);
+    await settleActiveTrade(trade.id, undefined, quote);
   }
 }
 
 router.get("/trading/account", async (req, res) => {
   const userId = getUserId(req);
   await ensureSeededUser(userId);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const acct = await requireTradingAccount(userId);
   res.json(tradingAccountResponse(acct));
 });
@@ -2803,7 +2848,7 @@ router.post("/trading/transfer", async (req, res): Promise<void> => {
 
 router.get("/trading/trades", async (req, res) => {
   const userId = getUserId(req);
-  await autoSettleExpiredTrades(userId);
+  await autoSettleExpiredTrades(userId, req);
   const trades = await db.select().from(tradesTable)
     .where(eq(tradesTable.clerkUserId, userId))
     .orderBy(desc(tradesTable.createdAt)).limit(50);
@@ -2821,9 +2866,15 @@ router.post("/trading/trades", async (req, res) => {
   if (!["long", "short"].includes(direction)) {
     res.status(400).json({ error: "Invalid direction." }); return;
   }
+  const assetSymbol = asset.toUpperCase();
+  if (assetSymbol !== "GOLD" && !marketDefinitions.some((definition) => definition.symbol === assetSymbol)) {
+    res.status(400).json({ error: "Unsupported trading asset." }); return;
+  }
+  if (!Number.isSafeInteger(timeframeSecs) || !VALID_SPOT_TIMEFRAMES.has(timeframeSecs)) {
+    res.status(400).json({ error: "Choose a supported Spot trade expiry timeframe." }); return;
+  }
   const amountString = normalizeStablecoinAmount(String(amount));
   if (!amountString) { res.status(400).json({ error: "Amount must be a positive value with up to 8 decimal places." }); return; }
-  const assetSymbol = asset.toUpperCase();
   const minTrade = minTradeAmountFor(assetSymbol);
   const amountNumber = Number(amountString);
   if (amountNumber < minTrade) {
@@ -2837,15 +2888,12 @@ router.post("/trading/trades", async (req, res) => {
     return;
   }
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
-  let entryPrice: number;
-  try {
-    const assets = await fetchMarketAssets(req);
-    const quoteSymbol = assetSymbol === "GOLD" ? "XAUT" : assetSymbol;
-    const found = assets.find((a: { symbol: string; price: number }) => a.symbol === quoteSymbol);
-    entryPrice = found?.price ?? TRADING_FALLBACK[assetSymbol] ?? 100;
-  } catch {
-    entryPrice = TRADING_FALLBACK[assetSymbol] ?? 100;
+  const entryQuote = await getFuturesQuote(req, assetSymbol);
+  if (!isFreshExecutionQuote(entryQuote)) {
+    res.status(503).json({ error: "A fresh exchange trade is unavailable. No Spot order was opened." });
+    return;
   }
+  const entryPrice = entryQuote.price;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + timeframeSecs * 1000);
   const result = await db.transaction(async (tx) => {
@@ -2865,6 +2913,7 @@ router.post("/trading/trades", async (req, res) => {
       ), 0) >= ${amountString}`,
     )).limit(1);
     if (!availableAccount) return null;
+    if (!isFreshExecutionQuote(entryQuote)) return "stale" as const;
     const [trade] = await tx.insert(tradesTable).values({
       clerkUserId: userId,
       asset: assetSymbol,
@@ -2881,6 +2930,10 @@ router.post("/trading/trades", async (req, res) => {
     }).where(eq(tradingAccountsTable.clerkUserId, userId));
     return { trade, balance: availableAccount.balance };
   });
+  if (result === "stale") {
+    res.status(503).json({ error: "The market trade became stale before order placement. No Spot order was opened." });
+    return;
+  }
   if (!result) {
     res.status(400).json({ error: "Insufficient available USDT balance after active trade reservations." });
     return;
