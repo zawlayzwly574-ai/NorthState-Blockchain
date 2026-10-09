@@ -1,4 +1,4 @@
-name: Temporary production market and admin-route smoke check # latest main deployment
+name: Final production markets and mobile admin Support smoke check
 
 on:
   push:
@@ -313,3 +313,21 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Verify mobile admin support panel is publicly reachable
+        shell: bash
+        run: |
+          set -euo pipefail
+          ok=0
+          for host in workspaceadmin-panel-production-b9cf.up.railway.app workspaceadmin-panel-production-f9af.up.railway.app; do
+            file="$(mktemp)"
+            status="$(curl -sS --max-time 15 -o "$file" -w '%{http_code}' "https://$host/")"
+            echo "https://$host/ => HTTP $status"
+            if [ "$status" = "200" ] && grep -qiE 'Customer Support|North State|id="root"|/src/main' "$file"; then
+              ok=1
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "No Railway Admin Panel domain returned the expected frontend shell." >&2
+            exit 1
+          fi
