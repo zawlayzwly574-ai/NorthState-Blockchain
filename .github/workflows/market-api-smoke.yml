@@ -1,4 +1,4 @@
-name: Temporary production market API smoke check
+name: Temporary preview market API smoke check # retry after Railway preview is online
 
 on:
   push:
