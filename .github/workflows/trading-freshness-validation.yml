@@ -1,0 +1,28 @@
+name: Temporary Trading freshness validation
+
+on:
+  push:
+    branches:
+      - "verify/trading-source-timestamp-build"
+
+permissions:
+  contents: read
+
+jobs:
+  trading-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Typecheck Blockchain Hub
+        run: pnpm --filter @workspace/blockchain-hub run typecheck
+      - name: Build Blockchain Hub
+        run: pnpm --filter @workspace/blockchain-hub run build
