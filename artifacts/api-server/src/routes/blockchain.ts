@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { createFuturesRouter } from "./futures";
 import { createFuturesQuoteFetcher, createTradingHistoryFetcher } from "./futures-quotes";
+import { ensureLiveMarketFeedStarted, getLatestLiveMarketQuote } from "./live-market-feed";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -479,6 +480,7 @@ type CoinPaprikaTicker = {
   symbol?: string;
   name?: string;
   rank?: number;
+  last_updated?: string;
   quotes?: { USD?: CoinPaprikaQuote };
 };
 
@@ -578,6 +580,10 @@ async function fetchCoinPaprikaMarketData(
       usd_24h_change: quote.percent_change_24h,
       usd_market_cap: quote.market_cap,
       usd_24h_vol: quote.volume_24h,
+      updatedAt: Number.isFinite(Date.parse(candidates[0].ticker.last_updated ?? ""))
+        ? Date.parse(candidates[0].ticker.last_updated!)
+        : undefined,
+      source: "coinpaprika",
     };
   }
   req.log.info({ supportedQuotes: Object.keys(quotes).length }, "CoinPaprika fallback quotes mapped");
@@ -589,6 +595,9 @@ type MarketQuote = {
   usd_24h_change?: number;
   usd_market_cap?: number;
   usd_24h_vol?: number;
+  last_updated_at?: number;
+  updatedAt?: number;
+  source?: "coingecko" | "binance" | "coinpaprika" | "live";
 };
 
 type MarketAsset = {
@@ -600,6 +609,8 @@ type MarketAsset = {
   volume24h: number;
   rank: number;
   color: string;
+  updatedAt?: string | null;
+  source?: "coingecko" | "binance" | "coinpaprika" | "live" | null;
 };
 
 type BinanceTicker = {
@@ -607,6 +618,7 @@ type BinanceTicker = {
   lastPrice?: string;
   priceChangePercent?: string;
   quoteVolume?: string;
+  closeTime?: number;
 };
 
 const binanceSymbols: Record<string, string> = {
@@ -676,6 +688,8 @@ async function fetchBinanceMarketData(
           usd: price,
           usd_24h_change: Number(ticker.priceChangePercent),
           usd_24h_vol: Number(ticker.quoteVolume),
+          updatedAt: Number.isFinite(ticker.closeTime) ? ticker.closeTime : undefined,
+          source: "binance",
         };
       }
       return quotes;
@@ -693,9 +707,12 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
   try {
     const response = await fetchCoinGeckoEndpoint(
       req,
-      `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+      `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true&include_last_updated_at=true`,
     );
-    if (response) liveData = (await response.json()) as typeof liveData;
+    if (response) {
+      liveData = (await response.json()) as typeof liveData;
+      for (const quote of Object.values(liveData)) quote.source = "coingecko";
+    }
   } catch (error) {
     req.log.warn({ err: error }, "CoinGecko market quote response could not be parsed");
   }
@@ -739,9 +756,16 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         volume24h: 0,
         rank: definition.rank,
         color: definition.color,
+        updatedAt: null,
+        source: null,
       };
     }
 
+    const providerUpdatedAt = Number.isFinite(provider!.updatedAt)
+      ? Number(provider!.updatedAt)
+      : Number.isFinite(provider!.last_updated_at)
+        ? Number(provider!.last_updated_at) * 1000
+        : Number.NaN;
     return {
       symbol: definition.symbol,
       name: definition.name,
@@ -757,14 +781,33 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         : previous?.volume24h ?? 0,
       rank: definition.rank,
       color: definition.color,
+      updatedAt: Number.isFinite(providerUpdatedAt) && providerUpdatedAt > 0
+        ? new Date(providerUpdatedAt).toISOString()
+        : previous?.updatedAt ?? null,
+      source: provider.source ?? previous?.source ?? null,
+    };
+  });
+}
+
+function overlayLiveMarketTicks(assets: MarketAsset[]): MarketAsset[] {
+  ensureLiveMarketFeedStarted();
+  return assets.map((asset) => {
+    const tick = getLatestLiveMarketQuote(asset.symbol);
+    if (!tick) return asset;
+    return {
+      ...asset,
+      price: tick.price,
+      updatedAt: new Date(tick.updatedAt).toISOString(),
+      source: "live" as const,
     };
   });
 }
 
 async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[0]) {
   const now = Date.now();
+  ensureLiveMarketFeedStarted();
   if (marketCache && now - marketCache.ts < MARKET_DATA_TTL) {
-    return marketCache.assets;
+    return overlayLiveMarketTicks(marketCache.assets);
   }
 
   if (!marketRefreshPromise) {
@@ -778,7 +821,7 @@ async function fetchMarketAssets(req: Parameters<Parameters<IRouter["get"]>[1]>[
       });
   }
 
-  return marketRefreshPromise;
+  return overlayLiveMarketTicks(await marketRefreshPromise);
 }
 
 router.get("/markets", async (req, res) => {
