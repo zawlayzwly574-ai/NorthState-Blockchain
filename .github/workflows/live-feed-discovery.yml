@@ -69,3 +69,33 @@ jobs:
           }).map(([key,p]) => ({key,altname:p.altname,wsname:p.wsname,base:p.base,quote:p.quote}));
           console.log(JSON.stringify({errors: payload.error, pairs: rows}, null, 2));
           NODE
+
+      - name: Check real-time trade endpoints for assets not in the aggregate stream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for symbol in FDUSDUSDT LEOUSDT; do
+            file="/tmp/bybit-${symbol}.json"
+            status="$(curl -sS --max-time 10 -o "$file" -w '%{http_code}' "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=${symbol}&limit=1" || true)"
+            echo "Bybit ${symbol} HTTP ${status}"
+            node - "$file" <<'NODE'
+          const fs = require('node:fs');
+          try {
+            const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            console.log(JSON.stringify({retCode:body.retCode,retMsg:body.retMsg,result:body.result?.list?.slice(0,1)},null,2));
+          } catch (error) { console.log(String(error)); }
+          NODE
+          done
+
+          for pair in tLEOUSD tFDUSD:USD; do
+            file="/tmp/bitfinex-${pair//:/-}.json"
+            status="$(curl -sS --max-time 10 -o "$file" -w '%{http_code}' "https://api-pub.bitfinex.com/v2/trades/${pair}/hist?limit=1" || true)"
+            echo "Bitfinex ${pair} HTTP ${status}"
+            node - "$file" <<'NODE'
+          const fs = require('node:fs');
+          try {
+            const body = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+            console.log(JSON.stringify({sample:Array.isArray(body)?body.slice(0,1):body},null,2));
+          } catch (error) { console.log(String(error)); }
+          NODE
+          done
