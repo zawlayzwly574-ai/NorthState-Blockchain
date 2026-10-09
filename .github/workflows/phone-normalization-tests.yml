@@ -1,0 +1,33 @@
+name: Temporary international phone normalization tests
+
+on:
+  push:
+    branches:
+      - "verify/phone-normalization-tests"
+
+permissions:
+  contents: read
+
+jobs:
+  phone-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Test frontend E.164 phone normalization
+        working-directory: artifacts/blockchain-hub
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_phone_normalization_only
+          PORT: "5173"
+        run: pnpm exec vitest run src/lib/phone.test.ts
+      - name: Test API server E.164 phone normalization
+        working-directory: artifacts/api-server
+        run: pnpm exec vitest run src/lib/phone.test.ts
