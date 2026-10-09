@@ -879,7 +879,7 @@ export function TradingPage() {
           quote={futuresQuote}
           history={tradingHistory}
           displayPrice={marketAsset?.price ?? null}
-          displayUpdatedAt={marketAsset?.updatedAt ?? marketDataUpdatedAt}
+          displayUpdatedAt={marketAsset ? marketAsset.updatedAt : null}
           entryPrice={entryPrice}
         />
       </div>
