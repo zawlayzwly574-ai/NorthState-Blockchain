@@ -749,9 +749,14 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
   if (missingIds) {
     const fallbackData = await fetchCoinPaprikaMarketData(req);
     for (const definition of marketDefinitions) {
-      if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(fallbackData[definition.id])) {
-        liveData[definition.id] = fallbackData[definition.id];
-      }
+      const fallback = fallbackData[definition.id];
+      if (!isValidMarketQuote(fallback)) continue;
+      // Keep live exchange prices/changes where available, while retaining
+      // market cap and other metadata from the slower public summary feed.
+      liveData[definition.id] = {
+        ...fallback,
+        ...liveData[definition.id],
+      };
     }
   }
 
