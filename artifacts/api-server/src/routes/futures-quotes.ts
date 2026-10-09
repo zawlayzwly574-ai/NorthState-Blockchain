@@ -73,8 +73,9 @@ function blockPair(provider: string, pair: string, duration = 10 * 60_000) {
   unsupportedPairs.set(provider + ":" + pair, Date.now() + duration);
 }
 function updateProviderCooldown(provider: string, status: number) {
-  if (status === 451) providerCooldowns.set(provider, Date.now() + 15 * 60_000);
+  if (status === 451 || status === 403) providerCooldowns.set(provider, Date.now() + 15 * 60_000);
   else if (status === 429) providerCooldowns.set(provider, Date.now() + 60_000);
+  else if (status === 401) providerCooldowns.set(provider, Date.now() + 60_000);
 }
 
 async function fetchJson(req: Request, provider: string, url: string): Promise<ApiResult | null> {
@@ -184,6 +185,7 @@ async function fetchBybitTrade(req: Request, symbol: string): Promise<FuturesQuo
 function kucoinTime(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return 0;
+  if (n > 1e17) return n / 1_000_000; // KuCoin trade-history timestamps are nanoseconds -> milliseconds
   if (n > 1e14) return n / 1000; // microseconds -> milliseconds
   if (n < 1e11) return n * 1000; // seconds -> milliseconds
   return n;
@@ -299,11 +301,11 @@ async function fetchLiveQuote(
   const providers: Array<() => Promise<FuturesQuote | null>> = [
     () => fetchOkxTrade(req, symbol),
     () => fetchGateTrade(req, symbol),
-    () => fetchBybitTrade(req, symbol),
-    () => fetchKucoinTrade(req, symbol),
     () => fetchCoinbaseTrade(req, symbol),
-    () => fetchKrakenTrade(req, symbol),
     () => fetchMexcTrade(req, symbol),
+    () => fetchKucoinTrade(req, symbol),
+    () => fetchKrakenTrade(req, symbol),
+    () => fetchBybitTrade(req, symbol),
     () => fetchBinanceTrade(req, definition, binanceSymbols),
   ];
   for (const provider of providers) {
@@ -335,6 +337,8 @@ function chooseSnapshotPair(candidates: any[]): any | null {
 
 let marketSnapshotCache: { data: MarketSnapshot; fetchedAt: number } | null = null;
 let marketSnapshotPending: Promise<MarketSnapshot> | null = null;
+let kucoinSnapshotCache: { rows: any[]; sourceAt: number; fetchedAt: number } | null = null;
+let kucoinSnapshotRetryAfter = 0;
 
 // Bulk exchange snapshots make the Markets and Trading selectors update quickly
 // without one upstream request per coin. These values are for display only;
@@ -402,6 +406,55 @@ export function createMarketSnapshotFetcher(definitions: AssetDefinition[]) {
           };
         }
       }
+
+      // KuCoin's all-tickers endpoint publishes a snapshot every two seconds.
+      // Cache it independently so missing OKX/Gate symbols such as XMR can
+      // still move without hammering the public ticker endpoint.
+      const snapshotNow = Date.now();
+      if (kucoinSnapshotCache && snapshotNow - kucoinSnapshotCache.fetchedAt < 1_800) {
+        // Reuse the recent provider snapshot.
+      } else if (snapshotNow >= kucoinSnapshotRetryAfter) {
+        const kucoinResult = await fetchJson(req, "kucoin-snapshot", "https://api.kucoin.com/api/v1/market/allTickers");
+        const body = kucoinResult?.body;
+        const sourceAt = Number(body?.data?.time);
+        const rows = body?.data?.ticker;
+        if (kucoinResult?.response.ok && Number(body?.code ?? "200000") === 200000 &&
+          Number.isFinite(sourceAt) && Math.abs(Date.now() - sourceAt) <= 30_000 &&
+          Array.isArray(rows)) {
+          kucoinSnapshotCache = { rows, sourceAt, fetchedAt: Date.now() };
+          kucoinSnapshotRetryAfter = 0;
+        } else {
+          kucoinSnapshotRetryAfter = Date.now() + 15_000;
+        }
+      }
+
+      const kucoinCache = kucoinSnapshotCache;
+      if (kucoinCache && Date.now() - kucoinCache.sourceAt <= 30_000) {
+        const rows = kucoinCache.rows.map((ticker: any) => {
+          const pair = String(ticker.symbol ?? "").split("-");
+          const price = Number(ticker.last);
+          return {
+            base: pair[0] ?? "",
+            quote: pair[1] ?? "",
+            price,
+            updatedAt: kucoinCache.sourceAt,
+            change: Number.isFinite(Number(ticker.changeRate)) ? Number(ticker.changeRate) * 100 : undefined,
+            volume: Number(ticker.volValue),
+          };
+        });
+        for (const definition of definitions) {
+          if (data[definition.symbol]?.usd && data[definition.symbol].usd! > 0) continue;
+          const candidates = rows.filter((row: any) => providerSymbolMatch(definition, row.base))
+            .filter((row: any) => Date.now() - row.updatedAt <= 30_000 && row.updatedAt > 0);
+          const selected = chooseSnapshotPair(candidates);
+          if (selected) data[definition.symbol] = {
+            usd: selected.price,
+            usd_24h_change: selected.change,
+            usd_24h_vol: Number.isFinite(selected.volume) ? selected.volume : undefined,
+          };
+        }
+      }
+
       marketSnapshotCache = { data, fetchedAt: Date.now() };
       return data;
     })().finally(() => {
