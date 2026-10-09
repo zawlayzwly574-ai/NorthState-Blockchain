@@ -1837,6 +1837,75 @@ router.post("/sms/verify-otp", async (req, res) => {
 
 // ─── Support chat ─────────────────────────────────────────────────────────────
 
+// Public pre-registration support uses an unguessable guest ID as a bearer token.
+// It is deliberately separate from authenticated user support and cannot edit/delete messages.
+function parseGuestSupportId(value: string) {
+  const match = /^guest_([a-f0-9]{48})_([A-Za-z0-9_-]{1,320})$/.exec(value);
+  if (!match) return null;
+  try {
+    const email = Buffer.from(match[2], "base64url").toString("utf8").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return null;
+    return { id: value, email };
+  } catch { return null; }
+}
+
+router.post("/support/guest", async (req, res) => {
+  const email = String(req.body?.email ?? "").trim().toLowerCase();
+  const name = String(req.body?.name ?? "").trim().slice(0, 100);
+  const content = String(req.body?.content ?? "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+    res.status(400).json({ error: "Enter a valid email address so support can reply." }); return;
+  }
+  if (!content || content.length > 4000) {
+    res.status(400).json({ error: "Message must contain 1–4000 characters." }); return;
+  }
+  const guestId = `guest_${randomBytes(24).toString("hex")}_${Buffer.from(email).toString("base64url")}`;
+  const [thread] = await db.insert(supportThreadsTable)
+    .values({ clerkUserId: guestId, status: "open" }).returning();
+  const [message] = await db.insert(supportMessagesTable)
+    .values({ threadId: thread.id, senderRole: "user", content }).returning();
+  await db.update(supportThreadsTable).set({ updatedAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+  res.status(201).json({
+    guestId, displayName: name || "Guest", email,
+    threadId: thread.id,
+    messages: [{ id: message.id, threadId: message.threadId, senderRole: message.senderRole,
+      content: message.content, createdAt: message.createdAt.toISOString() }],
+  });
+});
+
+router.get("/support/guest/:guestId/messages", async (req, res) => {
+  const guest = parseGuestSupportId(String(req.params.guestId ?? ""));
+  if (!guest) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const [thread] = await db.select().from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, guest.id)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const messages = await db.select().from(supportMessagesTable)
+    .where(eq(supportMessagesTable.threadId, thread.id))
+    .orderBy(supportMessagesTable.createdAt);
+  res.json({ guestId: guest.id, email: guest.email, threadId: thread.id,
+    messages: messages.map(m => ({ id: m.id, threadId: m.threadId, senderRole: m.senderRole,
+      content: m.content, createdAt: m.createdAt.toISOString() })) });
+});
+
+router.post("/support/guest/:guestId/messages", async (req, res) => {
+  const guest = parseGuestSupportId(String(req.params.guestId ?? ""));
+  const content = String(req.body?.content ?? "").trim();
+  if (!guest) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  if (!content || content.length > 4000) {
+    res.status(400).json({ error: "Message must contain 1–4000 characters." }); return;
+  }
+  const [thread] = await db.select().from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, guest.id)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const [message] = await db.insert(supportMessagesTable)
+    .values({ threadId: thread.id, senderRole: "user", content }).returning();
+  await db.update(supportThreadsTable).set({ updatedAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+  res.status(201).json({ sent: true, message: { id: message.id, threadId: message.threadId,
+    senderRole: message.senderRole, content: message.content, createdAt: message.createdAt.toISOString() } });
+});
+
 router.get("/support/messages", async (req, res) => {
   const userId = getUserId(req);
   const [thread] = await db.select().from(supportThreadsTable)
@@ -1893,7 +1962,7 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
     return {
       userId: thread.clerkUserId,
       displayName: profile?.displayName ?? "Unknown",
-      email: profile?.email ?? "",
+      email: profile?.email ?? parseGuestSupportId(thread.clerkUserId)?.email ?? "",
       threadId: thread.id,
       lastMessage: last?.content ?? "",
       lastMessageAt: (last?.createdAt ?? thread.createdAt).toISOString(),
