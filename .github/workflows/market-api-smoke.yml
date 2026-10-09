@@ -1,0 +1,43 @@
+name: Temporary production market API smoke check
+
+on:
+  push:
+    branches:
+      - "verify/market-api-smoke"
+
+permissions:
+  contents: read
+
+jobs:
+  market-api-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Verify public markets endpoint returns the supported asset list
+        shell: bash
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl -sS --max-time 20 -H 'Accept: application/json' -o "$response_file" -w '%{http_code}' 'https://workspaceapi-server-production-838d.up.railway.app/api/markets')"
+          echo "http_status=$status"
+          if [ "$status" != "200" ]; then
+            echo "Market API returned HTTP $status" >&2
+            head -c 1000 "$response_file" >&2 || true
+            exit 1
+          fi
+          node - "$response_file" <<'NODE'
+          const fs = require('node:fs');
+          const path = process.argv[2];
+          const body = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (!Array.isArray(body) || body.length === 0) {
+            console.error('Expected a non-empty array of supported market assets.');
+            process.exit(1);
+          }
+          const quoteAvailable = body.filter((item) => Number.isFinite(item.price) && item.price > 0);
+          console.log(JSON.stringify({
+            assetCount: body.length,
+            quotesAvailable: quoteAvailable.length,
+            quotesUnavailable: body.length - quoteAvailable.length,
+            firstAssets: body.slice(0, 8).map(({ symbol, name, price }) => ({ symbol, name, price })),
+          }, null, 2));
+          NODE
