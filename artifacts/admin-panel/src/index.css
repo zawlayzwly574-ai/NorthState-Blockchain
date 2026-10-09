@@ -193,7 +193,15 @@
   max-width: 100%;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
+  /* Some Android browsers report a desktop-width layout viewport. Stack the
+     support inbox before it becomes too narrow to read or type comfortably. */
+  .admin-support-page {
+    height: calc(100dvh - 56px) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
   .admin-support-layout {
     display: flex !important;
     flex-direction: column !important;
