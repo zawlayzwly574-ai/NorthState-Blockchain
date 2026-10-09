@@ -125,7 +125,7 @@ export default function Support() {
 
       <div className="admin-support-layout flex min-h-0 min-w-0 flex-1 gap-4">
         {/* ── Thread list ── */}
-        <div className={`admin-support-thread-list w-full md:w-72 xl:w-80 shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'hidden md:flex' : 'flex'}`}>
+        <div className={`admin-support-thread-list w-full md:w-72 xl:w-80 shrink-0 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'admin-support-thread-list--hidden hidden md:flex' : 'flex'}`}>
           <div className="shrink-0 px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-sm font-semibold">Threads</span>
             <span className="text-xs font-mono text-muted-foreground">{threads.length}</span>
@@ -180,7 +180,7 @@ export default function Support() {
         </div>
 
         {/* ── Thread detail ── */}
-        <div className={`admin-support-thread-detail min-w-0 flex-1 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`admin-support-thread-detail min-w-0 flex-1 flex-col rounded-xl border border-border bg-card overflow-hidden ${selectedUserId ? 'admin-support-thread-detail--active flex' : 'hidden md:flex'}`}>
           {!selectedUserId ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center p-6">
               <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/8 text-primary/40">
