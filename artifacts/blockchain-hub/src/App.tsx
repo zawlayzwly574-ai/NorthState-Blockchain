@@ -29,6 +29,7 @@ import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react'
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { getMarketLogoFile } from '@/market-logos';
+import { normalizeInternationalPhone, PHONE_SIGNUP_COUNTRIES } from '@/lib/phone';
 import { getMiningLogoFile } from '@/mining-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -304,54 +305,6 @@ const clerkAppearance = {
     main: 'bg-transparent',
   },
 };
-
-type PhoneCountryOption = { code: string; label: string };
-
-const PHONE_SIGNUP_COUNTRIES: PhoneCountryOption[] = [
-  { code: '+1', label: '🇺🇸 United States (+1)' },
-  { code: '+95', label: '🇲🇲 Myanmar (+95)' },
-  { code: '+51', label: '🇵🇪 Peru (+51)' },
-  { code: '+55', label: '🇧🇷 Brazil (+55)' },
-  { code: '+52', label: '🇲🇽 Mexico (+52)' },
-];
-
-function normalizeInternationalPhone(countryCode: string, input: string): string | null {
-  const raw = input.trim();
-  const countryDigits = countryCode.replace(/\D/g, '');
-  let nationalDigits = raw.replace(/\D/g, '');
-  if (!countryDigits || !nationalDigits) return null;
-
-  // If a member pastes an E.164 value, ensure its country prefix matches the
-  // selected country rather than accidentally double-prefixing the number.
-  if (raw.startsWith('+') || raw.startsWith('00')) {
-    if (raw.startsWith('00')) nationalDigits = nationalDigits.slice(2);
-    if (!nationalDigits.startsWith(countryDigits)) return null;
-    nationalDigits = nationalDigits.slice(countryDigits.length);
-  }
-
-  // Myanmar users commonly enter the domestic leading zero; it is not part
-  // of the international E.164 number.
-  if (countryCode === '+95' && nationalDigits.startsWith('0')) {
-    nationalDigits = nationalDigits.slice(1);
-  }
-
-  const lengths: Record<string, [number, number]> = {
-    '+1': [10, 10],
-    '+95': [7, 10],
-    '+51': [9, 9],
-    '+52': [10, 10],
-    '+55': [10, 11],
-  };
-  const [minLength, maxLength] = lengths[countryCode] ?? [6, 12];
-  if (!/^\d+$/.test(nationalDigits) ||
-      nationalDigits.length < minLength ||
-      nationalDigits.length > maxLength ||
-      nationalDigits.split('').every((digit) => digit === '0') ||
-      countryDigits.length + nationalDigits.length > 15) {
-    return null;
-  }
-  return `+${countryDigits}${nationalDigits}`;
-}
 
 function clerkSignUpError(error: unknown): string {
   const value = error as {
