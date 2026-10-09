@@ -926,6 +926,7 @@ components:
         volume24h: { type: number }
         rank: { type: number }
         color: { type: string }
+        updatedAt: { type: string, format: date-time, nullable: true }
     ChartPoint:
       type: object
       required: [time, value]

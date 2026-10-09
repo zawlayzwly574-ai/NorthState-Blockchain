@@ -29,7 +29,8 @@ export const GetMarketSummaryResponseItem = zod.object({
   "marketCap": zod.number(),
   "volume24h": zod.number(),
   "rank": zod.number(),
-  "color": zod.string().optional()
+  "color": zod.string().optional(),
+  "updatedAt": zod.string().nullable().optional()
 })
 export const GetMarketSummaryResponse = zod.array(GetMarketSummaryResponseItem)
 

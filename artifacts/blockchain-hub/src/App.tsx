@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TradingPage } from './Trading';
 import type * as React from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useSignUp, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
@@ -29,6 +29,7 @@ import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react'
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { getMarketLogoFile } from '@/market-logos';
+import { normalizeInternationalPhone, PHONE_SIGNUP_COUNTRIES } from '@/lib/phone';
 import { getMiningLogoFile } from '@/mining-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -305,12 +306,210 @@ const clerkAppearance = {
   },
 };
 
+function clerkSignUpError(error: unknown): string {
+  const value = error as {
+    errors?: { longMessage?: string; message?: string }[];
+    message?: string;
+  } | null;
+  return value?.errors?.[0]?.longMessage ??
+    value?.errors?.[0]?.message ??
+    value?.message ??
+    'Could not complete phone verification. Please try again.';
+}
+
+function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
+  const { signUp, fetchStatus } = useSignUp();
+  const [, setLocation] = useLocation();
+  const [country, setCountry] = useState('+1');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'phone' | 'verify'>('phone');
+  const [fullPhone, setFullPhone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!resendAt || resendAt <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      const currentTime = Date.now();
+      setNow(currentTime);
+      if (currentTime >= resendAt) window.clearInterval(timer);
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [resendAt]);
+
+  const resendWait = Math.max(0, Math.ceil((resendAt - now) / 1000));
+  const sendCode = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const normalized = normalizeInternationalPhone(country, phone);
+    if (!normalized) {
+      setError('Enter a valid phone number for the selected country. Use the national number without its country code.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const created = await signUp.create({ phoneNumber: normalized });
+      if (created?.error) throw created.error;
+      const sent = await signUp.verifications.sendPhoneCode();
+      if (sent?.error) throw sent.error;
+      setFullPhone(normalized);
+      setStep('verify');
+      setResendAt(Date.now() + 30_000);
+      setNow(Date.now());
+    } catch (cause) {
+      setError(clerkSignUpError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verifyCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!/^\d{6}$/.test(code)) {
+      setError('Enter the 6-digit code sent to your phone.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      const verified = await signUp.verifications.verifyPhoneCode({ code });
+      if (verified?.error) throw verified.error;
+      if (signUp.status !== 'complete') {
+        setError('Your Clerk sign-up still requires additional fields. Enable phone-only sign-up in Clerk Dashboard or use the standard sign-up form.');
+        return;
+      }
+      await signUp.finalize({
+        navigate: ({ session, decorateUrl }) => {
+          if (session?.currentTask) {
+            setError('Your account has an additional security step to complete before continuing.');
+            return;
+          }
+          const destination = decorateUrl(`${basePath}/dashboard`);
+          if (destination.startsWith('http')) window.location.assign(destination);
+          else setLocation(destination);
+        },
+      });
+    } catch (cause) {
+      setError(clerkSignUpError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendCode = async () => {
+    if (resendWait > 0 || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const sent = await signUp.verifications.sendPhoneCode();
+      if (sent?.error) throw sent.error;
+      setResendAt(Date.now() + 30_000);
+      setNow(Date.now());
+    } catch (cause) {
+      setError(clerkSignUpError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="w-full rounded-2xl border border-border bg-card p-5 shadow-lg sm:p-6" data-testid="phone-otp-signup">
+      <div className="mb-5 flex items-start gap-3">
+        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/30 bg-primary/10 text-primary">
+          <Smartphone size={19} />
+        </div>
+        <div>
+          <h2 className="text-lg font-extrabold">Create account with phone OTP</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            We'll send a one-time code by SMS. Your number must be able to receive international messages.
+          </p>
+        </div>
+      </div>
+      <div id="clerk-captcha" data-testid="clerk-signup-captcha" />
+      {step === 'phone' ? (
+        <form onSubmit={sendCode} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-muted-foreground" htmlFor="signup-phone-country">Country / calling code</label>
+            <select id="signup-phone-country" value={country} onChange={(event) => setCountry(event.target.value)}
+              className="h-11 w-full rounded-xl border border-input bg-secondary/40 px-3 text-sm font-semibold outline-none focus:border-primary"
+              data-testid="select-signup-phone-country">
+              {PHONE_SIGNUP_COUNTRIES.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-muted-foreground" htmlFor="signup-phone-number">Mobile number</label>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-11 shrink-0 items-center rounded-xl border border-input bg-secondary/40 px-3 text-sm font-extrabold text-primary">{country}</span>
+              <input id="signup-phone-number" type="tel" inputMode="tel" autoComplete="tel-national"
+                value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Enter national number"
+                className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-secondary/40 px-3 text-sm outline-none focus:border-primary"
+                aria-describedby="signup-phone-hint" data-testid="input-signup-phone" />
+            </div>
+            <p id="signup-phone-hint" className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
+              Peru uses +51; +55 is Brazil. Myanmar numbers entered as 09… are normalized to +95.
+            </p>
+          </div>
+          {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs leading-5 text-destructive">{error}</p>}
+          <button type="submit" disabled={busy || fetchStatus === 'fetching'}
+            className="h-11 w-full rounded-xl bg-primary px-4 text-sm font-extrabold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="button-signup-send-otp">
+            {busy || fetchStatus === 'fetching' ? 'Sending verification code…' : 'Send SMS verification code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={verifyCode} className="space-y-4">
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-3 text-xs leading-5">
+            Enter the 6-digit code sent to <strong className="text-foreground">{fullPhone}</strong>.
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-bold text-muted-foreground" htmlFor="signup-phone-otp">Verification code</label>
+            <input id="signup-phone-otp" type="text" inputMode="numeric" autoComplete="one-time-code"
+              pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="123456" className="h-12 w-full rounded-xl border border-input bg-secondary/40 px-3 text-center font-mono text-xl font-extrabold tracking-[0.45em] outline-none focus:border-primary"
+              data-testid="input-signup-phone-otp" />
+          </div>
+          {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5 text-xs leading-5 text-destructive">{error}</p>}
+          <button type="submit" disabled={busy || code.length !== 6}
+            className="h-11 w-full rounded-xl bg-primary px-4 text-sm font-extrabold text-primary-foreground transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            data-testid="button-signup-verify-otp">
+            {busy ? 'Verifying…' : 'Verify and create account'}
+          </button>
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <button type="button" onClick={resendCode} disabled={busy || resendWait > 0}
+              className="font-bold text-primary disabled:cursor-not-allowed disabled:text-muted-foreground" data-testid="button-signup-resend-otp">
+              {resendWait > 0 ? `Resend code in ${resendWait}s` : 'Resend code'}
+            </button>
+            <button type="button" onClick={() => { setStep('phone'); setCode(''); setError(''); }}
+              className="text-muted-foreground underline underline-offset-4">Change number</button>
+          </div>
+        </form>
+      )}
+      <button type="button" onClick={onBack} className="mt-5 w-full rounded-xl border border-border px-4 py-3 text-xs font-bold text-muted-foreground transition hover:text-foreground">
+        Back to standard sign-up
+      </button>
+    </section>
+  );
+}
+
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
+  const [usePhoneOtp, setUsePhoneOtp] = useState(false);
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
       <div className="mb-8 flex justify-center"><Logo /></div>
       {signUp
-        ? <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
+        ? usePhoneOtp
+          ? <PhoneOtpSignUp onBack={() => setUsePhoneOtp(false)} />
+          : <>
+              <button type="button" onClick={() => setUsePhoneOtp(true)}
+                className="mb-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/5 px-4 text-sm font-extrabold text-primary transition hover:bg-primary/10"
+                data-testid="button-signup-with-phone-otp">
+                <Smartphone size={16} /> Sign up with international phone OTP
+              </button>
+              <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
+            </>
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
       <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
@@ -890,9 +1089,14 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
 
   // ── Phone handlers ───────────────────────────────────────────────────────
   const submitPhone = async () => {
-    if (!user || phoneNum.replace(/\D/g, '').length < 7) return;
+    if (!user) return;
+    const full = normalizeInternationalPhone(countryCode, phoneNum);
+    if (!full) {
+      setPhoneErr('Enter a valid international phone number for the selected country code.');
+      setPhoneOk('');
+      return;
+    }
     setPhoneBusy(true); setPhoneErr(''); setPhoneOk('');
-    const full = countryCode + phoneNum.replace(/\D/g, '');
     try {
       const pn = await (user as any).createPhoneNumber({ phoneNumber: full });
       await pn.prepareVerification();
@@ -1038,8 +1242,12 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
     const t = setInterval(() => setSmsCountdown(prev => { if (prev <= 1) { clearInterval(t); return 0; } return prev - 1; }), 1000);
   };
   const doSendSmsOtp = async () => {
-    const full = smsCountry + smsPhone.replace(/\D/g, '');
-    if (full.replace(/\D/g, '').length < 7) return;
+    const full = normalizeInternationalPhone(smsCountry, smsPhone);
+    if (!full) {
+      setSmsErr('Enter a valid international phone number for the selected country code.');
+      setSmsOk('');
+      return;
+    }
     setSmsBusy(true); setSmsErr(''); setSmsOk('');
     try {
       await sendSmsOtpMut.mutateAsync({ data: { phoneNumber: full } });

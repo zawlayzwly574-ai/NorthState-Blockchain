@@ -1,5 +1,5 @@
 import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import { getAuth, clerkClient } from "@clerk/express";
 import { eq, desc, count, and, inArray, sql } from "drizzle-orm";
 import { generateSecret as totpGenerateSecret, generateURI as totpGenerateURI, verifySync as totpVerifySync } from "otplib";
@@ -20,6 +20,7 @@ import {
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
+import { normalizeSmsE164 } from "../lib/phone";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -479,6 +480,7 @@ type CoinPaprikaTicker = {
   symbol?: string;
   name?: string;
   rank?: number;
+  last_updated?: string;
   quotes?: { USD?: CoinPaprikaQuote };
 };
 
@@ -573,11 +575,13 @@ async function fetchCoinPaprikaMarketData(
     if (candidates.length > 1 && candidates[0].nameScore === 0) continue;
     const quote = candidates[0].ticker.quotes?.USD;
     if (!quote || !Number.isFinite(quote.price) || (quote.price ?? 0) <= 0) continue;
+    const sourceTimestamp = Date.parse(candidates[0].ticker.last_updated ?? "");
     quotes[definition.id] = {
       usd: quote.price,
       usd_24h_change: quote.percent_change_24h,
       usd_market_cap: quote.market_cap,
       usd_24h_vol: quote.volume_24h,
+      updatedAt: Number.isFinite(sourceTimestamp) ? sourceTimestamp : undefined,
     };
   }
   req.log.info({ supportedQuotes: Object.keys(quotes).length }, "CoinPaprika fallback quotes mapped");
@@ -589,6 +593,7 @@ type MarketQuote = {
   usd_24h_change?: number;
   usd_market_cap?: number;
   usd_24h_vol?: number;
+  updatedAt?: number;
 };
 
 type MarketAsset = {
@@ -600,6 +605,7 @@ type MarketAsset = {
   volume24h: number;
   rank: number;
   color: string;
+  updatedAt: string | null;
 };
 
 type BinanceTicker = {
@@ -607,6 +613,7 @@ type BinanceTicker = {
   lastPrice?: string;
   priceChangePercent?: string;
   quoteVolume?: string;
+  closeTime?: string | number;
 };
 
 const binanceSymbols: Record<string, string> = {
@@ -683,10 +690,12 @@ async function fetchBinanceMarketData(
       const marketId = Object.entries(binanceSymbols).find(([, symbol]) => symbol === ticker.symbol)?.[0];
       const price = Number(ticker.lastPrice);
       if (marketId && Number.isFinite(price) && price > 0) {
+        const sourceTimestamp = Number(ticker.closeTime);
         quotes[marketId] = {
           usd: price,
           usd_24h_change: Number(ticker.priceChangePercent),
           usd_24h_vol: Number(ticker.quoteVolume),
+          updatedAt: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0 ? sourceTimestamp : undefined,
         };
       }
       return quotes;
@@ -720,13 +729,20 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
     try {
       const response = await fetchCoinGeckoEndpoint(
         req,
-        `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true`,
+        `simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true&include_24hr_vol=true&include_last_updated_at=true`,
       );
       if (response) {
-        const data = await response.json() as Record<string, MarketQuote>;
+        const data = await response.json() as Record<string, MarketQuote & { last_updated_at?: number }>;
         for (const definition of marketDefinitions) {
           if (!isValidMarketQuote(liveData[definition.id]) && isValidMarketQuote(data[definition.id])) {
-            liveData[definition.id] = data[definition.id];
+            const quote = data[definition.id];
+            const sourceTimestamp = Number(quote.last_updated_at);
+            liveData[definition.id] = {
+              ...quote,
+              updatedAt: Number.isFinite(sourceTimestamp) && sourceTimestamp > 0
+                ? sourceTimestamp * 1000
+                : undefined,
+            };
           }
         }
       }
@@ -779,6 +795,7 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         volume24h: 0,
         rank: definition.rank,
         color: definition.color,
+        updatedAt: null,
       };
     }
 
@@ -797,6 +814,9 @@ async function fetchFreshMarketAssets(req: Parameters<Parameters<IRouter["get"]>
         : previous?.volume24h ?? 0,
       rank: definition.rank,
       color: definition.color,
+      updatedAt: Number.isFinite(provider.updatedAt) && provider.updatedAt! > 0
+        ? new Date(provider.updatedAt!).toISOString()
+        : previous?.updatedAt ?? null,
     };
   });
 }
@@ -1719,31 +1739,48 @@ router.delete("/security/passkeys/:id", async (req, res) => {
 });
 
 // ─── SMS OTP store ────────────────────────────────────────────────────────────
-const smsOtpStore = new Map<string, { code: string; expires: number; userId: string }>();
+type SmsOtpEntry = { code: string; expires: number; userId: string; attempts: number };
+const smsOtpStore = new Map<string, SmsOtpEntry>();
+const smsOtpSentAt = new Map<string, number>();
+const smsOtpKey = (userId: string, phone: string) => `${userId}:${phone}`;
+
+
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of smsOtpStore) if (v.expires < now) smsOtpStore.delete(k);
+  for (const [key, entry] of smsOtpStore) {
+    if (entry.expires < now) smsOtpStore.delete(key);
+  }
+  for (const [key, sentAt] of smsOtpSentAt) {
+    if (now - sentAt > 10 * 60_000) smsOtpSentAt.delete(key);
+  }
 }, 120_000);
 
 router.post("/sms/send-otp", async (req, res) => {
   const userId = getUserId(req);
   const { phoneNumber } = req.body as { phoneNumber?: string };
-  const phone = String(phoneNumber ?? "").trim();
-  if (!phone || phone.replace(/\D/g, "").length < 7) {
-    res.status(400).json({ error: "A valid phone number is required." }); return;
+  const phone = normalizeSmsE164(phoneNumber);
+  if (!phone) {
+    res.status(400).json({ error: "Enter a valid international phone number in E.164 format, including the + country code." });
+    return;
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
   if (!accountSid || !authToken || !fromNumber) {
-    res.status(503).json({ error: "SMS service is not yet configured. Please contact support." }); return;
+    res.status(503).json({ error: "SMS service is not configured. Please contact support." });
+    return;
   }
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expires = Date.now() + 5 * 60_000;
-  smsOtpStore.set(phone, { code, expires, userId });
+  const key = smsOtpKey(userId, phone);
+  const lastSentAt = smsOtpSentAt.get(key) ?? 0;
+  const waitSeconds = Math.ceil((60_000 - (Date.now() - lastSentAt)) / 1000);
+  if (waitSeconds > 0) {
+    res.status(429).json({ error: `Please wait ${waitSeconds} seconds before requesting another code.`, retryAfterSeconds: waitSeconds });
+    return;
+  }
 
+  const code = String(randomInt(100000, 1_000_000));
   try {
     const { default: twilio } = await import("twilio");
     const client = twilio(accountSid, authToken);
@@ -1752,32 +1789,45 @@ router.post("/sms/send-otp", async (req, res) => {
       from: fromNumber,
       to: phone,
     });
+    const expires = Date.now() + 5 * 60_000;
+    smsOtpStore.set(key, { code, expires, userId, attempts: 0 });
+    smsOtpSentAt.set(key, Date.now());
     res.json({ sent: true, expiresAt: new Date(expires).toISOString() });
-  } catch (err: any) {
-    smsOtpStore.delete(phone);
-    res.status(500).json({ error: err?.message ?? "Failed to send SMS. Please verify the phone number and try again." });
+  } catch {
+    req.log.warn({ userId, phonePrefix: phone.slice(0, 4) }, "SMS OTP delivery failed");
+    res.status(502).json({ error: "The SMS provider could not deliver the verification code. Check the number and try again." });
   }
 });
 
 router.post("/sms/verify-otp", async (req, res) => {
   const userId = getUserId(req);
   const { phoneNumber, code } = req.body as { phoneNumber?: string; code?: string };
-  const phone = String(phoneNumber ?? "").trim();
+  const phone = normalizeSmsE164(phoneNumber);
   const otp = String(code ?? "").trim();
-  if (!phone || !otp) {
-    res.status(400).json({ error: "Phone number and code are required." }); return;
+  if (!phone || !/^\d{6}$/.test(otp)) {
+    res.status(400).json({ error: "Enter a valid international phone number and the 6-digit verification code." });
+    return;
   }
-  const entry = smsOtpStore.get(phone);
+
+  const key = smsOtpKey(userId, phone);
+  const entry = smsOtpStore.get(key);
   if (!entry || entry.expires < Date.now()) {
-    res.status(400).json({ error: "Code has expired. Please request a new one." }); return;
+    smsOtpStore.delete(key);
+    res.status(400).json({ error: "Code has expired. Please request a new one." });
+    return;
   }
-  if (entry.userId !== userId) {
-    res.status(403).json({ error: "Verification session mismatch." }); return;
+  if (entry.attempts >= 5) {
+    smsOtpStore.delete(key);
+    res.status(429).json({ error: "Too many incorrect codes. Please request a new code." });
+    return;
   }
   if (entry.code !== otp) {
-    res.status(400).json({ error: "Incorrect code. Please check and try again." }); return;
+    entry.attempts += 1;
+    res.status(400).json({ error: "Incorrect code. Please check and try again." });
+    return;
   }
-  smsOtpStore.delete(phone);
+
+  smsOtpStore.delete(key);
   await db
     .update(walletProfilesTable)
     .set({ smsPhoneNumber: phone, smsPhoneVerified: true })
