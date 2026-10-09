@@ -21,6 +21,7 @@ import {
 import { createFuturesRouter } from "./futures";
 import { createFuturesQuoteFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { ensureLiveMarketFeedStarted, getLatestLiveMarketQuote } from "./live-market-feed";
+import { resolveSpotTradeOutcome } from "./trading-outcome";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -2769,8 +2770,11 @@ async function settleActiveTrade(tradeId: number, forcedOutcome?: "win" | "loss"
         if (exitPrice === entry) {
           return { trade, settled: false, error: "Waiting for the next live market price change before settling this trade." };
         }
-        const priceRose = exitPrice > entry;
-        outcome = (trade.direction === "long") === priceRose ? "win" : "loss";
+        const resolvedOutcome = resolveSpotTradeOutcome(trade.direction as "long" | "short", entry, exitPrice);
+        if (!resolvedOutcome) {
+          return { trade, settled: false, error: "The live price has not moved from the entry price yet. The trade remains active." };
+        }
+        outcome = resolvedOutcome;
       }
     }
 
