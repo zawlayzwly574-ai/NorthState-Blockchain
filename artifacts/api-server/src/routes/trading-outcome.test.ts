@@ -12,8 +12,12 @@ describe("resolveSpotTradeOutcome", () => {
     expect(resolveSpotTradeOutcome("short", 100, 101)).toBe("loss");
   });
 
-  it("does not invent an outcome for an unchanged or invalid price", () => {
-    expect(resolveSpotTradeOutcome("long", 100, 100)).toBeNull();
+  it("settles a flat price using the established binary direction rule", () => {
+    expect(resolveSpotTradeOutcome("long", 100, 100)).toBe("loss");
+    expect(resolveSpotTradeOutcome("short", 100, 100)).toBe("win");
+  });
+
+  it("rejects invalid entry or exit prices", () => {
     expect(resolveSpotTradeOutcome("long", 0, 100)).toBeNull();
     expect(resolveSpotTradeOutcome("short", 100, Number.NaN)).toBeNull();
   });
