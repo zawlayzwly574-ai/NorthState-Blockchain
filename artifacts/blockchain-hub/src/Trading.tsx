@@ -144,7 +144,7 @@ function PriceChart({
     <div className="relative">
       <div className="pointer-events-none absolute left-3 top-2 z-10 flex items-baseline gap-1.5">
         <span className="font-mono text-xl font-extrabold tracking-tight" style={{ color: stroke }} data-testid="text-live-chart-price">
-          {current === null ? 'Live quote unavailable' : `${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })`}
+          {current === null ? 'Live quote unavailable' : `${current.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`}
         </span>
         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${live ? (isUp ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400') : 'bg-secondary text-muted-foreground'}`} data-testid="status-live-chart">
           {live ? `${isUp ? '▲' : '▼'} LIVE` : 'WAITING FOR LIVE TICK'}
