@@ -198,3 +198,56 @@ jobs:
           console.log('Gate.io display ticker candidates (not used as executable quotes without timestamps):');
           console.log(JSON.stringify({count:pairs.length,pairs:pairs.map(({currency_pair,last,change_percentage,quote_volume})=>({currency_pair,last,change_percentage,quote_volume}))}, null, 2));
           NODE
+
+      - name: Inspect actual recent trades for Gold and exchange-specific symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe() {
+            local provider="$1"
+            local url="$2"
+            local file
+            file="$(mktemp)"
+            local code
+            code="$(curl -sS --max-time 12 -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "=== $provider HTTP $code ==="
+            node - "$file" "$provider" <<'NODE'
+          const fs = require('node:fs');
+          const provider = process.argv[3];
+          let payload;
+          try { payload = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')); }
+          catch { console.log('Response is not JSON'); process.exit(0); }
+          const rows = payload?.data ?? payload?.result?.list ?? payload?.result ?? payload;
+          const list = Array.isArray(rows) ? rows : [];
+          const first = list.slice(0, 3).map((r) => ({
+            instId: r.instId,
+            symbol: r.symbol,
+            currency_pair: r.currency_pair,
+            price: r.px ?? r.price ?? r.last ?? r[0],
+            timestamp: r.ts ?? r.time ?? r.create_time_ms ?? r.create_time ?? r[2],
+          }));
+          console.log(JSON.stringify({
+            code: payload?.code,
+            retCode: payload?.retCode,
+            error: payload?.error,
+            message: payload?.msg ?? payload?.message,
+            count: list.length,
+            first,
+          }, null, 2));
+          NODE
+          }
+          for symbol in XAUT-USDT XAUT-USDC; do
+            probe "OKX trades $symbol" "https://www.okx.com/api/v5/market/trades?instId=$symbol&limit=1"
+          done
+          for symbol in GRAM-USDT CC-USDT; do
+            probe "OKX trades $symbol" "https://www.okx.com/api/v5/market/trades?instId=$symbol&limit=1"
+          done
+          for symbol in XAUT_USDT GRAM_USDT CC_USDT; do
+            probe "Gate trades $symbol" "https://api.gateio.ws/api/v4/spot/trades?currency_pair=$symbol&limit=1"
+          done
+          for symbol in XAUT-USDT GRAM-USDT CC-USDT; do
+            probe "KuCoin trades $symbol" "https://api.kucoin.com/api/v1/market/histories?symbol=$symbol"
+          done
+          for symbol in XAUTUSDT GRAMUSDT CCUSDT; do
+            probe "Bybit trades $symbol" "https://api.bybit.com/v5/market/recent-trade?category=spot&symbol=$symbol&limit=1"
+          done
