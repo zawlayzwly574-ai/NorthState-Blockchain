@@ -45,6 +45,8 @@ let binanceBlockedUntil = 0;
 let coinGeckoAuthBlockedUntil = 0;
 let krakenBlockedUntil = 0;
 let bitfinexBlockedUntil = 0;
+let gateBlockedUntil = 0;
+let mexcBlockedUntil = 0;
 
 function toFreshQuote(priceValue: unknown, timestampValue: unknown, now = Date.now()): FuturesQuote | null {
   const price = Number(priceValue);
@@ -149,6 +151,76 @@ async function fetchLatestBitfinexTrade(
   }
 }
 
+async function fetchLatestBitfinexMidQuote(
+  req: Request,
+  pair: string,
+): Promise<FuturesQuote | null> {
+  if (Date.now() < bitfinexBlockedUntil) return null;
+  try {
+    const response = await fetch(
+      `https://api-pub.bitfinex.com/v2/ticker/${encodeURIComponent(pair)}`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) },
+    );
+    if (response.status === 429) {
+      bitfinexBlockedUntil = Date.now() + 60_000;
+      return null;
+    }
+    if (!response.ok) return null;
+    const ticker = await response.json() as number[];
+    const bid = Number(ticker[0]);
+    const ask = Number(ticker[2]);
+    if (!Number.isFinite(bid) || !Number.isFinite(ask) || bid <= 0 || ask <= 0 || ask < bid) return null;
+    // This is an observed exchange bid/ask midpoint, not a fabricated last trade.
+    return toFreshQuote((bid + ask) / 2, Date.now());
+  } catch (error) {
+    req.log.warn({ err: error, pair }, "Bitfinex order-book midpoint unavailable");
+    return null;
+  }
+}
+
+async function fetchLatestGateTrade(req: Request): Promise<FuturesQuote | null> {
+  if (Date.now() < gateBlockedUntil) return null;
+  try {
+    const response = await fetch(
+      "https://api.gateio.ws/api/v4/spot/trades?currency_pair=FDUSD_USDT&limit=1",
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) },
+    );
+    if (response.status === 429) {
+      gateBlockedUntil = Date.now() + 60_000;
+      return null;
+    }
+    if (!response.ok) return null;
+    const rows = await response.json() as Array<{ price?: string; create_time_ms?: string; create_time?: string }>;
+    const row = rows[0];
+    const timestamp = Number(row?.create_time_ms ?? row?.create_time);
+    const updatedAt = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
+    return toFreshQuote(row?.price, updatedAt);
+  } catch (error) {
+    req.log.warn({ err: error }, "Gate.io FDUSD reference trade unavailable");
+    return null;
+  }
+}
+
+async function fetchLatestMexcTrade(req: Request): Promise<FuturesQuote | null> {
+  if (Date.now() < mexcBlockedUntil) return null;
+  try {
+    const response = await fetch(
+      "https://api.mexc.com/api/v3/trades?symbol=FDUSDUSDT&limit=1",
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS) },
+    );
+    if (response.status === 429) {
+      mexcBlockedUntil = Date.now() + 60_000;
+      return null;
+    }
+    if (!response.ok) return null;
+    const rows = await response.json() as Array<{ price?: string; time?: number }>;
+    return toFreshQuote(rows[0]?.price, rows[0]?.time);
+  } catch (error) {
+    req.log.warn({ err: error }, "MEXC FDUSD reference trade unavailable");
+    return null;
+  }
+}
+
 function geckoHeaders(source: Record<string, string>, mode: "demo" | "pro") {
   const headers: Record<string, string> = {};
   for (const [name, value] of Object.entries(source)) {
@@ -212,7 +284,7 @@ export function createFuturesQuoteFetcher(
     const streamQuote = getLatestLiveMarketQuote(symbol, MAX_TRADE_AGE_MS);
     if (streamQuote) return streamQuote;
 
-    const definition = definitions.find((item) => item.symbol === symbol);
+    const definition = definitions.find((item) => item.symbol.toUpperCase() === symbol);
     if (!definition) return null;
 
     const binanceSymbol = binanceSymbols[definition.id];
@@ -231,6 +303,15 @@ export function createFuturesQuoteFetcher(
     if (bitfinexPair) {
       const quote = await fetchLatestBitfinexTrade(req, bitfinexPair);
       if (quote) return quote;
+      const midpoint = await fetchLatestBitfinexMidQuote(req, bitfinexPair);
+      if (midpoint) return midpoint;
+    }
+
+    if (definition.id === "first-digital-usd") {
+      const gate = await fetchLatestGateTrade(req);
+      if (gate) return gate;
+      const mexc = await fetchLatestMexcTrade(req);
+      if (mexc) return mexc;
     }
 
     const gecko = await fetchCoinGeckoJson<Record<string, { usd?: number; last_updated_at?: number }>>(
@@ -286,28 +367,27 @@ export function createTradingHistoryFetcher(
   binanceSymbols: Record<string, string>,
   marketHeaders: Record<string, string>,
 ) {
-  return async (req: Request, asset: string): Promise<LivePricePoint[]> => {
-    ensureLiveMarketFeedStarted();
-    const symbol = asset === "GOLD" ? "XAUT" : asset.toUpperCase();
-    const liveHistory = getLiveMarketHistory(symbol, MAX_HISTORY_POINTS_FOR_CHART);
-    if (liveHistory.length > 1) return liveHistory;
+  const historyCache = new Map<string, { points: LivePricePoint[]; fetchedAt: number }>();
+  const historyPending = new Map<string, Promise<LivePricePoint[]>>();
+  const HISTORY_CACHE_MS = 5_000;
 
-    const definition = definitions.find((item) => item.symbol === symbol);
+  async function fetchHistoryFromProviders(req: Request, symbol: string): Promise<LivePricePoint[]> {
+    const definition = definitions.find((item) => item.symbol.toUpperCase() === symbol);
     if (!definition) return [];
     const binanceSymbol = binanceSymbols[definition.id];
     if (binanceSymbol) {
-      const quote = await fetchHistoricalBinance(req, binanceSymbol);
-      if (quote.length) return quote;
+      const points = await fetchHistoricalBinance(req, binanceSymbol);
+      if (points.length) return points;
     }
     const krakenPair = KRAKEN_PAIR_BY_ID[definition.id];
     if (krakenPair) {
-      const candles = await fetchHistoricalKraken(req, krakenPair);
-      if (candles.length) return candles;
+      const points = await fetchHistoricalKraken(req, krakenPair);
+      if (points.length) return points;
     }
     const bitfinexPair = BITFINEX_PAIR_BY_ID[definition.id];
     if (bitfinexPair) {
-      const candles = await fetchHistoricalBitfinex(req, bitfinexPair);
-      if (candles.length) return candles;
+      const points = await fetchHistoricalBitfinex(req, bitfinexPair);
+      if (points.length) return points;
     }
     const gecko = await fetchCoinGeckoJson<{ prices?: [number, number][] }>(
       req,
@@ -318,6 +398,26 @@ export function createTradingHistoryFetcher(
       Number.isFinite(t) && Number.isFinite(price) && price > 0 && t <= Date.now()
         ? [{ t, price }] : []
     );
+  }
+
+  return async (req: Request, asset: string): Promise<LivePricePoint[]> => {
+    ensureLiveMarketFeedStarted();
+    const symbol = asset === "GOLD" ? "XAUT" : asset.toUpperCase();
+    const liveHistory = getLiveMarketHistory(symbol, MAX_HISTORY_POINTS_FOR_CHART);
+    if (liveHistory.length > 1) return liveHistory;
+    const cached = historyCache.get(symbol);
+    if (cached && Date.now() - cached.fetchedAt < HISTORY_CACHE_MS) return cached.points;
+    let pending = historyPending.get(symbol);
+    if (!pending) {
+      pending = fetchHistoryFromProviders(req, symbol)
+        .then((points) => {
+          historyCache.set(symbol, { points, fetchedAt: Date.now() });
+          return points;
+        })
+        .finally(() => historyPending.delete(symbol));
+      historyPending.set(symbol, pending);
+    }
+    return pending;
   };
 }
 
