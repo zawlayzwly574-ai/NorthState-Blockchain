@@ -121,3 +121,23 @@ jobs:
             head -c 1000 "$file" || true
             echo
           done
+
+      - name: Check other public exchange trade endpoints for FDUSD
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            'https://api.mexc.com/api/v3/trades?symbol=FDUSDUSDT&limit=1'
+            'https://api.gateio.ws/api/v4/spot/trades?currency_pair=FDUSD_USDT&limit=1'
+            'https://api.mexc.com/api/v3/trades?symbol=FDUSDUSDC&limit=1'
+            'https://api.binance.vision/api/v3/trades?symbol=FDUSDUSDT&limit=1'
+          )
+          n=0
+          for url in "${urls[@]}"; do
+            n=$((n+1))
+            file="/tmp/fdusd-extra-${n}.json"
+            status="$(curl -sS --max-time 10 -o "$file" -w '%{http_code}' "$url" || true)"
+            echo "endpoint_${n} HTTP ${status} URL ${url}"
+            head -c 1000 "$file" || true
+            echo
+          done
