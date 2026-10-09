@@ -1131,9 +1131,14 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
 
   // ── Phone handlers ───────────────────────────────────────────────────────
   const submitPhone = async () => {
-    if (!user || phoneNum.replace(/\D/g, '').length < 7) return;
+    if (!user) return;
+    const full = normalizeInternationalPhone(countryCode, phoneNum);
+    if (!full) {
+      setPhoneErr('Enter a valid international phone number for the selected country code.');
+      setPhoneOk('');
+      return;
+    }
     setPhoneBusy(true); setPhoneErr(''); setPhoneOk('');
-    const full = countryCode + phoneNum.replace(/\D/g, '');
     try {
       const pn = await (user as any).createPhoneNumber({ phoneNumber: full });
       await pn.prepareVerification();
@@ -1279,8 +1284,12 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
     const t = setInterval(() => setSmsCountdown(prev => { if (prev <= 1) { clearInterval(t); return 0; } return prev - 1; }), 1000);
   };
   const doSendSmsOtp = async () => {
-    const full = smsCountry + smsPhone.replace(/\D/g, '');
-    if (full.replace(/\D/g, '').length < 7) return;
+    const full = normalizeInternationalPhone(smsCountry, smsPhone);
+    if (!full) {
+      setSmsErr('Enter a valid international phone number for the selected country code.');
+      setSmsOk('');
+      return;
+    }
     setSmsBusy(true); setSmsErr(''); setSmsOk('');
     try {
       await sendSmsOtpMut.mutateAsync({ data: { phoneNumber: full } });
