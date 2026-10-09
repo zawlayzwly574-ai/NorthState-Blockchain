@@ -157,7 +157,11 @@ export function useAdminUsers() {
   return useQuery<User[]>({
     queryKey: ['admin', 'users'],
     queryFn: () => apiClient('/users'),
-    retry: false,
+    // Keep new signups visible without requiring an admin page reload.
+    refetchInterval: 15000,
+    staleTime: 5000,
+    retry: 2,
+    refetchOnWindowFocus: true,
   });
 }
 
