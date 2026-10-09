@@ -23,4 +23,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Build Blockchain Hub
+        env:
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
+          VITE_API_BASE_URL: https://workspaceapi-server-production-838d.up.railway.app
         run: pnpm --filter @workspace/blockchain-hub run build
