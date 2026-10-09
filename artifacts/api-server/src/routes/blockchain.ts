@@ -2894,7 +2894,7 @@ router.post("/trading/trades", async (req, res) => {
   }
   const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
   const entryQuote = await getFuturesQuote(req, assetSymbol);
-  if (!isFreshExecutionQuote(entryQuote)) {
+  if (!entryQuote || !isFreshExecutionQuote(entryQuote)) {
     res.status(503).json({ error: "A fresh exchange trade is unavailable. No Spot order was opened." });
     return;
   }
