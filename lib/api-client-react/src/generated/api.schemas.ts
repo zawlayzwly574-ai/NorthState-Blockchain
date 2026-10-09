@@ -18,6 +18,7 @@ export interface MarketAsset {
   volume24h: number;
   rank: number;
   color?: string;
+  updatedAt?: string | null;
 }
 
 export interface ChartPoint {
