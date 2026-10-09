@@ -826,10 +826,28 @@ export function TradingPage() {
         })}
       </div>
 
-      {/* ── Chart ── */}
+      {/* ── Live Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
         <PriceChart key={asset} quote={futuresQuote} history={tradingHistory} entryPrice={entryPrice} />
       </div>
+      {!freshFuturesQuote && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-xs text-amber-200" role="status" data-testid="status-spot-live-quote">
+          <span>
+            {futuresQuoteError || tradingHistoryError
+              ? `Live market data for ${asset} could not be refreshed.`
+              : `Waiting for a fresh, source-timestamped live quote for ${asset}.`}
+            {" "}Spot and Futures orders remain paused until a real quote arrives.
+          </span>
+          <button
+            type="button"
+            onClick={() => { void refetchFuturesQuote(); void refetchTradingHistory(); }}
+            className="rounded-lg border border-amber-400/40 px-3 py-1.5 font-bold transition hover:bg-amber-400/10"
+            data-testid="button-retry-live-quote"
+          >
+            Retry live price
+          </button>
+        </div>
+      )}
 
       {/* ── Order Panel ── */}
       <div className="mb-3">
