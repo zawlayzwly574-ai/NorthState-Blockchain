@@ -147,7 +147,8 @@ function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: 
 }
 
 function PublicNav() {
-  return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
+  const { copy } = useAppLanguage();
+  return <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">{copy.how}</a><a href="#security" className="transition hover:text-foreground">{copy.security}</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">{copy.about}</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">{copy.markets}</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">{copy.mining}</Link></nav><div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"><LanguageSelector compact /><Link href="/sign-in" className="rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-public-sign-in">{copy.signIn}</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)] sm:px-4" data-testid="link-public-sign-up">{copy.signUp} <ArrowUpRight size={15} /></Link></div></header>;
 }
 
 function PublicFooter() {
@@ -164,12 +165,13 @@ function PublicFooter() {
 
 function Home() {
   const { isSignedIn } = useAuth();
+  const { copy } = useAppLanguage();
   const [, setLocation] = useLocation();
   useEffect(() => { if (isSignedIn) setLocation('/dashboard'); }, [isSignedIn]);
   return <main className="min-h-[100dvh] overflow-hidden"><PublicNav /><section className="relative mx-auto max-w-7xl px-5 pb-20 pt-16 lg:px-8 lg:pb-28 lg:pt-24">
     <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
     <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
-      <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />A calmer way to hold digital assets</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">Your money, with <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">Get started <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">Explore markets <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />Bank-grade controls</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />Transparent fees</span></div></div>
+      <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />{copy.tagline}</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">{copy.heroTitle} <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">{copy.heroDescription}</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">{copy.getStarted} <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">{copy.exploreMarkets} <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />{copy.controls}</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />{copy.fees}</span></div></div>
       <div className="animate-rise-2 relative">
         <div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6">
           <div className="mb-5 flex items-center justify-between">
@@ -567,26 +569,11 @@ function LanguageSelector({ compact = false }: { compact?: boolean }) {
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
   const [usePhoneOtp, setUsePhoneOtp] = useState(false);
-  const [language, setLanguage] = useState(() => {
-    try { return localStorage.getItem('nsl-login-language') || 'en-US'; } catch { return 'en-US'; }
-  });
-  const chooseLanguage = (code: string) => {
-    setLanguage(code);
-    try { localStorage.setItem('nsl-login-language', code); } catch {}
-    window.dispatchEvent(new CustomEvent('nslanguagechange', { detail: code }));
-  };
+  const { language, copy } = useAppLanguage();
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
       <div className="mb-5 flex justify-center"><Logo /></div>
-      <div className="mb-6 flex justify-end">
-        <label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground">
-          <span aria-hidden="true">{LOGIN_LANGUAGES.find(item => item.code === language)?.flag ?? '🇺🇸'}</span>
-          <span>Language</span>
-          <select aria-label="Choose language" value={language} onChange={e => chooseLanguage(e.target.value)} className="max-w-[150px] bg-transparent text-xs font-semibold outline-none">
-            {LOGIN_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
-          </select>
-        </label>
-      </div>
+      <div className="mb-6 flex justify-end"><LanguageSelector /></div>
       {signUp
         ? usePhoneOtp
           ? <PhoneOtpSignUp onBack={() => setUsePhoneOtp(false)} />
@@ -594,7 +581,7 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
               <button type="button" onClick={() => setUsePhoneOtp(true)}
                 className="mb-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/5 px-4 text-sm font-extrabold text-primary transition hover:bg-primary/10"
                 data-testid="button-signup-with-phone-otp">
-                <Smartphone size={16} /> Sign up with international phone OTP
+                <Smartphone size={16} /> {copy.otp}
               </button>
               <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
             </>
