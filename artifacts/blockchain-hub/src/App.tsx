@@ -36,6 +36,38 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
+
+type LoginLanguage = { code: string; label: string; flag: string; locale: string; signInTitle: string; signInSubtitle: string; signUpTitle: string; signUpSubtitle: string; email: string; password: string; continue: string; signInLink: string; signUpLink: string; forgot: string; };
+
+const LOGIN_LANGUAGES: LoginLanguage[] = [
+  { code: "en-US", label: "US English", flag: "🇺🇸", locale: "en-US", signInTitle: "Welcome back", signInSubtitle: "Sign in to access your North State Blockchain account", signUpTitle: "Open your North State Blockchain account", signUpSubtitle: "Create a secure account to begin", email: "Email address", password: "Password", continue: "Continue", signInLink: "Sign in", signUpLink: "Sign up", forgot: "Forgot password?" },
+  { code: "en-GB", label: "UK English", flag: "🇬🇧", locale: "en-GB", signInTitle: "Welcome back", signInSubtitle: "Sign in to access your North State Blockchain account", signUpTitle: "Open your North State Blockchain account", signUpSubtitle: "Create a secure account to begin", email: "Email address", password: "Password", continue: "Continue", signInLink: "Sign in", signUpLink: "Sign up", forgot: "Forgot password?" },
+  { code: "es-ES", label: "Español", flag: "🇪🇸", locale: "es-ES", signInTitle: "Te damos la bienvenida", signInSubtitle: "Inicia sesión para acceder a tu cuenta de North State Blockchain", signUpTitle: "Crea tu cuenta de North State Blockchain", signUpSubtitle: "Crea una cuenta segura para comenzar", email: "Correo electrónico", password: "Contraseña", continue: "Continuar", signInLink: "Iniciar sesión", signUpLink: "Registrarse", forgot: "¿Olvidaste tu contraseña?" },
+  { code: "pt-BR", label: "Português (Brasil)", flag: "🇧🇷", locale: "pt-BR", signInTitle: "Boas-vindas de volta", signInSubtitle: "Entre para acessar sua conta North State Blockchain", signUpTitle: "Crie sua conta North State Blockchain", signUpSubtitle: "Crie uma conta segura para começar", email: "E-mail", password: "Senha", continue: "Continuar", signInLink: "Entrar", signUpLink: "Criar conta", forgot: "Esqueceu a senha?" },
+  { code: "fr-FR", label: "Français", flag: "🇫🇷", locale: "fr-FR", signInTitle: "Bon retour", signInSubtitle: "Connectez-vous à votre compte North State Blockchain", signUpTitle: "Créez votre compte North State Blockchain", signUpSubtitle: "Créez un compte sécurisé pour commencer", email: "Adresse e-mail", password: "Mot de passe", continue: "Continuer", signInLink: "Se connecter", signUpLink: "Créer un compte", forgot: "Mot de passe oublié ?" },
+  { code: "de-DE", label: "Deutsch", flag: "🇩🇪", locale: "de-DE", signInTitle: "Willkommen zurück", signInSubtitle: "Melden Sie sich bei Ihrem North State Blockchain-Konto an", signUpTitle: "Erstellen Sie Ihr North State Blockchain-Konto", signUpSubtitle: "Erstellen Sie ein sicheres Konto, um zu beginnen", email: "E-Mail-Adresse", password: "Passwort", continue: "Weiter", signInLink: "Anmelden", signUpLink: "Registrieren", forgot: "Passwort vergessen?" },
+  { code: "it-IT", label: "Italiano", flag: "🇮🇹", locale: "it-IT", signInTitle: "Bentornato", signInSubtitle: "Accedi al tuo account North State Blockchain", signUpTitle: "Crea il tuo account North State Blockchain", signUpSubtitle: "Crea un account sicuro per iniziare", email: "Indirizzo e-mail", password: "Password", continue: "Continua", signInLink: "Accedi", signUpLink: "Registrati", forgot: "Password dimenticata?" },
+  { code: "pt-PT", label: "Português (Portugal)", flag: "🇵🇹", locale: "pt-PT", signInTitle: "Bem-vindo de volta", signInSubtitle: "Inicie sessão na sua conta North State Blockchain", signUpTitle: "Crie a sua conta North State Blockchain", signUpSubtitle: "Crie uma conta segura para começar", email: "Endereço de e-mail", password: "Palavra-passe", continue: "Continuar", signInLink: "Iniciar sessão", signUpLink: "Criar conta", forgot: "Esqueceu-se da palavra-passe?" },
+  { code: "es-MX", label: "Español (México)", flag: "🇲🇽", locale: "es-MX", signInTitle: "Te damos la bienvenida", signInSubtitle: "Inicia sesión para acceder a tu cuenta de North State Blockchain", signUpTitle: "Crea tu cuenta de North State Blockchain", signUpSubtitle: "Crea una cuenta segura para comenzar", email: "Correo electrónico", password: "Contraseña", continue: "Continuar", signInLink: "Iniciar sesión", signUpLink: "Registrarse", forgot: "¿Olvidaste tu contraseña?" },
+  { code: "ja-JP", label: "日本語", flag: "🇯🇵", locale: "ja-JP", signInTitle: "おかえりなさい", signInSubtitle: "North State Blockchain アカウントにログインしてください", signUpTitle: "North State Blockchain アカウントを作成", signUpSubtitle: "安全なアカウントを作成して始めましょう", email: "メールアドレス", password: "パスワード", continue: "続行", signInLink: "ログイン", signUpLink: "登録", forgot: "パスワードをお忘れですか？" }
+];
+
+const LOGIN_COPY = {
+  "en-US": { formFieldLabel__emailAddress: "Email address", formFieldLabel__password: "Password", formButtonPrimary: "Continue", footerActionLink__signIn: "Sign in", footerActionLink__signUp: "Sign up", formFieldAction__forgotPassword: "Forgot password?" },
+  "en-GB": { formFieldLabel__emailAddress: "Email address", formFieldLabel__password: "Password", formButtonPrimary: "Continue", footerActionLink__signIn: "Sign in", footerActionLink__signUp: "Sign up", formFieldAction__forgotPassword: "Forgot password?" },
+  "es-ES": { formFieldLabel__emailAddress: "Correo electrónico", formFieldLabel__password: "Contraseña", formButtonPrimary: "Continuar", footerActionLink__signIn: "Iniciar sesión", footerActionLink__signUp: "Registrarse", formFieldAction__forgotPassword: "¿Olvidaste tu contraseña?" },
+  "pt-BR": { formFieldLabel__emailAddress: "E-mail", formFieldLabel__password: "Senha", formButtonPrimary: "Continuar", footerActionLink__signIn: "Entrar", footerActionLink__signUp: "Criar conta", formFieldAction__forgotPassword: "Esqueceu a senha?" },
+  "fr-FR": { formFieldLabel__emailAddress: "Adresse e-mail", formFieldLabel__password: "Mot de passe", formButtonPrimary: "Continuer", footerActionLink__signIn: "Se connecter", footerActionLink__signUp: "Créer un compte", formFieldAction__forgotPassword: "Mot de passe oublié ?" },
+  "de-DE": { formFieldLabel__emailAddress: "E-Mail-Adresse", formFieldLabel__password: "Passwort", formButtonPrimary: "Weiter", footerActionLink__signIn: "Anmelden", footerActionLink__signUp: "Registrieren", formFieldAction__forgotPassword: "Passwort vergessen?" },
+  "it-IT": { formFieldLabel__emailAddress: "Indirizzo e-mail", formFieldLabel__password: "Password", formButtonPrimary: "Continua", footerActionLink__signIn: "Accedi", footerActionLink__signUp: "Registrati", formFieldAction__forgotPassword: "Password dimenticata?" },
+  "pt-PT": { formFieldLabel__emailAddress: "Endereço de e-mail", formFieldLabel__password: "Palavra-passe", formButtonPrimary: "Continuar", footerActionLink__signIn: "Iniciar sessão", footerActionLink__signUp: "Criar conta", formFieldAction__forgotPassword: "Esqueceu-se da palavra-passe?" },
+  "es-MX": { formFieldLabel__emailAddress: "Correo electrónico", formFieldLabel__password: "Contraseña", formButtonPrimary: "Continuar", footerActionLink__signIn: "Iniciar sesión", footerActionLink__signUp: "Registrarse", formFieldAction__forgotPassword: "¿Olvidaste tu contraseña?" },
+  "ja-JP": { formFieldLabel__emailAddress: "メールアドレス", formFieldLabel__password: "パスワード", formButtonPrimary: "続行", footerActionLink__signIn: "ログイン", footerActionLink__signUp: "登録", formFieldAction__forgotPassword: "パスワードをお忘れですか？" }
+};
+
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL?.trim() || 'support@northstateblockchain.com';
+
+
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
@@ -511,7 +543,12 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
               <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
             </>
         : <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} fallbackRedirectUrl={`${basePath}/dashboard`} />}
-      <p className="mt-6 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
+      <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('North State Blockchain support request')}`}
+        className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-bold text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+        data-testid="link-auth-contact-support">
+        <MessageCircle size={16} /> Contact support before signing in
+      </a>
+      <p className="mt-4 text-center text-[11px] leading-5 text-muted-foreground">North State Blockchain uses secure identity verification to protect every account.</p>
     </div>
   </main>;
 }
@@ -2953,8 +2990,12 @@ function SupportChatWidget() {
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
                   <Lock size={20} />
                 </div>
-                <p className="text-sm font-bold">Sign in to chat with support</p>
-                <p className="text-xs leading-5 text-muted-foreground">Create an account or sign in to get personalised help from our team.</p>
+                <p className="text-sm font-bold">Contact support</p>
+                <p className="text-xs leading-5 text-muted-foreground">You can contact our team before creating an account.</p>
+                <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('North State Blockchain support request')}`}
+                  className="mt-1 inline-flex min-h-10 items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-extrabold text-primary-foreground"
+                  data-testid="link-guest-support-email">Email support</a>
+                <Link href="/sign-up" onClick={() => setOpen(false)} className="text-xs font-semibold text-primary underline underline-offset-4">Create an account instead</Link>
               </div>
             ) : isLoading ? (
               <div className="flex h-full items-center justify-center">
@@ -3036,9 +3077,34 @@ function ClerkQueryClientCacheInvalidator() {
 }
 
 function ClerkApp() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
-  return <ClerkProvider
+  const [languageCode, setLanguageCode] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('nsb-login-language');
+      return LOGIN_LANGUAGES.some((language) => language.code === saved) ? saved! : 'en-US';
+    } catch { return 'en-US'; }
+  });
+  const activeLanguage = LOGIN_LANGUAGES.find((language) => language.code === languageCode) ?? LOGIN_LANGUAGES[0];
+  const authPath = stripBase(location);
+  const showLanguageSelector = authPath.startsWith('/sign-in') || authPath.startsWith('/sign-up');
+  useEffect(() => {
+    try { window.localStorage.setItem('nsb-login-language', languageCode); } catch { /* storage may be disabled */ }
+    document.documentElement.lang = activeLanguage.locale;
+  }, [activeLanguage.locale, languageCode]);
+  return <>
+    {showLanguageSelector && (
+      <label className="fixed right-4 top-4 z-[60] flex h-11 max-w-[calc(100vw-32px)] items-center gap-2 rounded-xl border border-border bg-card/95 px-3 shadow-lg backdrop-blur">
+        <span aria-hidden="true">{activeLanguage.flag}</span>
+        <span className="sr-only">Language</span>
+        <select value={languageCode} onChange={(event) => setLanguageCode(event.target.value)}
+          className="max-w-[190px] bg-transparent text-xs font-bold text-foreground outline-none"
+          aria-label="Language" data-testid="select-login-language">
+          {LOGIN_LANGUAGES.map((language) => <option key={language.code} value={language.code}>{language.flag} {language.label}</option>)}
+        </select>
+      </label>
+    )}
+    <ClerkProvider
     publishableKey={clerkPubKey}
     proxyUrl={clerkProxyUrl}
     appearance={clerkAppearance}
@@ -3054,16 +3120,18 @@ function ClerkApp() {
       },
       signUp: {
         start: {
-          title: 'Open your North State Blockchain account',
-          subtitle: 'Create a secure account to begin',
+          title: activeLanguage.signUpTitle,
+          subtitle: activeLanguage.signUpSubtitle,
         },
       },
+      ...LOGIN_COPY[activeLanguage.code as keyof typeof LOGIN_COPY],
     }}
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
     <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
-  </ClerkProvider>;
+  </ClerkProvider>
+  </>;
 }
 
 function ApiAuthConfiguration() {
