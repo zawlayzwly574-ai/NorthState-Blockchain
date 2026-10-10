@@ -892,9 +892,10 @@ router.get("/mining-place", async (req, res) => {
         if (!Number.isFinite(price) || price <= 0) {
           throw new Error(`${host} did not return a valid price`);
         }
+        const previous = previousAssets.get(definition.symbol);
         const change24h = Number.isFinite(previousClose) && previousClose > 0
           ? ((price - previousClose) / previousClose) * 100
-          : definition.fallbackChange;
+          : previous?.change24h ?? 0;
         liveAsset = {
           symbol: definition.symbol,
           name: definition.name,
@@ -925,24 +926,12 @@ router.get("/mining-place", async (req, res) => {
       const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;
       if (
         previous
-        && previous.status !== "fallback"
         && Number.isFinite(previousTimestamp)
         && now - previousTimestamp <= MINING_PLACE_MAX_STALE_AGE
       ) {
         return { ...previous, status: "stale" };
       }
-      return {
-        symbol: definition.symbol,
-        name: definition.name,
-        category: definition.category,
-        price: definition.fallbackPrice,
-        change24h: definition.fallbackChange,
-        currency: "USD",
-        unit: definition.unit,
-        status: "fallback",
-        updatedAt: new Date(now).toISOString(),
-        color: definition.color,
-      };
+      throw new Error(`No live or recent cached quote is available for ${definition.symbol}; refusing to publish a fabricated price.`);
     }
     })).then((assets) => {
       miningPlaceCache = { assets, ts: Date.now() };
@@ -1137,19 +1126,10 @@ const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => as
 
 function investmentQuote(symbol: string) {
   const cached = miningPlaceCache?.assets.find((asset) => asset.symbol === symbol);
-  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol)!;
-  return cached ?? {
-    symbol: definition.symbol,
-    name: definition.name,
-    category: definition.category,
-    price: definition.fallbackPrice,
-    change24h: definition.fallbackChange,
-    currency: "USD",
-    unit: definition.unit,
-    status: "fallback" as const,
-    updatedAt: new Date().toISOString(),
-    color: definition.color,
-  };
+  if (!cached || !Number.isFinite(cached.price) || cached.price <= 0) {
+    throw new Error(`No verified live or recent cached quote is available for ${symbol}.`);
+  }
+  return cached;
 }
 
 function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
@@ -1840,20 +1820,16 @@ router.post("/sms/verify-otp", async (req, res) => {
 // Public pre-login contact form. Messages are stored in the existing support inbox so
 // the admin team can respond without changing existing account or wallet data.
 const publicSupportAttempts = new Map<string, { count: number; resetAt: number }>();
+const guestSupportIdPattern = /^guest_[a-f0-9]{36}$/;
 router.post("/support/public-message", async (req, res) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
   const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
   if (!name || name.length > 100) {
-    res.status(400).json({ error: "Please enter a name (up to 100 characters)." });
+    res.status(400).json({ error: "Please enter your name (up to 100 characters)." });
     return;
   }
-  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    res.status(400).json({ error: "Please enter a valid email address." });
-    return;
-  }
-  if (!content || content.length > 3000) {
-    res.status(400).json({ error: "Please enter a message (up to 3,000 characters)." });
+  if (!content || content.length > 5000) {
+    res.status(400).json({ error: "Please enter a message (up to 5,000 characters)." });
     return;
   }
 
@@ -1868,17 +1844,56 @@ router.post("/support/public-message", async (req, res) => {
     ? { count: previous.count + 1, resetAt: previous.resetAt }
     : { count: 1, resetAt: now + 60 * 60 * 1000 });
 
-  const guestId = `guest_${randomBytes(18).toString("hex")}`;
-  const [thread] = await db.insert(supportThreadsTable)
-    .values({ clerkUserId: guestId, status: "open" }).returning();
-  await db.insert(supportMessagesTable).values({
-    threadId: thread.id,
-    senderRole: "user",
-    content: `Pre-login support request\nName: ${name}\nEmail: ${email}\n\n${content}`,
-  });
-  await db.update(supportThreadsTable).set({ updatedAt: new Date() })
-    .where(eq(supportThreadsTable.id, thread.id));
-  res.status(201).json({ sent: true });
+  try {
+    const guestId = `guest_${randomBytes(18).toString("hex")}`;
+    const [thread] = await db.insert(supportThreadsTable)
+      .values({ clerkUserId: guestId, status: "open" }).returning();
+    await db.insert(supportMessagesTable).values({
+      threadId: thread.id,
+      senderRole: "user",
+      content: `Guest support request\nName: ${name}\n\n${content}`,
+    });
+    await db.update(supportThreadsTable).set({ updatedAt: new Date() })
+      .where(eq(supportThreadsTable.id, thread.id));
+    res.status(201).json({ sent: true, guestId, threadId: thread.id });
+  } catch (error) {
+    req.log?.error({ err: error }, "Unable to save public support message");
+    res.status(503).json({ error: "Support is temporarily unavailable. Your message was not sent; please try again shortly." });
+  }
+});
+
+// Guest IDs are random 144-bit bearer credentials returned only to the browser that
+// created the thread. This enables an in-app follow-up conversation without email
+// or a schema change. Do not expose these IDs in public thread listings.
+router.get("/support/guest/:guestId", async (req, res) => {
+  const guestId = Array.isArray(req.params.guestId) ? req.params.guestId[0] ?? "" : req.params.guestId;
+  if (!guestSupportIdPattern.test(guestId)) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.clerkUserId, guestId)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const messages = await db.select().from(supportMessagesTable).where(eq(supportMessagesTable.threadId, thread.id)).orderBy(supportMessagesTable.createdAt);
+  res.json({ threadId: thread.id, messages: messages.map(m => ({ id: m.id, senderRole: m.senderRole, content: m.content, createdAt: m.createdAt.toISOString() })) });
+});
+
+router.post("/support/guest/:guestId/messages", async (req, res) => {
+  const guestId = Array.isArray(req.params.guestId) ? req.params.guestId[0] ?? "" : req.params.guestId;
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  if (!guestSupportIdPattern.test(guestId)) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  if (!content || content.length > 5000) { res.status(400).json({ error: "Please enter a message (up to 5,000 characters)." }); return; }
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.clerkUserId, guestId)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const now = Date.now();
+  const clientKey = `${req.ip || req.socket.remoteAddress || "unknown"}:${guestId}`;
+  const previous = publicSupportAttempts.get(clientKey);
+  if (previous && previous.resetAt > now && previous.count >= 20) { res.status(429).json({ error: "Too many messages. Please try again later." }); return; }
+  publicSupportAttempts.set(clientKey, previous && previous.resetAt > now ? { count: previous.count + 1, resetAt: previous.resetAt } : { count: 1, resetAt: now + 60 * 60 * 1000 });
+  try {
+    const [message] = await db.insert(supportMessagesTable).values({ threadId: thread.id, senderRole: "user", content }).returning();
+    await db.update(supportThreadsTable).set({ updatedAt: new Date() }).where(eq(supportThreadsTable.id, thread.id));
+    res.status(201).json({ sent: true, messageId: message.id });
+  } catch (error) {
+    req.log?.error({ err: error }, "Unable to save guest support reply");
+    res.status(503).json({ error: "Support is temporarily unavailable. Your message was not sent; please try again shortly." });
+  }
 });
 
 router.get("/support/messages", async (req, res) => {
@@ -1915,6 +1930,14 @@ router.post("/support/messages", async (req, res) => {
   res.json({ sent: true, messageId: message.id });
 });
 
+function publicSupportDisplayContent(content: string) {
+  return content.replace(/^Guest support request\nName: [^\n]*\n\n/, "");
+}
+function publicSupportName(messages: Array<{ content: string; senderRole: string }>) {
+  const first = messages.find(message => message.senderRole === "user" && message.content.startsWith("Guest support request\n"));
+  return first?.content.match(/^Guest support request\nName: ([^\n]*)/)?.[1]?.trim() || "";
+}
+
 router.get("/admin/support", requireAdmin, async (_req, res) => {
   const threads = await db.select().from(supportThreadsTable)
     .orderBy(desc(supportThreadsTable.updatedAt));
@@ -1936,10 +1959,10 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
     const last = msgs[0];
     return {
       userId: thread.clerkUserId,
-      displayName: profile?.displayName ?? "Unknown",
+      displayName: profile?.displayName ?? (publicSupportName(msgs) || "Unknown"),
       email: profile?.email ?? "",
       threadId: thread.id,
-      lastMessage: last?.content ?? "",
+      lastMessage: last ? publicSupportDisplayContent(last.content) : "",
       lastMessageAt: (last?.createdAt ?? thread.createdAt).toISOString(),
       unreadCount,
     };
@@ -1964,12 +1987,12 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.id, thread.id));
   res.json({
     userId,
-    displayName: profile?.displayName ?? "Unknown",
+    displayName: profile?.displayName ?? (publicSupportName(messages) || "Unknown"),
     email: profile?.email ?? "",
     threadId: thread.id,
     messages: messages.map(m => ({
       id: m.id, threadId: m.threadId, senderRole: m.senderRole,
-      content: m.content, createdAt: m.createdAt.toISOString(),
+      content: publicSupportDisplayContent(m.content), createdAt: m.createdAt.toISOString(),
     })),
   });
 });

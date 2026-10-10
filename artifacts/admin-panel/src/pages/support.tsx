@@ -164,7 +164,7 @@ export default function Support() {
                           </span>
                         )}
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground truncate">{t.email}</p>
+                      {t.email ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{t.email}</p> : <p className="mt-0.5 text-xs font-medium text-primary/80">Guest · in-app only</p>}
                       {t.lastMessage && (
                         <p className="mt-1.5 text-xs text-muted-foreground/60 truncate">{t.lastMessage}</p>
                       )}
@@ -207,7 +207,7 @@ export default function Support() {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-bold">{thread?.displayName ?? '…'}</p>
-                    <p className="truncate text-xs text-muted-foreground">{thread?.email ?? ''}</p>
+                    <p className="truncate text-xs text-muted-foreground">{thread?.email || 'Guest · in-app support'}</p>
                   </div>
                 </div>
               </div>
