@@ -892,9 +892,10 @@ router.get("/mining-place", async (req, res) => {
         if (!Number.isFinite(price) || price <= 0) {
           throw new Error(`${host} did not return a valid price`);
         }
+        const previous = previousAssets.get(definition.symbol);
         const change24h = Number.isFinite(previousClose) && previousClose > 0
           ? ((price - previousClose) / previousClose) * 100
-          : definition.fallbackChange;
+          : previous?.change24h ?? 0;
         liveAsset = {
           symbol: definition.symbol,
           name: definition.name,
@@ -931,18 +932,7 @@ router.get("/mining-place", async (req, res) => {
       ) {
         return { ...previous, status: "stale" };
       }
-      return {
-        symbol: definition.symbol,
-        name: definition.name,
-        category: definition.category,
-        price: definition.fallbackPrice,
-        change24h: definition.fallbackChange,
-        currency: "USD",
-        unit: definition.unit,
-        status: "fallback",
-        updatedAt: new Date(now).toISOString(),
-        color: definition.color,
-      };
+      throw new Error(`No live or recent cached quote is available for ${definition.symbol}; refusing to publish a fabricated price.`);
     }
     })).then((assets) => {
       miningPlaceCache = { assets, ts: Date.now() };
