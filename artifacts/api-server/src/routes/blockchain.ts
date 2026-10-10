@@ -1126,19 +1126,10 @@ const miningInvestmentSymbols = new Set(miningPlaceDefinitions.map((asset) => as
 
 function investmentQuote(symbol: string) {
   const cached = miningPlaceCache?.assets.find((asset) => asset.symbol === symbol);
-  const definition = miningPlaceDefinitions.find((asset) => asset.symbol === symbol)!;
-  return cached ?? {
-    symbol: definition.symbol,
-    name: definition.name,
-    category: definition.category,
-    price: definition.fallbackPrice,
-    change24h: definition.fallbackChange,
-    currency: "USD",
-    unit: definition.unit,
-    status: "fallback" as const,
-    updatedAt: new Date().toISOString(),
-    color: definition.color,
-  };
+  if (!cached || !Number.isFinite(cached.price) || cached.price <= 0) {
+    throw new Error(`No verified live or recent cached quote is available for ${symbol}.`);
+  }
+  return cached;
 }
 
 function serializeInvestment(investment: typeof miningInvestmentsTable.$inferSelect) {
