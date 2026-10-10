@@ -633,7 +633,26 @@ function KycStatusScreen({ status }: { status: string }) {
   );
 }
 
+const APP_MENU_COPY: Record<string, Record<string, string>> = {
+  'en-US': { overview: 'Overview', markets: 'Markets', mining: 'Mining Place', activity: 'Activity', trading: 'Trading', settings: 'Settings', workspace: 'Workspace', protected: 'Your account is protected', privacy: 'Keep your sign-in details private. North State Blockchain will never ask for your password.', notifications: 'Notifications', none: 'No notifications yet', greeting: 'Good to see you', account: 'Account' },
+  'en-GB': { overview: 'Overview', markets: 'Markets', mining: 'Mining Place', activity: 'Activity', trading: 'Trading', settings: 'Settings', workspace: 'Workspace', protected: 'Your account is protected', privacy: 'Keep your sign-in details private. North State Blockchain will never ask for your password.', notifications: 'Notifications', none: 'No notifications yet', greeting: 'Good to see you', account: 'Account' },
+  es: { overview: 'Resumen', markets: 'Mercados', mining: 'Centro de minería', activity: 'Actividad', trading: 'Operaciones', settings: 'Configuración', workspace: 'Espacio de trabajo', protected: 'Tu cuenta está protegida', privacy: 'Mantén tus datos de acceso en privado. Nunca te pediremos tu contraseña.', notifications: 'Notificaciones', none: 'Aún no hay notificaciones', greeting: 'Qué bueno verte', account: 'Cuenta' },
+  pt: { overview: 'Visão geral', markets: 'Mercados', mining: 'Área de mineração', activity: 'Atividade', trading: 'Negociação', settings: 'Configurações', workspace: 'Área de trabalho', protected: 'Sua conta está protegida', privacy: 'Mantenha seus dados de acesso privados. Nunca pediremos sua senha.', notifications: 'Notificações', none: 'Ainda não há notificações', greeting: 'Bom ver você', account: 'Conta' },
+  fr: { overview: 'Vue d’ensemble', markets: 'Marchés', mining: 'Espace de minage', activity: 'Activité', trading: 'Trading', settings: 'Paramètres', workspace: 'Espace de travail', protected: 'Votre compte est protégé', privacy: 'Gardez vos identifiants privés. Nous ne demanderons jamais votre mot de passe.', notifications: 'Notifications', none: 'Aucune notification', greeting: 'Heureux de vous revoir', account: 'Compte' },
+  de: { overview: 'Übersicht', markets: 'Märkte', mining: 'Mining-Bereich', activity: 'Aktivität', trading: 'Handel', settings: 'Einstellungen', workspace: 'Arbeitsbereich', protected: 'Ihr Konto ist geschützt', privacy: 'Halten Sie Ihre Zugangsdaten geheim. Wir fragen niemals nach Ihrem Passwort.', notifications: 'Benachrichtigungen', none: 'Keine Benachrichtigungen', greeting: 'Schön, Sie zu sehen', account: 'Konto' },
+  it: { overview: 'Panoramica', markets: 'Mercati', mining: 'Area mining', activity: 'Attività', trading: 'Trading', settings: 'Impostazioni', workspace: 'Area di lavoro', protected: 'Il tuo account è protetto', privacy: 'Mantieni privati i dati di accesso. Non chiederemo mai la tua password.', notifications: 'Notifiche', none: 'Nessuna notifica', greeting: 'Bentornato', account: 'Account' },
+  ja: { overview: '概要', markets: '市場', mining: 'マイニング', activity: 'アクティビティ', trading: '取引', settings: '設定', workspace: 'ワークスペース', protected: 'アカウントは保護されています', privacy: 'ログイン情報を安全に保管してください。パスワードを尋ねることはありません。', notifications: '通知', none: '通知はありません', greeting: 'おかえりなさい', account: 'アカウント' },
+  zh: { overview: '总览', markets: '市场', mining: '挖矿专区', activity: '活动', trading: '交易', settings: '设置', workspace: '工作区', protected: '您的账户受到保护', privacy: '请妥善保管登录信息。我们绝不会索要您的密码。', notifications: '通知', none: '暂无通知', greeting: '欢迎回来', account: '账户' },
+  ko: { overview: '개요', markets: '시장', mining: '마이닝', activity: '활동', trading: '거래', settings: '설정', workspace: '작업 공간', protected: '계정이 보호되고 있습니다', privacy: '로그인 정보를 안전하게 보관하세요. 비밀번호를 요청하지 않습니다.', notifications: '알림', none: '알림이 없습니다', greeting: '다시 만나 반갑습니다', account: '계정' },
+  th: { overview: 'ภาพรวม', markets: 'ตลาด', mining: 'พื้นที่ขุด', activity: 'กิจกรรม', trading: 'ซื้อขาย', settings: 'การตั้งค่า', workspace: 'พื้นที่ทำงาน', protected: 'บัญชีของคุณได้รับการปกป้อง', privacy: 'เก็บข้อมูลเข้าสู่ระบบเป็นความลับ เราจะไม่ขอรหัสผ่านของคุณ', notifications: 'การแจ้งเตือน', none: 'ยังไม่มีการแจ้งเตือน', greeting: 'ยินดีที่ได้พบคุณอีกครั้ง', account: 'บัญชี' },
+  vi: { overview: 'Tổng quan', markets: 'Thị trường', mining: 'Khu vực khai thác', activity: 'Hoạt động', trading: 'Giao dịch', settings: 'Cài đặt', workspace: 'Không gian làm việc', protected: 'Tài khoản của bạn được bảo vệ', privacy: 'Giữ kín thông tin đăng nhập. Chúng tôi sẽ không bao giờ hỏi mật khẩu.', notifications: 'Thông báo', none: 'Chưa có thông báo', greeting: 'Rất vui được gặp lại bạn', account: 'Tài khoản' },
+  'en-SG': { overview: 'Overview', markets: 'Markets', mining: 'Mining Place', activity: 'Activity', trading: 'Trading', settings: 'Settings', workspace: 'Workspace', protected: 'Your account is protected', privacy: 'Keep your sign-in details private. North State Blockchain will never ask for your password.', notifications: 'Notifications', none: 'No notifications yet', greeting: 'Good to see you', account: 'Account' },
+  ms: { overview: 'Gambaran keseluruhan', markets: 'Pasaran', mining: 'Ruang perlombongan', activity: 'Aktiviti', trading: 'Dagangan', settings: 'Tetapan', workspace: 'Ruang kerja', protected: 'Akaun anda dilindungi', privacy: 'Rahsiakan maklumat log masuk anda. Kami tidak akan meminta kata laluan anda.', notifications: 'Pemberitahuan', none: 'Tiada pemberitahuan lagi', greeting: 'Selamat kembali', account: 'Akaun' },
+  my: { overview: 'အနှစ်ချုပ်', markets: 'ဈေးကွက်များ', mining: 'Mining နေရာ', activity: 'လုပ်ဆောင်မှုများ', trading: 'အရောင်းအဝယ်', settings: 'ဆက်တင်များ', workspace: 'လုပ်ငန်းနေရာ', protected: 'သင့်အကောင့်ကို ကာကွယ်ထားပါသည်', privacy: 'သင့်ဝင်ရောက်မှုအချက်အလက်များကို လျှို့ဝှက်ထားပါ။ သင့်စကားဝှက်ကို မည်သည့်အခါမျှ မတောင်းပါ။', notifications: 'အသိပေးချက်များ', none: 'အသိပေးချက် မရှိသေးပါ', greeting: 'ပြန်တွေ့ရတာ ဝမ်းသာပါတယ်', account: 'အကောင့်' },
+};
 function Shell({ children }: { children: React.ReactNode }) {
+  const { language } = useAppLanguage();
+  const menuCopy = APP_MENU_COPY[language] ?? APP_MENU_COPY['en-US'];
   const [mobileOpen, setMobileOpen] = useState(false);
   const [location] = useLocation();
   const { isLoaded, isSignedIn } = useAuth();
@@ -658,7 +677,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     setLastSeen(ts);
     localStorage.setItem('notif-last-seen', ts);
   };
-  const links = [{ href: '/dashboard', label: 'Overview', icon: HomeIcon }, { href: '/markets', label: 'Markets', icon: LineChart }, { href: '/mining-place', label: 'Mining Place', icon: Landmark }, { href: '/activity', label: 'Activity', icon: BarChart3 }, { href: '/trading', label: 'Trading', icon: Zap }, { href: '/settings', label: 'Settings', icon: Settings2 }];
+  const links = [{ href: '/dashboard', label: menuCopy.overview, icon: HomeIcon }, { href: '/markets', label: menuCopy.markets, icon: LineChart }, { href: '/mining-place', label: menuCopy.mining, icon: Landmark }, { href: '/activity', label: menuCopy.activity, icon: BarChart3 }, { href: '/trading', label: menuCopy.trading, icon: Zap }, { href: '/settings', label: menuCopy.settings, icon: Settings2 }];
   const verificationStatus = profile?.verificationStatus;
   const isExemptRoute = [
     '/dashboard',
@@ -666,22 +685,22 @@ function Shell({ children }: { children: React.ReactNode }) {
     '/settings',
   ].some((path) => location === path || location.startsWith(`${path}/`));
   const gatedContent = (!isExemptRoute && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus ?? 'unverified'} /> : children;
-  return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">Workspace</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">Your account is protected</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">Keep your sign-in details private. North State Blockchain will never ask for your password.</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? 'Good to see you' : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
-              <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label="Notifications" data-testid="button-notifications">
+  return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">{menuCopy.workspace}</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">{menuCopy.protected}</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">{menuCopy.privacy}</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? menuCopy.greeting : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
+              <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label={menuCopy.notifications} data-testid="button-notifications">
                 <Bell size={18} />
                 {unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
               {notifOpen && (
                 <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-border bg-background shadow-xl animate-rise" data-testid="panel-notifications">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                    <p className="text-sm font-extrabold">Notifications</p>
+                    <p className="text-sm font-extrabold">{menuCopy.notifications}</p>
                     <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-secondary"><X size={15} /></button>
                   </div>
                   <div className="max-h-72 overflow-y-auto divide-y divide-border/70">
                     {notifs.isLoading ? (
                       <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
                     ) : !notifs.data || notifs.data.length === 0 ? (
-                      <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">No notifications yet</p></div>
+                      <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">{menuCopy.none}</p></div>
                     ) : notifs.data.map(n => (
                       <div key={n.id} className="flex items-center gap-3 px-4 py-3">
                         <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs ${n.type === 'deposit' ? 'bg-primary/10 text-primary' : n.type === 'withdrawal' || n.type === 'send' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>{iconForActivity(n.type)}</span>
@@ -695,7 +714,7 @@ function Shell({ children }: { children: React.ReactNode }) {
                   </div>
                 </div>
               )}
-            </div><Link href="/settings" className="flex items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? 'Account'}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8 lg:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
+            </div><Link href="/settings" className="flex items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? menuCopy.account}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8 lg:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
 }
 
 function PageHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail?: string; action?: React.ReactNode }) {
@@ -2984,7 +3003,6 @@ function SupportChatWidget() {
   const [guestName, setGuestName] = useState('');
   const [guestId, setGuestId] = useState(() => { try { return localStorage.getItem('nsl-guest-support-id') || ''; } catch { return ''; } });
   const [guestMessages, setGuestMessages] = useState<Array<{ id: number; senderRole: string; content: string; createdAt: string }>>([]);
-  const [guestSent, setGuestSent] = useState(false);
   const [guestError, setGuestError] = useState('');
   const [guestSending, setGuestSending] = useState(false);
   const [sending, setSending] = useState(false);
@@ -3118,7 +3136,7 @@ function SupportChatWidget() {
                     if (!response.ok) throw new Error(payload.error || 'Message was not sent. Please try again.');
                     if (typeof payload.guestId !== 'string') throw new Error('Support did not return a conversation ID. Please try again.');
                     try { localStorage.setItem('nsl-guest-support-id', payload.guestId); } catch {}
-                    setGuestId(payload.guestId); setGuestSent(true); setInput('');
+                    setGuestId(payload.guestId); setInput('');
                     const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(payload.guestId)}`);
                     if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
                   } catch (error) {
