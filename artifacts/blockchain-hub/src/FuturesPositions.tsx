@@ -149,7 +149,7 @@ export function FuturesPositions({
                       <button type="button" disabled={closingId !== null} onClick={() => setConfirmId(null)} className="rounded-lg border border-border px-3 py-2 text-[11px] font-bold disabled:opacity-50" data-testid={`button-cancel-close-futures-${position.id}`}> {futuresText('Cancel')} </button>
                     </div>
                   ) : (
-                    <button type="button" disabled={!quoted || closingId !== null} onClick={() => setConfirmId(position.id)} title={!quoted ? 'No live quote available. Closing is disabled.' : undefined} className="rounded-lg border border-primary/40 px-3 py-2 text-[11px] font-bold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground" data-testid={`button-close-futures-${position.id}`}>Close Position</button>
+                    <button type="button" disabled={!quoted || closingId !== null} onClick={() => setConfirmId(position.id)} title={!quoted ? 'No live quote available. Closing is disabled.' : undefined} className="rounded-lg border border-primary/40 px-3 py-2 text-[11px] font-bold text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:border-border disabled:text-muted-foreground" data-testid={`button-close-futures-${position.id}`}>{futuresText('Close position')}</button>
                   )}
                 </div>
               </article>
