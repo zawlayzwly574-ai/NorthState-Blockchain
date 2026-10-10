@@ -494,11 +494,41 @@ function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
   );
 }
 
+const LOGIN_LANGUAGES = [
+  { code: 'en-US', label: 'US English', flag: '🇺🇸' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'pt', label: 'Português', flag: '🇵🇹' },
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+  { code: 'en-GB', label: 'UK English', flag: '🇬🇧' },
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+  { code: 'ja', label: '日本語', flag: '🇯🇵' },
+  { code: 'zh', label: '中文', flag: '🇨🇳' },
+  { code: 'ko', label: '한국어', flag: '🇰🇷' },
+] as const;
+
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
   const [usePhoneOtp, setUsePhoneOtp] = useState(false);
+  const [language, setLanguage] = useState(() => {
+    try { return localStorage.getItem('nsl-login-language') || 'en-US'; } catch { return 'en-US'; }
+  });
+  const chooseLanguage = (code: string) => {
+    setLanguage(code);
+    try { localStorage.setItem('nsl-login-language', code); } catch {}
+    window.dispatchEvent(new CustomEvent('nslanguagechange', { detail: code }));
+  };
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
-      <div className="mb-8 flex justify-center"><Logo /></div>
+      <div className="mb-5 flex justify-center"><Logo /></div>
+      <div className="mb-6 flex justify-end">
+        <label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground">
+          <span aria-hidden="true">{LOGIN_LANGUAGES.find(item => item.code === language)?.flag ?? '🇺🇸'}</span>
+          <span>Language</span>
+          <select aria-label="Choose language" value={language} onChange={e => chooseLanguage(e.target.value)} className="max-w-[150px] bg-transparent text-xs font-semibold outline-none">
+            {LOGIN_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
+          </select>
+        </label>
+      </div>
       {signUp
         ? usePhoneOtp
           ? <PhoneOtpSignUp onBack={() => setUsePhoneOtp(false)} />
@@ -2887,6 +2917,11 @@ function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestSent, setGuestSent] = useState(false);
+  const [guestError, setGuestError] = useState('');
+  const [guestSending, setGuestSending] = useState(false);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
@@ -2948,7 +2983,42 @@ function SupportChatWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!isLoaded ? null : !isSignedIn ? (
+            {!!isLoaded ? null : !isSignedIn ? (
+              guestSent ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary"><Check size={20} /></div>
+                  <p className="text-sm font-bold">Message sent</p>
+                  <p className="text-xs leading-5 text-muted-foreground">Thanks for contacting support. Our team will review your message.</p>
+                  <button type="button" onClick={() => { setGuestSent(false); setGuestName(''); setGuestEmail(''); setInput(''); }} className="text-xs font-bold text-primary hover:underline">Send another message</button>
+                </div>
+              ) : (
+                <form onSubmit={async e => {
+                  e.preventDefault();
+                  if (!guestName.trim() || !guestEmail.trim() || !input.trim() || guestSending) return;
+                  setGuestSending(true); setGuestError('');
+                  try {
+                    const response = await fetch(`${apiBaseUrl}/api/support/public-message`, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ name: guestName.trim(), email: guestEmail.trim(), content: input.trim() }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(payload.error || 'Unable to send your message. Please try again.');
+                    setGuestSent(true); setInput('');
+                  } catch (error) {
+                    setGuestError(error instanceof Error ? error.message : 'Unable to send your message. Please try again.');
+                  } finally { setGuestSending(false); }
+                }} className="flex h-full flex-col justify-center gap-3 p-4">
+                  <div className="grid h-10 w-10 place-items-center self-center rounded-full bg-primary/12 text-primary"><MessageCircle size={19} /></div>
+                  <p className="text-center text-sm font-bold">Contact support before signing in</p>
+                  <p className="text-center text-xs leading-5 text-muted-foreground">Leave your contact details and our team can follow up by email.</p>
+                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder="Your name" autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary" />
+                  <input required type="email" maxLength={254} value={guestEmail} onChange={e => setGuestEmail(e.target.value)} placeholder="Email address" autoComplete="email" className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary" />
+                  <textarea required maxLength={3000} value={input} onChange={e => setInput(e.target.value)} placeholder="How can we help?" rows={3} className="resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary" />
+                  {guestError && <p role="alert" className="text-xs text-destructive">{guestError}</p>}
+                  <button type="submit" disabled={guestSending} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
+                </form>
+              )
+            ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
                   <Lock size={20} />
@@ -3037,6 +3107,30 @@ function ClerkQueryClientCacheInvalidator() {
 
 function ClerkApp() {
   const [, setLocation] = useLocation();
+  const [loginLanguage, setLoginLanguage] = useState(() => {
+    try { return localStorage.getItem('nsl-login-language') || 'en-US'; } catch { return 'en-US'; }
+  });
+  useEffect(() => {
+    const onLanguageChange = (event: Event) => {
+      const code = (event as CustomEvent<string>).detail;
+      if (typeof code === 'string' && LOGIN_LANGUAGES.some(item => item.code === code)) setLoginLanguage(code);
+    };
+    window.addEventListener('nslanguagechange', onLanguageChange);
+    return () => window.removeEventListener('nslanguagechange', onLanguageChange);
+  }, []);
+  const authCopy: Record<string, { signInTitle: string; signInSubtitle: string; signUpTitle: string; signUpSubtitle: string }> = {
+    'en-US': { signInTitle: 'Welcome back', signInSubtitle: 'Sign in to access your North State Blockchain account', signUpTitle: 'Open your North State Blockchain account', signUpSubtitle: 'Create a secure account to begin' },
+    'en-GB': { signInTitle: 'Welcome back', signInSubtitle: 'Sign in to access your North State Blockchain account', signUpTitle: 'Open your North State Blockchain account', signUpSubtitle: 'Create a secure account to begin' },
+    es: { signInTitle: 'Bienvenido de nuevo', signInSubtitle: 'Inicia sesión en tu cuenta de North State Blockchain', signUpTitle: 'Abre tu cuenta de North State Blockchain', signUpSubtitle: 'Crea una cuenta segura para comenzar' },
+    pt: { signInTitle: 'Bem-vindo de volta', signInSubtitle: 'Entre na sua conta North State Blockchain', signUpTitle: 'Abra sua conta North State Blockchain', signUpSubtitle: 'Crie uma conta segura para começar' },
+    fr: { signInTitle: 'Bon retour', signInSubtitle: 'Connectez-vous à votre compte North State Blockchain', signUpTitle: 'Ouvrez votre compte North State Blockchain', signUpSubtitle: 'Créez un compte sécurisé pour commencer' },
+    de: { signInTitle: 'Willkommen zurück', signInSubtitle: 'Melden Sie sich bei Ihrem North State Blockchain-Konto an', signUpTitle: 'Eröffnen Sie Ihr North State Blockchain-Konto', signUpSubtitle: 'Erstellen Sie ein sicheres Konto' },
+    it: { signInTitle: 'Bentornato', signInSubtitle: 'Accedi al tuo account North State Blockchain', signUpTitle: 'Apri il tuo account North State Blockchain', signUpSubtitle: 'Crea un account sicuro per iniziare' },
+    ja: { signInTitle: 'おかえりなさい', signInSubtitle: 'North State Blockchain アカウントにログイン', signUpTitle: 'アカウントを作成', signUpSubtitle: '安全なアカウントを作成してください' },
+    zh: { signInTitle: '欢迎回来', signInSubtitle: '登录您的 North State Blockchain 账户', signUpTitle: '创建 North State Blockchain 账户', signUpSubtitle: '创建安全账户以开始使用' },
+    ko: { signInTitle: '다시 오신 것을 환영합니다', signInSubtitle: 'North State Blockchain 계정에 로그인하세요', signUpTitle: 'North State Blockchain 계정 만들기', signUpSubtitle: '안전한 계정을 만들어 시작하세요' },
+  };
+  const selectedCopy = authCopy[loginLanguage] ?? authCopy['en-US'];
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
   return <ClerkProvider
     publishableKey={clerkPubKey}
@@ -3048,14 +3142,14 @@ function ClerkApp() {
     localization={{
       signIn: {
         start: {
-          title: 'Welcome back',
-          subtitle: 'Sign in to access your North State Blockchain account',
+          title: selectedCopy.signInTitle,
+          subtitle: selectedCopy.signInSubtitle,
         },
       },
       signUp: {
         start: {
-          title: 'Open your North State Blockchain account',
-          subtitle: 'Create a secure account to begin',
+          title: selectedCopy.signUpTitle,
+          subtitle: selectedCopy.signUpSubtitle,
         },
       },
     }}
