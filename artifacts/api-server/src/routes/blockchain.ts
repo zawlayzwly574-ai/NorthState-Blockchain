@@ -1840,20 +1840,16 @@ router.post("/sms/verify-otp", async (req, res) => {
 // Public pre-login contact form. Messages are stored in the existing support inbox so
 // the admin team can respond without changing existing account or wallet data.
 const publicSupportAttempts = new Map<string, { count: number; resetAt: number }>();
+const guestSupportIdPattern = /^guest_[a-f0-9]{36}$/;
 router.post("/support/public-message", async (req, res) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
   const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
   if (!name || name.length > 100) {
-    res.status(400).json({ error: "Please enter a name (up to 100 characters)." });
+    res.status(400).json({ error: "Please enter your name (up to 100 characters)." });
     return;
   }
-  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    res.status(400).json({ error: "Please enter a valid email address." });
-    return;
-  }
-  if (!content || content.length > 3000) {
-    res.status(400).json({ error: "Please enter a message (up to 3,000 characters)." });
+  if (!content || content.length > 5000) {
+    res.status(400).json({ error: "Please enter a message (up to 5,000 characters)." });
     return;
   }
 
@@ -1868,17 +1864,56 @@ router.post("/support/public-message", async (req, res) => {
     ? { count: previous.count + 1, resetAt: previous.resetAt }
     : { count: 1, resetAt: now + 60 * 60 * 1000 });
 
-  const guestId = `guest_${randomBytes(18).toString("hex")}`;
-  const [thread] = await db.insert(supportThreadsTable)
-    .values({ clerkUserId: guestId, status: "open" }).returning();
-  await db.insert(supportMessagesTable).values({
-    threadId: thread.id,
-    senderRole: "user",
-    content: `Pre-login support request\nName: ${name}\nEmail: ${email}\n\n${content}`,
-  });
-  await db.update(supportThreadsTable).set({ updatedAt: new Date() })
-    .where(eq(supportThreadsTable.id, thread.id));
-  res.status(201).json({ sent: true });
+  try {
+    const guestId = `guest_${randomBytes(18).toString("hex")}`;
+    const [thread] = await db.insert(supportThreadsTable)
+      .values({ clerkUserId: guestId, status: "open" }).returning();
+    await db.insert(supportMessagesTable).values({
+      threadId: thread.id,
+      senderRole: "user",
+      content: `Guest support request\nName: ${name}\n\n${content}`,
+    });
+    await db.update(supportThreadsTable).set({ updatedAt: new Date() })
+      .where(eq(supportThreadsTable.id, thread.id));
+    res.status(201).json({ sent: true, guestId, threadId: thread.id });
+  } catch (error) {
+    req.log?.error({ err: error }, "Unable to save public support message");
+    res.status(503).json({ error: "Support is temporarily unavailable. Your message was not sent; please try again shortly." });
+  }
+});
+
+// Guest IDs are random 144-bit bearer credentials returned only to the browser that
+// created the thread. This enables an in-app follow-up conversation without email
+// or a schema change. Do not expose these IDs in public thread listings.
+router.get("/support/guest/:guestId", async (req, res) => {
+  const guestId = Array.isArray(req.params.guestId) ? req.params.guestId[0] ?? "" : req.params.guestId;
+  if (!guestSupportIdPattern.test(guestId)) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.clerkUserId, guestId)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const messages = await db.select().from(supportMessagesTable).where(eq(supportMessagesTable.threadId, thread.id)).orderBy(supportMessagesTable.createdAt);
+  res.json({ threadId: thread.id, messages: messages.map(m => ({ id: m.id, senderRole: m.senderRole, content: m.content, createdAt: m.createdAt.toISOString() })) });
+});
+
+router.post("/support/guest/:guestId/messages", async (req, res) => {
+  const guestId = Array.isArray(req.params.guestId) ? req.params.guestId[0] ?? "" : req.params.guestId;
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  if (!guestSupportIdPattern.test(guestId)) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  if (!content || content.length > 5000) { res.status(400).json({ error: "Please enter a message (up to 5,000 characters)." }); return; }
+  const [thread] = await db.select().from(supportThreadsTable).where(eq(supportThreadsTable.clerkUserId, guestId)).limit(1);
+  if (!thread) { res.status(404).json({ error: "Support conversation not found." }); return; }
+  const now = Date.now();
+  const clientKey = `${req.ip || req.socket.remoteAddress || "unknown"}:${guestId}`;
+  const previous = publicSupportAttempts.get(clientKey);
+  if (previous && previous.resetAt > now && previous.count >= 20) { res.status(429).json({ error: "Too many messages. Please try again later." }); return; }
+  publicSupportAttempts.set(clientKey, previous && previous.resetAt > now ? { count: previous.count + 1, resetAt: previous.resetAt } : { count: 1, resetAt: now + 60 * 60 * 1000 });
+  try {
+    const [message] = await db.insert(supportMessagesTable).values({ threadId: thread.id, senderRole: "user", content }).returning();
+    await db.update(supportThreadsTable).set({ updatedAt: new Date() }).where(eq(supportThreadsTable.id, thread.id));
+    res.status(201).json({ sent: true, messageId: message.id });
+  } catch (error) {
+    req.log?.error({ err: error }, "Unable to save guest support reply");
+    res.status(503).json({ error: "Support is temporarily unavailable. Your message was not sent; please try again shortly." });
+  }
 });
 
 router.get("/support/messages", async (req, res) => {
