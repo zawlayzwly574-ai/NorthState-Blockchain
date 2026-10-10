@@ -31,7 +31,7 @@ import {
 import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
 import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
 const TRADING_UI_COPY: Record<string, Record<string, string>> = {
-es: {"Select Timeframe":"Seleccionar intervalo","Cancel":"Cancelar","Trade Details":"Detalles de la operación","Status":"Estado","Trading Balance":"Saldo de trading","Retry account":"Reintentar cuenta","Retry trades":"Reintentar operaciones","No trading balance":"Sin saldo de trading","Trade Amount (USDT)":"Importe de operación (USDT)","Expiry Timeframe":"Plazo de vencimiento","BUY LONG":"COMPRAR / LARGO","SELL SHORT":"VENDER / CORTO","Current Price":"Precio actual","Purchase Price":"Precio de compra","Leverage":"Apalancamiento","Retry":"Reintentar","View My Positions":"Ver mis posiciones","Payout":"Pago","If Win":"Si ganas","If Loss":"Si pierdes"},
+es: {"Select Timeframe":"Seleccionar intervalo","Cancel":"Cancelar","Trade Details":"Detalles de la operación","Status":"Estado","Trading Balance":"Saldo de trading","Retry account":"Reintentar cuenta","Retry trades":"Reintentar operaciones","No trading balance":"Sin saldo de trading","Trade Amount (USDT)":"Importe de operación (USDT)","Expiry Timeframe":"Plazo de vencimiento","BUY LONG":"COMPRAR / LARGO","SELL SHORT":"VENDER / CORTO","Current Price":"Precio actual","Purchase Price":"Precio de compra","Leverage":"Apalancamiento","Retry":"Reintentar","View My Positions":"Ver mis posiciones","Payout":"Pago","If Win":"Si ganas","If Loss":"Si pierdes","Price will rise ↑":"El precio subirá ↑","Price will fall ↓":"El precio bajará ↓","Available:":"Disponible:"},
 pt: {"Select Timeframe":"Selecionar período","Cancel":"Cancelar","Trade Details":"Detalhes da operação","Status":"Status","Trading Balance":"Saldo de trading","Retry account":"Tentar conta novamente","Retry trades":"Tentar operações novamente","No trading balance":"Sem saldo de trading","Trade Amount (USDT)":"Valor da operação (USDT)","Expiry Timeframe":"Prazo de vencimento","BUY LONG":"COMPRAR / LONG","SELL SHORT":"VENDER / SHORT","Current Price":"Preço atual","Purchase Price":"Preço de compra","Leverage":"Alavancagem","Retry":"Tentar novamente","View My Positions":"Ver minhas posições","Payout":"Pagamento","If Win":"Se ganhar","If Loss":"Se perder"},
 fr: {"Select Timeframe":"Choisir la durée","Cancel":"Annuler","Trade Details":"Détails de la transaction","Status":"Statut","Trading Balance":"Solde de trading","Retry account":"Réessayer le compte","Retry trades":"Réessayer les transactions","No trading balance":"Aucun solde de trading","Trade Amount (USDT)":"Montant de l’opération (USDT)","Expiry Timeframe":"Durée d’expiration","BUY LONG":"ACHAT / LONG","SELL SHORT":"VENTE / SHORT","Current Price":"Prix actuel","Purchase Price":"Prix d’achat","Leverage":"Effet de levier","Retry":"Réessayer","View My Positions":"Voir mes positions","Payout":"Paiement","If Win":"En cas de gain","If Loss":"En cas de perte"},
 de: {"Select Timeframe":"Zeitrahmen wählen","Cancel":"Abbrechen","Trade Details":"Handelsdetails","Status":"Status","Trading Balance":"Trading-Guthaben","Retry account":"Konto erneut versuchen","Retry trades":"Trades erneut versuchen","No trading balance":"Kein Trading-Guthaben","Trade Amount (USDT)":"Handelsbetrag (USDT)","Expiry Timeframe":"Ablaufzeitraum","BUY LONG":"KAUFEN / LONG","SELL SHORT":"VERKAUFEN / SHORT","Current Price":"Aktueller Preis","Purchase Price":"Kaufpreis","Leverage":"Hebel","Retry":"Erneut versuchen","View My Positions":"Meine Positionen ansehen","Payout":"Auszahlung","If Win":"Bei Gewinn","If Loss":"Bei Verlust"},
@@ -324,7 +324,7 @@ function TimeframeSheet({
           onClick={onClose}
           className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
         >
-          Cancel
+          {tradingText('Cancel')}
         </button>
       </div>
     </>
@@ -1073,7 +1073,7 @@ export function TradingPage() {
           >
             <TrendingUp size={24} strokeWidth={2.5} />
             <span className="text-base font-extrabold tracking-tight"> {tradingText('BUY LONG')} </span>
-            <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
+            <span className="text-[11px] font-normal text-green-400/60">{tradingText('Price will rise ↑')}</span>
           </button>
           <button
             type="button"
@@ -1084,7 +1084,7 @@ export function TradingPage() {
           >
             <TrendingDown size={24} strokeWidth={2.5} />
             <span className="text-base font-extrabold tracking-tight"> {tradingText('SELL SHORT')} </span>
-            <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
+            <span className="text-[11px] font-normal text-red-400/60">{tradingText('Price will fall ↓')}</span>
           </button>
         </div>
         {tradeError && (
@@ -1302,7 +1302,7 @@ export function TradingPage() {
 
             <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-border/40 bg-secondary/25 p-3 text-center">
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Live reference</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{tradingText('Live reference')}</p>
                 <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
                   {freshFuturesQuote && futuresQuote?.price
                     ? `$${futuresQuote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
