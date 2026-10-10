@@ -1950,6 +1950,14 @@ router.post("/support/messages", async (req, res) => {
   res.json({ sent: true, messageId: message.id });
 });
 
+function publicSupportDisplayContent(content: string) {
+  return content.replace(/^Guest support request\nName: [^\n]*\n\n/, "");
+}
+function publicSupportName(messages: Array<{ content: string; senderRole: string }>) {
+  const first = messages.find(message => message.senderRole === "user" && message.content.startsWith("Guest support request\n"));
+  return first?.content.match(/^Guest support request\nName: ([^\n]*)/)?.[1]?.trim() || "";
+}
+
 router.get("/admin/support", requireAdmin, async (_req, res) => {
   const threads = await db.select().from(supportThreadsTable)
     .orderBy(desc(supportThreadsTable.updatedAt));
@@ -1971,10 +1979,10 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
     const last = msgs[0];
     return {
       userId: thread.clerkUserId,
-      displayName: profile?.displayName ?? "Unknown",
+      displayName: profile?.displayName ?? publicSupportName(msgs) || "Unknown",
       email: profile?.email ?? "",
       threadId: thread.id,
-      lastMessage: last?.content ?? "",
+      lastMessage: last ? publicSupportDisplayContent(last.content) : "",
       lastMessageAt: (last?.createdAt ?? thread.createdAt).toISOString(),
       unreadCount,
     };
@@ -1999,12 +2007,12 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.id, thread.id));
   res.json({
     userId,
-    displayName: profile?.displayName ?? "Unknown",
+    displayName: profile?.displayName ?? publicSupportName(messages) || "Unknown",
     email: profile?.email ?? "",
     threadId: thread.id,
     messages: messages.map(m => ({
       id: m.id, threadId: m.threadId, senderRole: m.senderRole,
-      content: m.content, createdAt: m.createdAt.toISOString(),
+      content: publicSupportDisplayContent(m.content), createdAt: m.createdAt.toISOString(),
     })),
   });
 });
