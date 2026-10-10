@@ -569,7 +569,7 @@ function LanguageSelector({ compact = false }: { compact?: boolean }) {
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
   const [usePhoneOtp, setUsePhoneOtp] = useState(false);
-  const { language, copy } = useAppLanguage();
+  const { copy } = useAppLanguage();
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
       <div className="mb-5 flex justify-center"><Logo /></div>
@@ -3166,6 +3166,11 @@ function ClerkApp() {
     ja: { signInTitle: 'おかえりなさい', signInSubtitle: 'North State Blockchain アカウントにログイン', signUpTitle: 'アカウントを作成', signUpSubtitle: '安全なアカウントを作成してください' },
     zh: { signInTitle: '欢迎回来', signInSubtitle: '登录您的 North State Blockchain 账户', signUpTitle: '创建 North State Blockchain 账户', signUpSubtitle: '创建安全账户以开始使用' },
     ko: { signInTitle: '다시 오신 것을 환영합니다', signInSubtitle: 'North State Blockchain 계정에 로그인하세요', signUpTitle: 'North State Blockchain 계정 만들기', signUpSubtitle: '안전한 계정을 만들어 시작하세요' },
+    th: { signInTitle: 'ยินดีต้อนรับกลับ', signInSubtitle: 'เข้าสู่บัญชี North State Blockchain ของคุณ', signUpTitle: 'เปิดบัญชี North State Blockchain', signUpSubtitle: 'สร้างบัญชีที่ปลอดภัยเพื่อเริ่มต้น' },
+    vi: { signInTitle: 'Chào mừng trở lại', signInSubtitle: 'Đăng nhập vào tài khoản North State Blockchain', signUpTitle: 'Mở tài khoản North State Blockchain', signUpSubtitle: 'Tạo tài khoản an toàn để bắt đầu' },
+    'en-SG': { signInTitle: 'Welcome back', signInSubtitle: 'Sign in to access your North State Blockchain account', signUpTitle: 'Open your North State Blockchain account', signUpSubtitle: 'Create a secure account to begin' },
+    ms: { signInTitle: 'Selamat kembali', signInSubtitle: 'Log masuk ke akaun North State Blockchain anda', signUpTitle: 'Buka akaun North State Blockchain anda', signUpSubtitle: 'Cipta akaun selamat untuk bermula' },
+    my: { signInTitle: 'ပြန်လည်ကြိုဆိုပါတယ်', signInSubtitle: 'သင့် North State Blockchain အကောင့်သို့ ဝင်ပါ', signUpTitle: 'North State Blockchain အကောင့်ဖွင့်ပါ', signUpSubtitle: 'စတင်အသုံးပြုရန် လုံခြုံသောအကောင့် ဖန်တီးပါ' },
   };
   const selectedCopy = authCopy[loginLanguage] ?? authCopy['en-US'];
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
