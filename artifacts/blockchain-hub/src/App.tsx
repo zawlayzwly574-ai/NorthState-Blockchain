@@ -3106,7 +3106,7 @@ function SupportChatWidget() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {!isLoaded ? null : !isSignedIn ? (
-              {guestId ? (
+              guestId ? (
                 <div className="flex h-full min-h-0 flex-col gap-3">
                   <div className="shrink-0 text-center">
                     <p className="text-sm font-bold">{supportCopy.conversation}</p>
@@ -3172,7 +3172,7 @@ function SupportChatWidget() {
                   {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
                   <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
                 </form>
-              )}
+              )
             ) : isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="text-xs text-muted-foreground">Loading…</span>
