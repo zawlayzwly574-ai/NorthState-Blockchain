@@ -1,0 +1,66 @@
+name: PR24 verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feat/complete-localization-and-inapp-guest-support]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr24-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workspace-checks:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and build workspace
+        run: pnpm run build
+
+  api-tests:
+    name: API automated tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run API tests
+        run: pnpm run test:api-auth
