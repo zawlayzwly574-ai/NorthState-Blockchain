@@ -2958,8 +2958,27 @@ function MiningPlaceDetail() {
 }
 
 function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+const SUPPORT_COPY: Record<string, Record<string, string>> = {
+  'en-US': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.' },
+  'en-GB': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.' },
+  'en-SG': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.' },
+  es: { title: 'Soporte de North State Blockchain', replyTime: 'Las respuestas aparecerán aquí', contact: 'Contactar soporte sin iniciar sesión', intro: 'Envía un mensaje y continúa la conversación aquí. No necesitas correo electrónico.', name: 'Tu nombre', placeholder: '¿Cómo podemos ayudarte? (hasta 5.000 caracteres)', send: 'Enviar mensaje', sending: 'Enviando…', sent: 'Mensaje enviado', conversation: 'Conversación de soporte', followup: 'Las respuestas aparecerán aquí. No necesitas correo ni cuenta.', error: 'No se pudo enviar el mensaje. Inténtalo de nuevo.' },
+  pt: { title: 'Suporte North State Blockchain', replyTime: 'As respostas aparecerão aqui', contact: 'Fale com o suporte sem entrar', intro: 'Envie uma mensagem e continue a conversa aqui. Não precisa de email.', name: 'Seu nome', placeholder: 'Como podemos ajudar? (até 5.000 caracteres)', send: 'Enviar mensagem', sending: 'Enviando…', sent: 'Mensagem enviada', conversation: 'Conversa com o suporte', followup: 'As respostas aparecerão aqui. Não precisa de email nem conta.', error: 'Não foi possível enviar. Tente novamente.' },
+  fr: { title: 'Assistance North State Blockchain', replyTime: 'Les réponses apparaîtront ici', contact: 'Contacter l’assistance sans connexion', intro: 'Envoyez un message et poursuivez la conversation ici. Aucun e-mail nécessaire.', name: 'Votre nom', placeholder: 'Comment pouvons-nous vous aider ? (5 000 caractères max.)', send: 'Envoyer le message', sending: 'Envoi…', sent: 'Message envoyé', conversation: 'Conversation avec l’assistance', followup: 'Les réponses apparaîtront ici. Aucun e-mail ni compte nécessaire.', error: 'Envoi impossible. Veuillez réessayer.' },
+  de: { title: 'North State Blockchain Support', replyTime: 'Antworten erscheinen hier in der App', contact: 'Support ohne Anmeldung kontaktieren', intro: 'Senden Sie eine Nachricht und führen Sie das Gespräch hier fort. Keine E-Mail nötig.', name: 'Ihr Name', placeholder: 'Wie können wir helfen? (max. 5.000 Zeichen)', send: 'Nachricht senden', sending: 'Wird gesendet…', sent: 'Nachricht gesendet', conversation: 'Support-Unterhaltung', followup: 'Antworten erscheinen hier. E-Mail und Konto sind nicht nötig.', error: 'Nachricht konnte nicht gesendet werden. Bitte erneut versuchen.' },
+  it: { title: 'Supporto North State Blockchain', replyTime: 'Le risposte appariranno qui', contact: 'Contatta il supporto senza accedere', intro: 'Invia un messaggio e continua la conversazione qui. Non serve l’email.', name: 'Il tuo nome', placeholder: 'Come possiamo aiutarti? (massimo 5.000 caratteri)', send: 'Invia messaggio', sending: 'Invio…', sent: 'Messaggio inviato', conversation: 'Conversazione di supporto', followup: 'Le risposte appariranno qui. Non servono email o account.', error: 'Invio non riuscito. Riprova.' },
+  ja: { title: 'North State Blockchain サポート', replyTime: '返信はアプリ内に表示されます', contact: 'ログイン前にサポートへ連絡', intro: 'ここからメッセージを送り、アプリ内で会話を続けられます。メールは不要です。', name: 'お名前', placeholder: 'どのようなご用件ですか？（最大5,000文字）', send: 'メッセージを送信', sending: '送信中…', sent: '送信しました', conversation: 'サポートの会話', followup: '返信はここに表示されます。メールやアカウントは不要です。', error: '送信できませんでした。もう一度お試しください。' },
+  zh: { title: 'North State Blockchain 客服', replyTime: '回复会显示在应用中', contact: '登录前联系客户支持', intro: '在此发送消息，并在应用内继续对话。无需电子邮件。', name: '您的姓名', placeholder: '我们可以如何帮助您？（最多5,000字）', send: '发送消息', sending: '正在发送…', sent: '消息已发送', conversation: '客服对话', followup: '回复会显示在这里。无需邮箱或账户。', error: '消息发送失败，请重试。' },
+  ko: { title: 'North State Blockchain 고객 지원', replyTime: '답변은 앱에 표시됩니다', contact: '로그인 전에 고객 지원 문의', intro: '여기에서 메시지를 보내고 앱에서 대화를 계속하세요. 이메일은 필요하지 않습니다.', name: '이름', placeholder: '무엇을 도와드릴까요? (최대 5,000자)', send: '메시지 보내기', sending: '전송 중…', sent: '메시지를 보냈습니다', conversation: '고객 지원 대화', followup: '답변이 여기에 표시됩니다. 이메일이나 계정이 필요하지 않습니다.', error: '메시지를 보내지 못했습니다. 다시 시도하세요.' },
+  th: { title: 'ฝ่ายสนับสนุน North State Blockchain', replyTime: 'ดูคำตอบได้ในแอปนี้', contact: 'ติดต่อฝ่ายสนับสนุนก่อนเข้าสู่ระบบ', intro: 'ส่งข้อความและสนทนาต่อในแอปนี้ได้โดยไม่ต้องใช้อีเมล', name: 'ชื่อของคุณ', placeholder: 'เราช่วยอะไรได้บ้าง (สูงสุด 5,000 ตัวอักษร)', send: 'ส่งข้อความ', sending: 'กำลังส่ง…', sent: 'ส่งข้อความแล้ว', conversation: 'การสนทนากับฝ่ายสนับสนุน', followup: 'คำตอบจะแสดงที่นี่ ไม่ต้องใช้อีเมลหรือบัญชี', error: 'ส่งข้อความไม่สำเร็จ โปรดลองอีกครั้ง' },
+  vi: { title: 'Hỗ trợ North State Blockchain', replyTime: 'Phản hồi sẽ hiển thị trong ứng dụng', contact: 'Liên hệ hỗ trợ trước khi đăng nhập', intro: 'Gửi tin nhắn và tiếp tục trò chuyện ngay trong ứng dụng. Không cần email.', name: 'Tên của bạn', placeholder: 'Chúng tôi có thể giúp gì? (tối đa 5.000 ký tự)', send: 'Gửi tin nhắn', sending: 'Đang gửi…', sent: 'Đã gửi tin nhắn', conversation: 'Cuộc trò chuyện hỗ trợ', followup: 'Phản hồi sẽ xuất hiện tại đây. Không cần email hay tài khoản.', error: 'Không gửi được tin nhắn. Vui lòng thử lại.' },
+  ms: { title: 'Sokongan North State Blockchain', replyTime: 'Balasan akan dipaparkan dalam aplikasi', contact: 'Hubungi sokongan sebelum log masuk', intro: 'Hantar mesej dan teruskan perbualan dalam aplikasi ini. E-mel tidak diperlukan.', name: 'Nama anda', placeholder: 'Bagaimana kami boleh membantu? (sehingga 5,000 aksara)', send: 'Hantar mesej', sending: 'Sedang menghantar…', sent: 'Mesej dihantar', conversation: 'Perbualan sokongan', followup: 'Balasan akan dipaparkan di sini. E-mel atau akaun tidak diperlukan.', error: 'Mesej tidak dapat dihantar. Sila cuba lagi.' },
+  my: { title: 'North State Blockchain အကူအညီ', replyTime: 'အကြောင်းပြန်စာများကို App ထဲတွင် တွေ့နိုင်ပါသည်', contact: 'အကောင့်မဝင်မီ Support ကို ဆက်သွယ်ရန်', intro: 'ဒီနေရာကနေ စာပို့ပြီး App ထဲမှာပဲ စကားဆက်ပြောနိုင်ပါတယ်။ Email မလိုပါ။', name: 'သင့်အမည်', placeholder: 'ဘယ်လိုကူညီပေးရမလဲ။ (စာလုံး ၅,၀၀၀ အထိ)', send: 'စာပို့ရန်', sending: 'ပို့နေသည်…', sent: 'စာပို့ပြီးပါပြီ', conversation: 'Support စကားပြောခန်း', followup: 'အကြောင်းပြန်စာကို ဒီနေရာမှာတွေ့ရပါမယ်။ Email သို့မဟုတ် အကောင့်မလိုပါ။', error: 'စာပို့မရပါ။ ထပ်မံကြိုးစားပါ။' },
+};
 function SupportChatWidget() {
   const { isSignedIn, isLoaded } = useAuth();
+  const { language } = useAppLanguage();
+  const supportCopy = SUPPORT_COPY[language] ?? SUPPORT_COPY['en-US'];
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [guestName, setGuestName] = useState('');
@@ -3037,8 +3056,8 @@ function SupportChatWidget() {
               <MessageCircle size={17} />
             </div>
             <div>
-              <p className="text-sm font-bold">North State Blockchain Support</p>
-              <p className="text-[11px] text-muted-foreground">We typically reply within a few hours</p>
+              <p className="text-sm font-bold">{supportCopy.title}</p>
+              <p className="text-[11px] text-muted-foreground">{supportCopy.replyTime}</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label="Close chat">
               <X size={16} />
@@ -3051,8 +3070,8 @@ function SupportChatWidget() {
               {guestId ? (
                 <div className="flex h-full min-h-0 flex-col gap-3">
                   <div className="shrink-0 text-center">
-                    <p className="text-sm font-bold">Support conversation</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Replies appear here. You do not need email or an account.</p>
+                    <p className="text-sm font-bold">{supportCopy.conversation}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{supportCopy.followup}</p>
                   </div>
                   <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
                     {guestMessages.map(message => <div key={message.id} className={`flex ${message.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -3080,9 +3099,9 @@ function SupportChatWidget() {
                     } catch (error) { setGuestError(error instanceof Error ? error.message : 'Message was not sent. Please try again.'); }
                     finally { setGuestSending(false); }
                   }}>
-                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder="Write a message (up to 5,000 characters)" rows={3} className="w-full resize-y rounded-lg border border-border bg-background p-3 text-base leading-5 outline-none focus:border-primary" />
+                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={3} className="w-full resize-y rounded-lg border border-border bg-background p-3 text-base leading-5 outline-none focus:border-primary" />
                     {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
-                    <button type="submit" disabled={guestSending || !input.trim()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
+                    <button type="submit" disabled={guestSending || !input.trim()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
                   </form>
                 </div>
               ) : (
@@ -3107,10 +3126,10 @@ function SupportChatWidget() {
                   } finally { setGuestSending(false); }
                 }} className="flex h-full flex-col justify-center gap-3 p-4">
                   <div className="grid h-10 w-10 place-items-center self-center rounded-full bg-primary/12 text-primary"><MessageCircle size={19} /></div>
-                  <p className="text-center text-sm font-bold">Contact support before signing in</p>
-                  <p className="text-center text-xs leading-5 text-muted-foreground">Send a message here and continue the conversation in this app. No email is needed.</p>
-                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder="Your name" autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
-                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder="How can we help? (up to 5,000 characters)" rows={4} className="min-h-28 resize-y rounded-lg border border-border bg-background p-3 text-base outline-none focus:border-primary" />
+                  <p className="text-center text-sm font-bold">{supportCopy.contact}</p>
+                  <p className="text-center text-xs leading-5 text-muted-foreground">{supportCopy.intro}</p>
+                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder={supportCopy.name} autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
+                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={4} className="min-h-28 resize-y rounded-lg border border-border bg-background p-3 text-base outline-none focus:border-primary" />
                   {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
                   <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
                 </form>
