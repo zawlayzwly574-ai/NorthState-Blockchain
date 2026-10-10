@@ -255,3 +255,93 @@
     touch-action: manipulation;
   }
 }
+
+/* Mobile support layout: the conversation takes the full available width. */
+@media (max-width: 767px) {
+  .admin-support-page {
+    height: calc(100dvh - 96px) !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .admin-support-page > div:first-child {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .admin-support-layout {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    gap: 0 !important;
+  }
+
+  .admin-support-thread-list,
+  .admin-support-thread-detail {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 0% !important;
+  }
+
+  .admin-support-thread-detail.admin-support-thread-detail--active {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .admin-support-thread-detail > .min-h-0.flex-1 {
+    min-height: 0 !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+  }
+
+  .admin-support-composer {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 0.75rem !important;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+  }
+
+  .admin-support-composer form {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 0.625rem !important;
+  }
+
+  .admin-support-composer textarea {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 104px !important;
+    max-height: 30dvh !important;
+    padding: 0.75rem !important;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+    resize: vertical !important;
+  }
+
+  .admin-support-composer button[type="submit"] {
+    width: 100% !important;
+    min-height: 44px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .admin-support-thread-detail button {
+    touch-action: manipulation;
+  }
+}
+

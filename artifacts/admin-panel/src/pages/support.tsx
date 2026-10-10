@@ -109,7 +109,7 @@ export default function Support() {
   const totalUnread = threads.reduce((sum, t) => sum + t.unreadCount, 0);
 
   return (
-    <div className="admin-support-page flex h-[calc(100dvh-64px)] min-h-0 w-full min-w-0 flex-col">
+    <div className="admin-support-page flex h-[calc(100dvh-64px)] min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {/* Page header */}
       <div className="shrink-0 mb-5">
         <div className="flex items-center gap-3">
@@ -272,27 +272,29 @@ export default function Support() {
                               <p className={`text-[10px] ${msg.senderRole === 'admin' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </p>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEdit(msg.id, msg.content)}
-                                  className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold opacity-80 transition hover:bg-black/10 hover:opacity-100"
-                                  aria-label={`Edit message ${msg.id}`}
-                                  data-testid={`button-edit-support-message-${msg.id}`}
-                                >
-                                  <Pencil size={12} /> Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteMessage(msg.id)}
-                                  disabled={deleteMessageMut.isPending}
-                                  className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold opacity-80 transition hover:bg-red-500/15 hover:text-red-500 hover:opacity-100 disabled:opacity-40"
-                                  aria-label={`Delete message ${msg.id}`}
-                                  data-testid={`button-delete-support-message-${msg.id}`}
-                                >
-                                  <Trash2 size={12} /> Delete
-                                </button>
-                              </div>
+                              {msg.senderRole === 'admin' && (
+                                <div className="flex flex-wrap items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEdit(msg.id, msg.content)}
+                                    className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold opacity-90 transition hover:bg-black/10 hover:opacity-100"
+                                    aria-label={`Edit support reply ${msg.id}`}
+                                    data-testid={`button-edit-support-message-${msg.id}`}
+                                  >
+                                    <Pencil size={14} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteMessage(msg.id)}
+                                    disabled={deleteMessageMut.isPending}
+                                    className="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold opacity-90 transition hover:bg-red-500/15 hover:text-red-500 hover:opacity-100 disabled:opacity-40"
+                                    aria-label={`Delete support reply ${msg.id}`}
+                                    data-testid={`button-delete-support-message-${msg.id}`}
+                                  >
+                                    <Trash2 size={14} /> Delete
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </>
                         )}

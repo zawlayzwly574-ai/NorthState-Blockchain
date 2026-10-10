@@ -2010,7 +2010,7 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     .limit(1);
   if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
 
-  const [existing] = await db.select({ id: supportMessagesTable.id })
+  const [existing] = await db.select()
     .from(supportMessagesTable)
     .where(and(
       eq(supportMessagesTable.id, messageId),
@@ -2018,12 +2018,17 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     ))
     .limit(1);
   if (!existing) { res.status(404).json({ error: "Message not found in this support thread." }); return; }
+  // Only admins' own replies may be edited; never alter messages written by users.
+  if (existing.senderRole !== "admin") {
+    res.status(403).json({ error: "Only admin replies can be edited." }); return;
+  }
 
   const [updated] = await db.update(supportMessagesTable)
     .set({ content })
     .where(and(
       eq(supportMessagesTable.id, messageId),
       eq(supportMessagesTable.threadId, thread.id),
+      eq(supportMessagesTable.senderRole, "admin"),
     ))
     .returning();
   await db.update(supportThreadsTable)
@@ -2056,10 +2061,23 @@ router.delete("/admin/support/:userId/messages/:messageId", requireAdmin, async 
     .limit(1);
   if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
 
+  const [existing] = await db.select({ id: supportMessagesTable.id, senderRole: supportMessagesTable.senderRole })
+    .from(supportMessagesTable)
+    .where(and(
+      eq(supportMessagesTable.id, messageId),
+      eq(supportMessagesTable.threadId, thread.id),
+    ))
+    .limit(1);
+  if (!existing) { res.status(404).json({ error: "Message not found in this support thread." }); return; }
+  // Only admins' own replies may be deleted; preserve all customer messages.
+  if (existing.senderRole !== "admin") {
+    res.status(403).json({ error: "Only admin replies can be deleted." }); return;
+  }
   const [deleted] = await db.delete(supportMessagesTable)
     .where(and(
       eq(supportMessagesTable.id, messageId),
       eq(supportMessagesTable.threadId, thread.id),
+      eq(supportMessagesTable.senderRole, "admin"),
     ))
     .returning({ id: supportMessagesTable.id });
   if (!deleted) { res.status(404).json({ error: "Message not found in this support thread." }); return; }
