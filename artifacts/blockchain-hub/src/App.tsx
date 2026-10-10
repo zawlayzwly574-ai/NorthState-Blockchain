@@ -2983,7 +2983,7 @@ function SupportChatWidget() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            {!!isLoaded ? null : !isSignedIn ? (
+            {!isLoaded ? null : !isSignedIn ? (
               guestSent ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
                   <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary"><Check size={20} /></div>
