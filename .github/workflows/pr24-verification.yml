@@ -63,4 +63,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run API tests
+        env:
+          # Tests mock database calls; this placeholder only permits the DB module to initialize.
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/northstate_test
         run: pnpm run test:api-auth
