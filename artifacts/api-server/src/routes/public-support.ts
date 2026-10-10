@@ -88,7 +88,7 @@ router.get("/support/guest/:guestId", async (req: Request, res: Response) => {
       messages: messages.map(message => ({
         id: message.id,
         senderRole: message.senderRole,
-        content: message.content,
+        content: message.content.replace(/^Guest support request\nName: [^\n]*\n\n/, ""),
         createdAt: message.createdAt.toISOString(),
       })),
     });
