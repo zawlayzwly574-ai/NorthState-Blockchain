@@ -2963,13 +2963,32 @@ function SupportChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
+  const [guestId, setGuestId] = useState(() => { try { return localStorage.getItem('nsl-guest-support-id') || ''; } catch { return ''; } });
+  const [guestMessages, setGuestMessages] = useState<Array<{ id: number; senderRole: string; content: string; createdAt: string }>>([]);
   const [guestSent, setGuestSent] = useState(false);
   const [guestError, setGuestError] = useState('');
   const [guestSending, setGuestSending] = useState(false);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!open || isSignedIn || !guestId) return;
+    let active = true;
+    const loadGuestMessages = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}`);
+        if (!response.ok) throw new Error('Could not load support conversation.');
+        const payload = await response.json();
+        if (active) setGuestMessages(Array.isArray(payload.messages) ? payload.messages : []);
+      } catch (error) {
+        if (active) setGuestError(error instanceof Error ? error.message : 'Could not load support conversation.');
+      }
+    };
+    void loadGuestMessages();
+    const timer = window.setInterval(() => { void loadGuestMessages(); }, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [open, isSignedIn, guestId]);
 
   const { data, isLoading } = useGetSupportMessages({
     query: { queryKey: getGetSupportMessagesQueryKey(), enabled: isLoaded && !!isSignedIn, refetchInterval: open ? 5000 : false },
@@ -3029,40 +3048,73 @@ function SupportChatWidget() {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
             {!isLoaded ? null : !isSignedIn ? (
-              guestSent ? (
-                <div className="flex h-full flex-col items-center justify-center gap-3 px-5 text-center">
-                  <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary"><Check size={20} /></div>
-                  <p className="text-sm font-bold">Message sent</p>
-                  <p className="text-xs leading-5 text-muted-foreground">Thanks for contacting support. Our team will review your message.</p>
-                  <button type="button" onClick={() => { setGuestSent(false); setGuestName(''); setGuestEmail(''); setInput(''); }} className="text-xs font-bold text-primary hover:underline">Send another message</button>
+              {guestId ? (
+                <div className="flex h-full min-h-0 flex-col gap-3">
+                  <div className="shrink-0 text-center">
+                    <p className="text-sm font-bold">Support conversation</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Replies appear here. You do not need email or an account.</p>
+                  </div>
+                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+                    {guestMessages.map(message => <div key={message.id} className={`flex ${message.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[90%] rounded-2xl px-3 py-2.5 text-sm leading-5 whitespace-pre-wrap break-words ${message.senderRole === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'}`}>
+                        {message.content}
+                        <p className="mt-1 text-[10px] opacity-60">{message.senderRole === 'admin' ? 'Support team · ' : ''}{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                    </div>)}
+                    {guestMessages.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">Loading your conversation…</p>}
+                  </div>
+                  <form className="shrink-0 space-y-2" onSubmit={async e => {
+                    e.preventDefault();
+                    const message = input.trim();
+                    if (!message || guestSending) return;
+                    setGuestSending(true); setGuestError('');
+                    try {
+                      const response = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}/messages`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message }),
+                      });
+                      const payload = await response.json().catch(() => ({}));
+                      if (!response.ok) throw new Error(payload.error || 'Message was not sent. Please try again.');
+                      setInput('');
+                      const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}`);
+                      if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
+                    } catch (error) { setGuestError(error instanceof Error ? error.message : 'Message was not sent. Please try again.'); }
+                    finally { setGuestSending(false); }
+                  }}>
+                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder="Write a message (up to 5,000 characters)" rows={3} className="w-full resize-y rounded-lg border border-border bg-background p-3 text-base leading-5 outline-none focus:border-primary" />
+                    {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
+                    <button type="submit" disabled={guestSending || !input.trim()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
+                  </form>
                 </div>
               ) : (
                 <form onSubmit={async e => {
                   e.preventDefault();
-                  if (!guestName.trim() || !guestEmail.trim() || !input.trim() || guestSending) return;
+                  if (!guestName.trim() || !input.trim() || guestSending) return;
                   setGuestSending(true); setGuestError('');
                   try {
                     const response = await fetch(`${apiBaseUrl}/api/support/public-message`, {
                       method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: guestName.trim(), email: guestEmail.trim(), content: input.trim() }),
+                      body: JSON.stringify({ name: guestName.trim(), content: input.trim() }),
                     });
                     const payload = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(payload.error || 'Unable to send your message. Please try again.');
-                    setGuestSent(true); setInput('');
+                    if (!response.ok) throw new Error(payload.error || 'Message was not sent. Please try again.');
+                    if (typeof payload.guestId !== 'string') throw new Error('Support did not return a conversation ID. Please try again.');
+                    try { localStorage.setItem('nsl-guest-support-id', payload.guestId); } catch {}
+                    setGuestId(payload.guestId); setGuestSent(true); setInput('');
+                    const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(payload.guestId)}`);
+                    if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
                   } catch (error) {
-                    setGuestError(error instanceof Error ? error.message : 'Unable to send your message. Please try again.');
+                    setGuestError(error instanceof Error ? error.message : 'Message was not sent. Please try again.');
                   } finally { setGuestSending(false); }
                 }} className="flex h-full flex-col justify-center gap-3 p-4">
                   <div className="grid h-10 w-10 place-items-center self-center rounded-full bg-primary/12 text-primary"><MessageCircle size={19} /></div>
                   <p className="text-center text-sm font-bold">Contact support before signing in</p>
-                  <p className="text-center text-xs leading-5 text-muted-foreground">Leave your contact details and our team can follow up by email.</p>
-                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder="Your name" autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary" />
-                  <input required type="email" maxLength={254} value={guestEmail} onChange={e => setGuestEmail(e.target.value)} placeholder="Email address" autoComplete="email" className="h-10 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary" />
-                  <textarea required maxLength={3000} value={input} onChange={e => setInput(e.target.value)} placeholder="How can we help?" rows={3} className="resize-none rounded-lg border border-border bg-background p-3 text-sm outline-none focus:border-primary" />
-                  {guestError && <p role="alert" className="text-xs text-destructive">{guestError}</p>}
-                  <button type="submit" disabled={guestSending} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
+                  <p className="text-center text-xs leading-5 text-muted-foreground">Send a message here and continue the conversation in this app. No email is needed.</p>
+                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder="Your name" autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
+                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder="How can we help? (up to 5,000 characters)" rows={4} className="min-h-28 resize-y rounded-lg border border-border bg-background p-3 text-base outline-none focus:border-primary" />
+                  {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
+                  <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
                 </form>
-              )
+              )}
             ) : isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="text-xs text-muted-foreground">Loading…</span>
