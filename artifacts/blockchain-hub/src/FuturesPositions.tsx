@@ -89,9 +89,9 @@ export function FuturesPositions({
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-4 sm:px-5">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[.17em] text-primary">Futures · USDT Perpetual</p>
-          <h3 id="futures-positions-title" className="mt-1 text-base font-extrabold tracking-tight">My Positions <span className="ml-1 font-mono text-xs text-muted-foreground">{!isLoading && !error ? `(${active.length})` : ''}</span></h3>
+          <h3 id="futures-positions-title" className="mt-1 text-base font-extrabold tracking-tight">{futuresText('My Positions')} <span className="ml-1 font-mono text-xs text-muted-foreground">{!isLoading && !error ? `(${active.length})` : ''}</span></h3>
         </div>
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground"><RefreshCw size={11} /> Updates every 3s</span>
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground"><RefreshCw size={11} /> {futuresText('Updates every 3s')}</span>
       </div>
 
       {notice && (
