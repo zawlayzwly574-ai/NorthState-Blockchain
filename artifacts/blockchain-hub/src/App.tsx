@@ -562,15 +562,15 @@ function LanguageSelector({ compact = false }: { compact?: boolean }) {
   const current = LOGIN_LANGUAGES.find(item => item.code === language) ?? LOGIN_LANGUAGES[0];
   return <div className="relative z-[60]">
     <button type="button" aria-label={copy.language} aria-expanded={open} onClick={() => setOpen(value => !value)}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-[#151619] px-3 text-sm font-semibold text-white shadow-sm transition hover:border-primary/60 hover:bg-[#202126] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${compact ? '' : 'sm:px-3'}`}>
+      className={`relative z-10 inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-[#151619] px-3 text-sm font-semibold text-white shadow-sm transition hover:border-primary/60 hover:bg-[#202126] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${compact ? '' : 'sm:px-3'}`}>
       <Globe2 size={17} className="shrink-0 text-primary" />
       <span aria-hidden="true">{current.flag}</span>
       {!compact && <span className="max-w-[110px] truncate">{current.label}</span>}
       <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
     {open && <>
-      <button type="button" aria-label="Close language menu" className="fixed inset-0 z-[-1] cursor-default" onClick={() => setOpen(false)} />
-      <div role="listbox" aria-label={copy.language} className="absolute right-0 top-[calc(100%+8px)] z-[70] max-h-[min(70vh,420px)] w-64 overflow-y-auto rounded-xl border border-[#383a40] bg-[#111214] p-1.5 text-white shadow-[0_18px_48px_rgba(0,0,0,.7)]">
+      <button type="button" aria-label="Close language menu" className="fixed inset-0 z-0 cursor-default" onClick={() => setOpen(false)} />
+      <div role="listbox" aria-label={copy.language} className="absolute right-0 top-[calc(100%+8px)] z-20 max-h-[min(70vh,420px)] w-64 overflow-y-auto rounded-xl border border-[#383a40] bg-[#111214] p-1.5 text-white shadow-[0_18px_48px_rgba(0,0,0,.7)]">
         {LOGIN_LANGUAGES.map(item => <button key={item.code} type="button" role="option" aria-selected={item.code === language}
           onClick={() => { setAppLanguage(item.code); setOpen(false); }}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-[#27292f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${item.code === language ? 'bg-[#28251c] text-[#e1b12c]' : 'text-white'}`}>
