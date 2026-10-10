@@ -3131,11 +3131,11 @@ function SupportChatWidget() {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message }),
                       });
                       const payload = await response.json().catch(() => ({}));
-                      if (!response.ok) throw new Error(payload.error || 'Message was not sent. Please try again.');
+                      if (!response.ok) throw new Error(payload.error || supportCopy.error);
                       setInput('');
                       const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}`);
                       if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
-                    } catch (error) { setGuestError(error instanceof Error ? error.message : 'Message was not sent. Please try again.'); }
+                    } catch (error) { setGuestError(error instanceof Error ? error.message : supportCopy.error); }
                     finally { setGuestSending(false); }
                   }}>
                     <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={3} className="w-full resize-y rounded-lg border border-border bg-background p-3 text-base leading-5 outline-none focus:border-primary" />
@@ -3170,7 +3170,7 @@ function SupportChatWidget() {
                   <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder={supportCopy.name} autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
                   <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={4} className="min-h-28 resize-y rounded-lg border border-border bg-background p-3 text-base outline-none focus:border-primary" />
                   {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
-                  <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
+                  <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
                 </form>
               )
             ) : isLoading ? (
