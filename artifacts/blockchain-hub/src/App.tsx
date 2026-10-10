@@ -3142,7 +3142,7 @@ function SupportChatWidget() {
                         <p className="mt-1 text-[10px] opacity-60">{message.senderRole === 'admin' ? supportCopy.supportTeam : ''}{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                       </div>
                     </div>)}
-                    {guestMessages.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">Loading your conversation…</p>}
+                    {guestMessages.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">{supportCopy.loadingConversation}</p>}
                   </div>
                   <form className="shrink-0 space-y-2" onSubmit={async e => {
                     e.preventDefault();
