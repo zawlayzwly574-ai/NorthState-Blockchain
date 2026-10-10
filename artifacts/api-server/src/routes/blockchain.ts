@@ -926,7 +926,6 @@ router.get("/mining-place", async (req, res) => {
       const previousTimestamp = previous ? Date.parse(previous.updatedAt) : Number.NaN;
       if (
         previous
-        && previous.status !== "fallback"
         && Number.isFinite(previousTimestamp)
         && now - previousTimestamp <= MINING_PLACE_MAX_STALE_AGE
       ) {
