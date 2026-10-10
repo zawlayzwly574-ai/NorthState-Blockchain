@@ -499,7 +499,7 @@ function PhoneOtpSignUp({ onBack }: { onBack: () => void }) {
 const LOGIN_LANGUAGES = [
   { code: 'en-US', label: 'US English', flag: '🇺🇸' },
   { code: 'es', label: 'Español', flag: '🇪🇸' },
-  { code: 'pt', label: 'Português', flag: '🇵🇹' },
+  { code: 'pt', label: 'Português', flag: '🇧🇷' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },
   { code: 'en-GB', label: 'UK English', flag: '🇬🇧' },
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
