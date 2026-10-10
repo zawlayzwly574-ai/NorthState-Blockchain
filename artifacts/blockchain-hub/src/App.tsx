@@ -3018,14 +3018,6 @@ function SupportChatWidget() {
                   <button type="submit" disabled={guestSending} className="flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? 'Sending…' : <><Send size={14} /> Send message</>}</button>
                 </form>
               )
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
-                  <Lock size={20} />
-                </div>
-                <p className="text-sm font-bold">Sign in to chat with support</p>
-                <p className="text-xs leading-5 text-muted-foreground">Create an account or sign in to get personalised help from our team.</p>
-              </div>
             ) : isLoading ? (
               <div className="flex h-full items-center justify-center">
                 <span className="text-xs text-muted-foreground">Loading…</span>
