@@ -1837,6 +1837,50 @@ router.post("/sms/verify-otp", async (req, res) => {
 
 // ─── Support chat ─────────────────────────────────────────────────────────────
 
+// Public pre-login contact form. Messages are stored in the existing support inbox so
+// the admin team can respond without changing existing account or wallet data.
+const publicSupportAttempts = new Map<string, { count: number; resetAt: number }>();
+router.post("/support/public-message", async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+  const content = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+  if (!name || name.length > 100) {
+    res.status(400).json({ error: "Please enter a name (up to 100 characters)." });
+    return;
+  }
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: "Please enter a valid email address." });
+    return;
+  }
+  if (!content || content.length > 3000) {
+    res.status(400).json({ error: "Please enter a message (up to 3,000 characters)." });
+    return;
+  }
+
+  const now = Date.now();
+  const clientKey = req.ip || req.socket.remoteAddress || "unknown";
+  const previous = publicSupportAttempts.get(clientKey);
+  if (previous && previous.resetAt > now && previous.count >= 5) {
+    res.status(429).json({ error: "Too many messages. Please try again later." });
+    return;
+  }
+  publicSupportAttempts.set(clientKey, previous && previous.resetAt > now
+    ? { count: previous.count + 1, resetAt: previous.resetAt }
+    : { count: 1, resetAt: now + 60 * 60 * 1000 });
+
+  const guestId = `guest_${randomBytes(18).toString("hex")}`;
+  const [thread] = await db.insert(supportThreadsTable)
+    .values({ clerkUserId: guestId, status: "open" }).returning();
+  await db.insert(supportMessagesTable).values({
+    threadId: thread.id,
+    senderRole: "user",
+    content: `Pre-login support request\nName: ${name}\nEmail: ${email}\n\n${content}`,
+  });
+  await db.update(supportThreadsTable).set({ updatedAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+  res.status(201).json({ sent: true });
+});
+
 router.get("/support/messages", async (req, res) => {
   const userId = getUserId(req);
   const [thread] = await db.select().from(supportThreadsTable)
