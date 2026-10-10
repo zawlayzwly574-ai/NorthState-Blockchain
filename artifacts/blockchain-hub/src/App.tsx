@@ -7,7 +7,7 @@ import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
   ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowUpRight, BarChart3, Bell, Check, ChevronDown, ChevronRight,
-  Clipboard, Copy, Eye, EyeOff, FileCheck2, Fingerprint, Home as HomeIcon, Landmark, LineChart,
+  Clipboard, Copy, Eye, EyeOff, FileCheck2, Fingerprint, Globe2, Home as HomeIcon, Landmark, LineChart,
   Lock, Mail, Menu, MessageCircle, Phone, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
   Sparkles, TrendingDown, TrendingUp, Upload, Wallet, X, Zap,
 } from 'lucide-react';
@@ -558,13 +558,30 @@ function useAppLanguage() {
 }
 function LanguageSelector({ compact = false }: { compact?: boolean }) {
   const { language, copy } = useAppLanguage();
-  return <label className={`inline-flex max-w-full items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-2 text-xs font-semibold text-foreground ${compact ? '' : 'sm:px-3'}`}>
-    <span aria-hidden="true">{LOGIN_LANGUAGES.find(item => item.code === language)?.flag ?? '🇺🇸'}</span>
-    {!compact && <span>{copy.language}</span>}
-    <select aria-label={copy.language} value={language} onChange={event => { setAppLanguage(event.target.value); }} className="max-w-[155px] bg-transparent text-xs font-semibold outline-none">
-      {LOGIN_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
-    </select>
-  </label>;
+  const [open, setOpen] = useState(false);
+  const current = LOGIN_LANGUAGES.find(item => item.code === language) ?? LOGIN_LANGUAGES[0];
+  return <div className="relative z-[60]">
+    <button type="button" aria-label={copy.language} aria-expanded={open} onClick={() => setOpen(value => !value)}
+      className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-[#151619] px-3 text-sm font-semibold text-white shadow-sm transition hover:border-primary/60 hover:bg-[#202126] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${compact ? '' : 'sm:px-3'}`}>
+      <Globe2 size={17} className="shrink-0 text-primary" />
+      <span aria-hidden="true">{current.flag}</span>
+      {!compact && <span className="max-w-[110px] truncate">{current.label}</span>}
+      <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+    </button>
+    {open && <>
+      <button type="button" aria-label="Close language menu" className="fixed inset-0 z-[-1] cursor-default" onClick={() => setOpen(false)} />
+      <div role="listbox" aria-label={copy.language} className="absolute right-0 top-[calc(100%+8px)] z-[70] max-h-[min(70vh,420px)] w-64 overflow-y-auto rounded-xl border border-[#383a40] bg-[#111214] p-1.5 text-white shadow-[0_18px_48px_rgba(0,0,0,.7)]">
+        {LOGIN_LANGUAGES.map(item => <button key={item.code} type="button" role="option" aria-selected={item.code === language}
+          onClick={() => { setAppLanguage(item.code); setOpen(false); }}
+          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-[#27292f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${item.code === language ? 'bg-[#28251c] text-[#e1b12c]' : 'text-white'}`}>
+          <span className="text-lg leading-none" aria-hidden="true">{item.flag}</span>
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          <span className="font-mono text-[10px] text-[#9ca3af]">{item.code}</span>
+          {item.code === language && <Check size={14} className="shrink-0 text-primary" />}
+        </button>)}
+      </div>
+    </>}
+  </div>;
 }
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
@@ -3110,7 +3127,7 @@ function SupportChatWidget() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 space-y-3">
             {!isLoaded ? null : !isSignedIn ? (
               guestId ? (
                 <div className="flex h-full min-h-0 flex-col gap-3">
@@ -3144,7 +3161,7 @@ function SupportChatWidget() {
                     } catch (error) { setGuestError(error instanceof Error ? error.message : supportCopy.error); }
                     finally { setGuestSending(false); }
                   }}>
-                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={3} className="w-full resize-y rounded-lg border border-border bg-background p-3 text-base leading-5 outline-none focus:border-primary" />
+                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={3} className="w-full resize-y rounded-lg border border-[#383a40] bg-[#111214] p-3 text-base leading-5 text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
                     {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
                     <button type="submit" disabled={guestSending || !input.trim()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
                   </form>
@@ -3173,8 +3190,8 @@ function SupportChatWidget() {
                   <div className="grid h-10 w-10 place-items-center self-center rounded-full bg-primary/12 text-primary"><MessageCircle size={19} /></div>
                   <p className="text-center text-sm font-bold">{supportCopy.contact}</p>
                   <p className="text-center text-xs leading-5 text-muted-foreground">{supportCopy.intro}</p>
-                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder={supportCopy.name} autoComplete="name" className="h-10 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
-                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={4} className="min-h-28 resize-y rounded-lg border border-border bg-background p-3 text-base outline-none focus:border-primary" />
+                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder={supportCopy.name} autoComplete="name" className="h-10 rounded-lg border border-[#383a40] bg-[#111214] px-3 text-base text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
+                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={4} className="min-h-28 resize-y rounded-lg border border-[#383a40] bg-[#111214] p-3 text-base text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
                   {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
                   <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
                 </form>
