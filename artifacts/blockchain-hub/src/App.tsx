@@ -147,7 +147,8 @@ function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: 
 }
 
 function PublicNav() {
-  return <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-5 py-5 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">How it works</a><a href="#security" className="transition hover:text-foreground">Security</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">About us</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">Markets</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">Mining Place</Link></nav><div className="flex items-center gap-2"><Link href="/sign-in" className="hidden rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground sm:inline-flex" data-testid="link-public-sign-in">Sign in</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)]" data-testid="link-public-sign-up">Open an account <ArrowUpRight size={15} /></Link></div></header>;
+  const { copy } = useAppLanguage();
+  return <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">{copy.how}</a><a href="#security" className="transition hover:text-foreground">{copy.security}</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">{copy.about}</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">{copy.markets}</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">{copy.mining}</Link></nav><div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"><LanguageSelector compact /><Link href="/sign-in" className="rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-public-sign-in">{copy.signIn}</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)] sm:px-4" data-testid="link-public-sign-up">{copy.signUp} <ArrowUpRight size={15} /></Link></div></header>;
 }
 
 function PublicFooter() {
@@ -164,12 +165,13 @@ function PublicFooter() {
 
 function Home() {
   const { isSignedIn } = useAuth();
+  const { copy } = useAppLanguage();
   const [, setLocation] = useLocation();
   useEffect(() => { if (isSignedIn) setLocation('/dashboard'); }, [isSignedIn]);
   return <main className="min-h-[100dvh] overflow-hidden"><PublicNav /><section className="relative mx-auto max-w-7xl px-5 pb-20 pt-16 lg:px-8 lg:pb-28 lg:pt-24">
     <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
     <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
-      <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />A calmer way to hold digital assets</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">Your money, with <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">Get started <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">Explore markets <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />Bank-grade controls</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />Transparent fees</span></div></div>
+      <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />{copy.tagline}</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">{copy.heroTitle} <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">{copy.heroDescription}</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">{copy.getStarted} <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">{copy.exploreMarkets} <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />{copy.controls}</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />{copy.fees}</span></div></div>
       <div className="animate-rise-2 relative">
         <div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6">
           <div className="mb-5 flex items-center justify-between">
@@ -505,30 +507,73 @@ const LOGIN_LANGUAGES = [
   { code: 'ja', label: '日本語', flag: '🇯🇵' },
   { code: 'zh', label: '中文', flag: '🇨🇳' },
   { code: 'ko', label: '한국어', flag: '🇰🇷' },
+  { code: 'th', label: 'ภาษาไทย', flag: '🇹🇭' },
+  { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
+  { code: 'en-SG', label: 'English (Singapore)', flag: '🇸🇬' },
+  { code: 'ms', label: 'Bahasa Melayu', flag: '🇲🇾' },
+  { code: 'my', label: 'မြန်မာဘာသာ', flag: '🇲🇲' },
 ] as const;
+
+type LoginLanguage = typeof LOGIN_LANGUAGES[number]['code'];
+const DEFAULT_LANGUAGE: LoginLanguage = 'en-US';
+function getSavedLanguage(): LoginLanguage {
+  try {
+    const saved = localStorage.getItem('nsl-login-language');
+    return LOGIN_LANGUAGES.some(item => item.code === saved) ? saved as LoginLanguage : DEFAULT_LANGUAGE;
+  } catch { return DEFAULT_LANGUAGE; }
+}
+function setAppLanguage(code: string) {
+  if (!LOGIN_LANGUAGES.some(item => item.code === code)) return;
+  try { localStorage.setItem('nsl-login-language', code); } catch {}
+  window.dispatchEvent(new CustomEvent('nslanguagechange', { detail: code }));
+}
+const LANGUAGE_COPY: Record<LoginLanguage, Record<string, string>> = {
+  'en-US': { language: 'Language', signIn: 'Sign in', signUp: 'Open an account', how: 'How it works', security: 'Security', about: 'About us', markets: 'Markets', mining: 'Mining Place', tagline: 'A calmer way to hold digital assets', heroTitle: 'Your money, with', heroDescription: 'North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.', getStarted: 'Get started', exploreMarkets: 'Explore markets', controls: 'Bank-grade controls', fees: 'Transparent fees', welcome: 'Welcome back', loginSubtitle: 'Sign in to access your North State Blockchain account', createAccount: 'Open your North State Blockchain account', createSubtitle: 'Create a secure account to begin', otp: 'Sign up with international phone OTP' },
+  'en-GB': { language: 'Language', signIn: 'Sign in', signUp: 'Open an account', how: 'How it works', security: 'Security', about: 'About us', markets: 'Markets', mining: 'Mining Place', tagline: 'A calmer way to hold digital assets', heroTitle: 'Your money, with', heroDescription: 'North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.', getStarted: 'Get started', exploreMarkets: 'Explore markets', controls: 'Bank-grade controls', fees: 'Transparent fees', welcome: 'Welcome back', loginSubtitle: 'Sign in to access your North State Blockchain account', createAccount: 'Open your North State Blockchain account', createSubtitle: 'Create a secure account to begin', otp: 'Sign up with international phone OTP' },
+  es: { language: 'Idioma', signIn: 'Iniciar sesión', signUp: 'Abrir una cuenta', how: 'Cómo funciona', security: 'Seguridad', about: 'Sobre nosotros', markets: 'Mercados', mining: 'Centro de minería', tagline: 'Una forma más tranquila de gestionar activos digitales', heroTitle: 'Tu dinero, con', heroDescription: 'North State Blockchain ofrece una visión clara de tus criptomonedas, con operaciones sencillas y contexto de mercado transparente.', getStarted: 'Comenzar', exploreMarkets: 'Explorar mercados', controls: 'Controles de nivel bancario', fees: 'Comisiones transparentes', welcome: 'Te damos la bienvenida', loginSubtitle: 'Inicia sesión en tu cuenta de North State Blockchain', createAccount: 'Abre tu cuenta de North State Blockchain', createSubtitle: 'Crea una cuenta segura para comenzar', otp: 'Registrarse con código OTP por teléfono' },
+  pt: { language: 'Idioma', signIn: 'Entrar', signUp: 'Abrir uma conta', how: 'Como funciona', security: 'Segurança', about: 'Sobre nós', markets: 'Mercados', mining: 'Área de mineração', tagline: 'Uma forma mais tranquila de manter ativos digitais', heroTitle: 'Seu dinheiro, com', heroDescription: 'A North State Blockchain oferece uma visão clara das suas criptomoedas, com operações simples e contexto de mercado transparente.', getStarted: 'Começar', exploreMarkets: 'Explorar mercados', controls: 'Controles de nível bancário', fees: 'Taxas transparentes', welcome: 'Bem-vindo de volta', loginSubtitle: 'Entre na sua conta North State Blockchain', createAccount: 'Abra sua conta North State Blockchain', createSubtitle: 'Crie uma conta segura para começar', otp: 'Cadastrar com código OTP por telefone' },
+  fr: { language: 'Langue', signIn: 'Se connecter', signUp: 'Ouvrir un compte', how: 'Fonctionnement', security: 'Sécurité', about: 'À propos', markets: 'Marchés', mining: 'Espace de minage', tagline: 'Une approche plus sereine des actifs numériques', heroTitle: 'Votre argent, avec', heroDescription: 'North State Blockchain offre une vue claire de vos cryptomonnaies, avec des opérations simples et un contexte de marché transparent.', getStarted: 'Commencer', exploreMarkets: 'Explorer les marchés', controls: 'Contrôles de niveau bancaire', fees: 'Frais transparents', welcome: 'Bon retour', loginSubtitle: 'Connectez-vous à votre compte North State Blockchain', createAccount: 'Ouvrez votre compte North State Blockchain', createSubtitle: 'Créez un compte sécurisé pour commencer', otp: 'Inscription par code OTP téléphonique' },
+  de: { language: 'Sprache', signIn: 'Anmelden', signUp: 'Konto eröffnen', how: 'So funktioniert es', security: 'Sicherheit', about: 'Über uns', markets: 'Märkte', mining: 'Mining-Bereich', tagline: 'Ein ruhigerer Umgang mit digitalen Vermögenswerten', heroTitle: 'Ihr Geld, mit', heroDescription: 'North State Blockchain bietet einen klaren Überblick über Ihre Kryptowährungen mit einfachen Wallet-Aktionen und transparentem Marktkontext.', getStarted: 'Loslegen', exploreMarkets: 'Märkte entdecken', controls: 'Sicherheit auf Bankniveau', fees: 'Transparente Gebühren', welcome: 'Willkommen zurück', loginSubtitle: 'Melden Sie sich bei Ihrem North State Blockchain-Konto an', createAccount: 'Eröffnen Sie Ihr North State Blockchain-Konto', createSubtitle: 'Erstellen Sie ein sicheres Konto', otp: 'Mit internationalem Telefon-OTP registrieren' },
+  it: { language: 'Lingua', signIn: 'Accedi', signUp: 'Apri un conto', how: 'Come funziona', security: 'Sicurezza', about: 'Chi siamo', markets: 'Mercati', mining: 'Area mining', tagline: 'Un modo più semplice per gestire gli asset digitali', heroTitle: 'Il tuo denaro, con', heroDescription: 'North State Blockchain offre una visione chiara delle criptovalute, con operazioni semplici e informazioni di mercato trasparenti.', getStarted: 'Inizia', exploreMarkets: 'Esplora i mercati', controls: 'Controlli di livello bancario', fees: 'Commissioni trasparenti', welcome: 'Bentornato', loginSubtitle: 'Accedi al tuo account North State Blockchain', createAccount: 'Apri il tuo account North State Blockchain', createSubtitle: 'Crea un account sicuro per iniziare', otp: 'Registrati con OTP telefonico internazionale' },
+  ja: { language: '言語', signIn: 'ログイン', signUp: 'アカウントを作成', how: '利用方法', security: 'セキュリティ', about: '会社概要', markets: '市場', mining: 'マイニング', tagline: 'デジタル資産をもっと安心して管理', heroTitle: 'あなたのお金を、', heroDescription: 'North State Blockchain は、シンプルなウォレット操作と透明な市場情報で暗号資産をわかりやすく管理できます。', getStarted: '始める', exploreMarkets: '市場を見る', controls: '銀行水準の管理', fees: '透明な手数料', welcome: 'おかえりなさい', loginSubtitle: 'North State Blockchain アカウントにログイン', createAccount: 'アカウントを作成', createSubtitle: '安全なアカウントを作成してください', otp: '電話 OTP で登録' },
+  zh: { language: '语言', signIn: '登录', signUp: '开设账户', how: '使用方法', security: '安全', about: '关于我们', markets: '市场', mining: '挖矿专区', tagline: '更安心地管理数字资产', heroTitle: '您的资金，与', heroDescription: 'North State Blockchain 通过简洁的钱包操作和透明的市场信息，让您清晰了解加密资产。', getStarted: '开始使用', exploreMarkets: '浏览市场', controls: '银行级安全控制', fees: '透明费用', welcome: '欢迎回来', loginSubtitle: '登录您的 North State Blockchain 账户', createAccount: '创建 North State Blockchain 账户', createSubtitle: '创建安全账户以开始使用', otp: '使用国际电话 OTP 注册' },
+  ko: { language: '언어', signIn: '로그인', signUp: '계정 만들기', how: '이용 방법', security: '보안', about: '소개', markets: '시장', mining: '마이닝 공간', tagline: '디지털 자산을 더 편안하게 관리하세요', heroTitle: '당신의 자산을,', heroDescription: 'North State Blockchain은 간편한 지갑 기능과 투명한 시장 정보로 암호화폐를 명확하게 보여줍니다.', getStarted: '시작하기', exploreMarkets: '시장 둘러보기', controls: '은행 수준의 보안', fees: '투명한 수수료', welcome: '다시 오신 것을 환영합니다', loginSubtitle: 'North State Blockchain 계정에 로그인하세요', createAccount: 'North State Blockchain 계정 만들기', createSubtitle: '안전한 계정을 만들어 시작하세요', otp: '국제 전화 OTP로 가입' },
+  th: { language: 'ภาษา', signIn: 'เข้าสู่ระบบ', signUp: 'เปิดบัญชี', how: 'วิธีใช้งาน', security: 'ความปลอดภัย', about: 'เกี่ยวกับเรา', markets: 'ตลาด', mining: 'พื้นที่ขุด', tagline: 'จัดการสินทรัพย์ดิจิทัลอย่างสบายใจยิ่งขึ้น', heroTitle: 'เงินของคุณ กับ', heroDescription: 'North State Blockchain ช่วยให้คุณดูสินทรัพย์คริปโตได้ชัดเจน พร้อมการใช้งานกระเป๋าที่ง่ายและข้อมูลตลาดที่โปร่งใส', getStarted: 'เริ่มต้นใช้งาน', exploreMarkets: 'สำรวจตลาด', controls: 'การควบคุมระดับธนาคาร', fees: 'ค่าธรรมเนียมโปร่งใส', welcome: 'ยินดีต้อนรับกลับ', loginSubtitle: 'เข้าสู่บัญชี North State Blockchain ของคุณ', createAccount: 'เปิดบัญชี North State Blockchain', createSubtitle: 'สร้างบัญชีที่ปลอดภัยเพื่อเริ่มต้น', otp: 'สมัครด้วยรหัส OTP ทางโทรศัพท์' },
+  vi: { language: 'Ngôn ngữ', signIn: 'Đăng nhập', signUp: 'Mở tài khoản', how: 'Cách hoạt động', security: 'Bảo mật', about: 'Về chúng tôi', markets: 'Thị trường', mining: 'Khu vực khai thác', tagline: 'Quản lý tài sản số an tâm hơn', heroTitle: 'Tài sản của bạn, cùng', heroDescription: 'North State Blockchain giúp bạn theo dõi tiền mã hóa rõ ràng với thao tác ví đơn giản và thông tin thị trường minh bạch.', getStarted: 'Bắt đầu', exploreMarkets: 'Khám phá thị trường', controls: 'Kiểm soát cấp ngân hàng', fees: 'Phí minh bạch', welcome: 'Chào mừng trở lại', loginSubtitle: 'Đăng nhập vào tài khoản North State Blockchain', createAccount: 'Mở tài khoản North State Blockchain', createSubtitle: 'Tạo tài khoản an toàn để bắt đầu', otp: 'Đăng ký bằng OTP điện thoại quốc tế' },
+  'en-SG': { language: 'Language', signIn: 'Sign in', signUp: 'Open an account', how: 'How it works', security: 'Security', about: 'About us', markets: 'Markets', mining: 'Mining Place', tagline: 'A calmer way to hold digital assets', heroTitle: 'Your money, with', heroDescription: 'North State Blockchain gives everyday investors a clear view of their crypto, with simple wallet actions and honest market context.', getStarted: 'Get started', exploreMarkets: 'Explore markets', controls: 'Bank-grade controls', fees: 'Transparent fees', welcome: 'Welcome back', loginSubtitle: 'Sign in to access your North State Blockchain account', createAccount: 'Open your North State Blockchain account', createSubtitle: 'Create a secure account to begin', otp: 'Sign up with international phone OTP' },
+  ms: { language: 'Bahasa', signIn: 'Log masuk', signUp: 'Buka akaun', how: 'Cara ia berfungsi', security: 'Keselamatan', about: 'Tentang kami', markets: 'Pasaran', mining: 'Ruang perlombongan', tagline: 'Urus aset digital dengan lebih tenang', heroTitle: 'Wang anda, bersama', heroDescription: 'North State Blockchain memberikan gambaran jelas tentang kripto anda dengan tindakan dompet yang mudah dan maklumat pasaran yang telus.', getStarted: 'Mulakan', exploreMarkets: 'Teroka pasaran', controls: 'Kawalan bertaraf bank', fees: 'Yuran telus', welcome: 'Selamat kembali', loginSubtitle: 'Log masuk ke akaun North State Blockchain anda', createAccount: 'Buka akaun North State Blockchain anda', createSubtitle: 'Cipta akaun selamat untuk bermula', otp: 'Daftar dengan OTP telefon antarabangsa' },
+  my: { language: 'ဘာသာစကား', signIn: 'အကောင့်ဝင်ရန်', signUp: 'အကောင့်ဖွင့်ရန်', how: 'အသုံးပြုပုံ', security: 'လုံခြုံရေး', about: 'ကျွန်ုပ်တို့အကြောင်း', markets: 'ဈေးကွက်များ', mining: 'Mining နေရာ', tagline: 'ဒစ်ဂျစ်တယ်ပိုင်ဆိုင်မှုများကို ပိုမိုစိတ်ချစွာ စီမံပါ', heroTitle: 'သင့်ငွေကြေးကို', heroDescription: 'North State Blockchain သည် ရိုးရှင်းသော Wallet လုပ်ဆောင်ချက်များနှင့် ပွင့်လင်းမြင်သာသော ဈေးကွက်အချက်အလက်များဖြင့် သင့် Crypto ကို ရှင်းလင်းစွာ ကြည့်ရှုနိုင်စေပါသည်။', getStarted: 'စတင်ရန်', exploreMarkets: 'ဈေးကွက်များ ကြည့်ရန်', controls: 'ဘဏ်အဆင့် လုံခြုံရေးထိန်းချုပ်မှု', fees: 'ပွင့်လင်းမြင်သာသော အခကြေးငွေ', welcome: 'ပြန်လည်ကြိုဆိုပါတယ်', loginSubtitle: 'သင့် North State Blockchain အကောင့်သို့ ဝင်ပါ', createAccount: 'North State Blockchain အကောင့်ဖွင့်ပါ', createSubtitle: 'စတင်အသုံးပြုရန် လုံခြုံသောအကောင့် ဖန်တီးပါ', otp: 'နိုင်ငံတကာဖုန်း OTP ဖြင့် အကောင့်ဖွင့်ရန်' },
+};
+function useAppLanguage() {
+  const [language, setLanguage] = useState<LoginLanguage>(getSavedLanguage);
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const code = (event as CustomEvent<string>).detail;
+      if (LOGIN_LANGUAGES.some(item => item.code === code)) setLanguage(code as LoginLanguage);
+    };
+    window.addEventListener('nslanguagechange', onChange);
+    return () => window.removeEventListener('nslanguagechange', onChange);
+  }, []);
+  return { language, copy: LANGUAGE_COPY[language] ?? LANGUAGE_COPY[DEFAULT_LANGUAGE] };
+}
+function LanguageSelector({ compact = false }: { compact?: boolean }) {
+  const { language, copy } = useAppLanguage();
+  return <label className={`inline-flex max-w-full items-center gap-2 rounded-xl border border-border bg-card px-2.5 py-2 text-xs font-semibold text-foreground ${compact ? '' : 'sm:px-3'}`}>
+    <span aria-hidden="true">{LOGIN_LANGUAGES.find(item => item.code === language)?.flag ?? '🇺🇸'}</span>
+    {!compact && <span>{copy.language}</span>}
+    <select aria-label={copy.language} value={language} onChange={event => { setAppLanguage(event.target.value); }} className="max-w-[155px] bg-transparent text-xs font-semibold outline-none">
+      {LOGIN_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
+    </select>
+  </label>;
+}
 
 function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
   const [usePhoneOtp, setUsePhoneOtp] = useState(false);
-  const [language, setLanguage] = useState(() => {
-    try { return localStorage.getItem('nsl-login-language') || 'en-US'; } catch { return 'en-US'; }
-  });
-  const chooseLanguage = (code: string) => {
-    setLanguage(code);
-    try { localStorage.setItem('nsl-login-language', code); } catch {}
-    window.dispatchEvent(new CustomEvent('nslanguagechange', { detail: code }));
-  };
+  const { copy } = useAppLanguage();
   return <main className="grid min-h-[100dvh] place-items-center bg-background px-4 py-8">
     <div className="w-full max-w-[440px] animate-rise">
       <div className="mb-5 flex justify-center"><Logo /></div>
-      <div className="mb-6 flex justify-end">
-        <label className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground">
-          <span aria-hidden="true">{LOGIN_LANGUAGES.find(item => item.code === language)?.flag ?? '🇺🇸'}</span>
-          <span>Language</span>
-          <select aria-label="Choose language" value={language} onChange={e => chooseLanguage(e.target.value)} className="max-w-[150px] bg-transparent text-xs font-semibold outline-none">
-            {LOGIN_LANGUAGES.map(item => <option key={item.code} value={item.code}>{item.flag} {item.label}</option>)}
-          </select>
-        </label>
-      </div>
+      <div className="mb-6 flex justify-end"><LanguageSelector /></div>
       {signUp
         ? usePhoneOtp
           ? <PhoneOtpSignUp onBack={() => setUsePhoneOtp(false)} />
@@ -536,7 +581,7 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
               <button type="button" onClick={() => setUsePhoneOtp(true)}
                 className="mb-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/5 px-4 text-sm font-extrabold text-primary transition hover:bg-primary/10"
                 data-testid="button-signup-with-phone-otp">
-                <Smartphone size={16} /> Sign up with international phone OTP
+                <Smartphone size={16} /> {copy.otp}
               </button>
               <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} fallbackRedirectUrl={`${basePath}/dashboard`} />
             </>
@@ -3121,6 +3166,11 @@ function ClerkApp() {
     ja: { signInTitle: 'おかえりなさい', signInSubtitle: 'North State Blockchain アカウントにログイン', signUpTitle: 'アカウントを作成', signUpSubtitle: '安全なアカウントを作成してください' },
     zh: { signInTitle: '欢迎回来', signInSubtitle: '登录您的 North State Blockchain 账户', signUpTitle: '创建 North State Blockchain 账户', signUpSubtitle: '创建安全账户以开始使用' },
     ko: { signInTitle: '다시 오신 것을 환영합니다', signInSubtitle: 'North State Blockchain 계정에 로그인하세요', signUpTitle: 'North State Blockchain 계정 만들기', signUpSubtitle: '안전한 계정을 만들어 시작하세요' },
+    th: { signInTitle: 'ยินดีต้อนรับกลับ', signInSubtitle: 'เข้าสู่บัญชี North State Blockchain ของคุณ', signUpTitle: 'เปิดบัญชี North State Blockchain', signUpSubtitle: 'สร้างบัญชีที่ปลอดภัยเพื่อเริ่มต้น' },
+    vi: { signInTitle: 'Chào mừng trở lại', signInSubtitle: 'Đăng nhập vào tài khoản North State Blockchain', signUpTitle: 'Mở tài khoản North State Blockchain', signUpSubtitle: 'Tạo tài khoản an toàn để bắt đầu' },
+    'en-SG': { signInTitle: 'Welcome back', signInSubtitle: 'Sign in to access your North State Blockchain account', signUpTitle: 'Open your North State Blockchain account', signUpSubtitle: 'Create a secure account to begin' },
+    ms: { signInTitle: 'Selamat kembali', signInSubtitle: 'Log masuk ke akaun North State Blockchain anda', signUpTitle: 'Buka akaun North State Blockchain anda', signUpSubtitle: 'Cipta akaun selamat untuk bermula' },
+    my: { signInTitle: 'ပြန်လည်ကြိုဆိုပါတယ်', signInSubtitle: 'သင့် North State Blockchain အကောင့်သို့ ဝင်ပါ', signUpTitle: 'North State Blockchain အကောင့်ဖွင့်ပါ', signUpSubtitle: 'စတင်အသုံးပြုရန် လုံခြုံသောအကောင့် ဖန်တီးပါ' },
   };
   const selectedCopy = authCopy[loginLanguage] ?? authCopy['en-US'];
   const stripBase = (path: string) => basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
