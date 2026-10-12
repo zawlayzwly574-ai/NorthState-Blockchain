@@ -427,9 +427,12 @@ export default function Users() {
             {cleanupMessage}
           </div>
         )}
-        {isError && users && (
+        {isError && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 bg-amber-500/10 px-5 py-3 text-sm text-amber-200" role="alert">
-            <span>Could not refresh the user list. Showing the last loaded results.</span>
+            <div className="min-w-0">
+              <p>{users ? 'Could not refresh the user list. Showing the last loaded results.' : 'Could not load the user list. Your saved user data has not been changed.'}</p>
+              {!users && <p className="mt-1 break-words text-xs text-amber-100/80">{error instanceof Error ? error.message : 'Check the API connection and admin authorization.'}</p>}
+            </div>
             <button
               type="button"
               disabled={isFetching}
