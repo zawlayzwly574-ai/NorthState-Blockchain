@@ -858,8 +858,11 @@ export function TradingPage() {
         </div>
       )}
 
-      {/* ── Asset selector ── */}
-      <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+      {/* ── Responsive trading workspace: persistent vertical asset rail ── */}
+      <div className="grid grid-cols-[4.15rem_minmax(0,1fr)] items-start gap-2 sm:grid-cols-[7.25rem_minmax(0,1fr)] sm:gap-3">
+        <aside className="sticky top-2 min-w-0 rounded-xl border border-border/60 bg-card/80 p-1 sm:rounded-2xl sm:p-2" aria-label="Choose trading asset">
+          <p className="mb-1 hidden px-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:block">Markets</p>
+          <div className="flex flex-col gap-1">
         {tradingAssets.map(a => {
           const mkt = market.find(m => m.symbol === a);
           const chg = mkt?.change24h ?? 0;
@@ -871,27 +874,29 @@ export function TradingPage() {
                 setAsset(a);
                 setAmount(String(minTradeAmountFor(a)));
               }}
-              className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold transition active:scale-95 ${
+              className={`w-full min-w-0 rounded-lg px-1 py-2 text-[9px] font-bold leading-tight transition active:scale-95 sm:rounded-xl sm:px-2 sm:py-2.5 sm:text-xs ${
                 asset === a
                   ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
                   : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
               }`}
             >
-              <span className="block">{a}</span>
+              <span className="block truncate">{a}</span>
               {a === 'GOLD' ? (
                 <span className={`block font-mono text-[9px] font-normal ${asset === a ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
                   up to 95%
                 </span>
               ) : mkt && (
-                <span className={`block font-mono text-[9px] font-normal ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
+                <span className={`mt-0.5 block truncate font-mono text-[8px] font-normal sm:text-[9px] ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
                   {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
                 </span>
               )}
             </button>
           );
         })}
-      </div>
+          </div>
+        </aside>
 
+        <main className="min-w-0">
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
         <PriceChart
@@ -1093,6 +1098,7 @@ export function TradingPage() {
           </p>
         )}
         </div>
+        </main>
       </div>
 
       <FuturesPositions
