@@ -13,16 +13,22 @@ export default function Login() {
     e.preventDefault();
     if (!key.trim()) return;
 
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\\/+$/, '');
+    if (!apiBaseUrl) {
+      setError('Admin API is not configured. Please contact support.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      // Validate the environment-backed key without requiring database access.
+      // Validate against the configured API server, not the Vercel SPA fallback.
       const normalizedKey = key.trim();
-      const res = await fetch('/api/admin/auth/validate', {
+      const res = await fetch(`${apiBaseUrl}/api/admin/auth/validate`, {
         headers: { 'X-Admin-Key': normalizedKey }
       });
-      
+
       if (res.ok) {
         setAdminKey(normalizedKey);
         setLocation('/dashboard');
@@ -54,7 +60,7 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-50" />
-          
+
           <div className="space-y-4">
             <div>
               <label htmlFor="adminKey" className="block text-xs font-medium font-mono text-muted-foreground mb-1.5 uppercase tracking-wider">
