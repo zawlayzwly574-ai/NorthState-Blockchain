@@ -1098,6 +1098,7 @@ export function TradingPage() {
           </p>
         )}
         </div>
+      </div>
         </main>
       </div>
 
