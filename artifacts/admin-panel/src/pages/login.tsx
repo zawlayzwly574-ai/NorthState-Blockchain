@@ -13,7 +13,7 @@ export default function Login() {
     e.preventDefault();
     if (!key.trim()) return;
 
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\\/+$/, '');
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '');
     if (!apiBaseUrl) {
       setError('Admin API is not configured. Please contact support.');
       return;
