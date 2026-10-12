@@ -101,7 +101,13 @@ describe("member route authentication", () => {
 
   beforeEach(() => {
     getUser.mockReset();
-    getUser.mockResolvedValue({ privateMetadata: {} });
+    getUser.mockResolvedValue({
+      privateMetadata: {},
+      emailAddresses: [{ id: "email_1", emailAddress: "alex@example.com" }],
+      primaryEmailAddressId: "email_1",
+      firstName: "Alex",
+      lastName: "Morgan",
+    });
     select.mockReset();
     select.mockReturnValue({
       from: () => ({

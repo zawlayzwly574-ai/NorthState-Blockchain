@@ -30,6 +30,26 @@ import {
 } from '@workspace/api-client-react';
 import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
 import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
+const TRADING_UI_COPY: Record<string, Record<string, string>> = {
+es: {"Select Timeframe":"Seleccionar intervalo","Cancel":"Cancelar","Trade Details":"Detalles de la operación","Status":"Estado","Trading Balance":"Saldo de trading","Retry account":"Reintentar cuenta","Retry trades":"Reintentar operaciones","No trading balance":"Sin saldo de trading","Trade Amount (USDT)":"Importe de operación (USDT)","Expiry Timeframe":"Plazo de vencimiento","BUY LONG":"COMPRAR / LARGO","SELL SHORT":"VENDER / CORTO","Current Price":"Precio actual","Purchase Price":"Precio de compra","Leverage":"Apalancamiento","Retry":"Reintentar","View My Positions":"Ver mis posiciones","Payout":"Pago","If Win":"Si ganas","If Loss":"Si pierdes","Price will rise ↑":"El precio subirá ↑","Price will fall ↓":"El precio bajará ↓","Available:":"Disponible:"},
+pt: {"Select Timeframe":"Selecionar período","Cancel":"Cancelar","Trade Details":"Detalhes da operação","Status":"Status","Trading Balance":"Saldo de trading","Retry account":"Tentar conta novamente","Retry trades":"Tentar operações novamente","No trading balance":"Sem saldo de trading","Trade Amount (USDT)":"Valor da operação (USDT)","Expiry Timeframe":"Prazo de vencimento","BUY LONG":"COMPRAR / LONG","SELL SHORT":"VENDER / SHORT","Current Price":"Preço atual","Purchase Price":"Preço de compra","Leverage":"Alavancagem","Retry":"Tentar novamente","View My Positions":"Ver minhas posições","Payout":"Pagamento","If Win":"Se ganhar","If Loss":"Se perder"},
+fr: {"Select Timeframe":"Choisir la durée","Cancel":"Annuler","Trade Details":"Détails de la transaction","Status":"Statut","Trading Balance":"Solde de trading","Retry account":"Réessayer le compte","Retry trades":"Réessayer les transactions","No trading balance":"Aucun solde de trading","Trade Amount (USDT)":"Montant de l’opération (USDT)","Expiry Timeframe":"Durée d’expiration","BUY LONG":"ACHAT / LONG","SELL SHORT":"VENTE / SHORT","Current Price":"Prix actuel","Purchase Price":"Prix d’achat","Leverage":"Effet de levier","Retry":"Réessayer","View My Positions":"Voir mes positions","Payout":"Paiement","If Win":"En cas de gain","If Loss":"En cas de perte"},
+de: {"Select Timeframe":"Zeitrahmen wählen","Cancel":"Abbrechen","Trade Details":"Handelsdetails","Status":"Status","Trading Balance":"Trading-Guthaben","Retry account":"Konto erneut versuchen","Retry trades":"Trades erneut versuchen","No trading balance":"Kein Trading-Guthaben","Trade Amount (USDT)":"Handelsbetrag (USDT)","Expiry Timeframe":"Ablaufzeitraum","BUY LONG":"KAUFEN / LONG","SELL SHORT":"VERKAUFEN / SHORT","Current Price":"Aktueller Preis","Purchase Price":"Kaufpreis","Leverage":"Hebel","Retry":"Erneut versuchen","View My Positions":"Meine Positionen ansehen","Payout":"Auszahlung","If Win":"Bei Gewinn","If Loss":"Bei Verlust"},
+it: {"Select Timeframe":"Seleziona intervallo","Cancel":"Annulla","Trade Details":"Dettagli operazione","Status":"Stato","Trading Balance":"Saldo trading","Retry account":"Riprova account","Retry trades":"Riprova operazioni","No trading balance":"Nessun saldo trading","Trade Amount (USDT)":"Importo operazione (USDT)","Expiry Timeframe":"Durata di scadenza","BUY LONG":"ACQUISTA / LONG","SELL SHORT":"VENDI / SHORT","Current Price":"Prezzo attuale","Purchase Price":"Prezzo di acquisto","Leverage":"Leva","Retry":"Riprova","View My Positions":"Visualizza le mie posizioni","Payout":"Pagamento","If Win":"Se vinci","If Loss":"Se perdi"},
+ja: {"Select Timeframe":"時間枠を選択","Cancel":"キャンセル","Trade Details":"取引詳細","Status":"状態","Trading Balance":"取引残高","Retry account":"口座を再試行","Retry trades":"取引を再試行","No trading balance":"取引残高がありません","Trade Amount (USDT)":"取引額（USDT）","Expiry Timeframe":"満期時間","BUY LONG":"買い（ロング）","SELL SHORT":"売り（ショート）","Current Price":"現在価格","Purchase Price":"購入価格","Leverage":"レバレッジ","Retry":"再試行","View My Positions":"保有ポジションを見る","Payout":"支払額","If Win":"勝った場合","If Loss":"負けた場合"},
+zh: {"Select Timeframe":"选择时间范围","Cancel":"取消","Trade Details":"交易详情","Status":"状态","Trading Balance":"交易余额","Retry account":"重试账户","Retry trades":"重试交易","No trading balance":"没有交易余额","Trade Amount (USDT)":"交易金额（USDT）","Expiry Timeframe":"到期时间","BUY LONG":"买入 / 做多","SELL SHORT":"卖出 / 做空","Current Price":"当前价格","Purchase Price":"买入价格","Leverage":"杠杆","Retry":"重试","View My Positions":"查看我的持仓","Payout":"收益","If Win":"如果获胜","If Loss":"如果亏损"},
+ko: {"Select Timeframe":"시간 범위 선택","Cancel":"취소","Trade Details":"거래 세부정보","Status":"상태","Trading Balance":"거래 잔액","Retry account":"계정 다시 시도","Retry trades":"거래 다시 시도","No trading balance":"거래 잔액 없음","Trade Amount (USDT)":"거래 금액 (USDT)","Expiry Timeframe":"만기 시간","BUY LONG":"매수 / 롱","SELL SHORT":"매도 / 숏","Current Price":"현재 가격","Purchase Price":"매수가","Leverage":"레버리지","Retry":"다시 시도","View My Positions":"내 포지션 보기","Payout":"지급액","If Win":"승리 시","If Loss":"패배 시"},
+th: {"Select Timeframe":"เลือกกรอบเวลา","Cancel":"ยกเลิก","Trade Details":"รายละเอียดการเทรด","Status":"สถานะ","Trading Balance":"ยอดคงเหลือสำหรับเทรด","Retry account":"ลองโหลดบัญชีอีกครั้ง","Retry trades":"ลองโหลดรายการเทรดอีกครั้ง","No trading balance":"ไม่มียอดคงเหลือสำหรับเทรด","Trade Amount (USDT)":"จำนวนเทรด (USDT)","Expiry Timeframe":"ระยะเวลาหมดอายุ","BUY LONG":"ซื้อ / LONG","SELL SHORT":"ขาย / SHORT","Current Price":"ราคาปัจจุบัน","Purchase Price":"ราคาซื้อ","Leverage":"เลเวอเรจ","Retry":"ลองอีกครั้ง","View My Positions":"ดูสถานะของฉัน","Payout":"ผลตอบแทน","If Win":"หากชนะ","If Loss":"หากแพ้"},
+vi: {"Select Timeframe":"Chọn khung thời gian","Cancel":"Hủy","Trade Details":"Chi tiết giao dịch","Status":"Trạng thái","Trading Balance":"Số dư giao dịch","Retry account":"Thử tải tài khoản lại","Retry trades":"Thử tải giao dịch lại","No trading balance":"Không có số dư giao dịch","Trade Amount (USDT)":"Số tiền giao dịch (USDT)","Expiry Timeframe":"Thời hạn","BUY LONG":"MUA / LONG","SELL SHORT":"BÁN / SHORT","Current Price":"Giá hiện tại","Purchase Price":"Giá mua","Leverage":"Đòn bẩy","Retry":"Thử lại","View My Positions":"Xem vị thế của tôi","Payout":"Khoản trả","If Win":"Nếu thắng","If Loss":"Nếu thua"},
+ms: {"Select Timeframe":"Pilih tempoh masa","Cancel":"Batal","Trade Details":"Butiran dagangan","Status":"Status","Trading Balance":"Baki dagangan","Retry account":"Cuba akaun semula","Retry trades":"Cuba dagangan semula","No trading balance":"Tiada baki dagangan","Trade Amount (USDT)":"Jumlah dagangan (USDT)","Expiry Timeframe":"Tempoh tamat","BUY LONG":"BELI / LONG","SELL SHORT":"JUAL / SHORT","Current Price":"Harga semasa","Purchase Price":"Harga belian","Leverage":"Leveraj","Retry":"Cuba lagi","View My Positions":"Lihat posisi saya","Payout":"Bayaran","If Win":"Jika menang","If Loss":"Jika kalah"},
+my: {"Select Timeframe":"အချိန်ကာလ ရွေးချယ်ရန်","Cancel":"ပယ်ဖျက်ရန်","Trade Details":"ကုန်သွယ်မှု အသေးစိတ်","Status":"အခြေအနေ","Trading Balance":"ကုန်သွယ်မှု လက်ကျန်","Retry account":"အကောင့်ကို ပြန်စမ်းရန်","Retry trades":"ကုန်သွယ်မှုများကို ပြန်စမ်းရန်","No trading balance":"ကုန်သွယ်မှု လက်ကျန်မရှိပါ","Trade Amount (USDT)":"ကုန်သွယ်မှုပမာဏ (USDT)","Expiry Timeframe":"သက်တမ်းကုန်ချိန်","BUY LONG":"ဝယ်ယူ / LONG","SELL SHORT":"ရောင်းချ / SHORT","Current Price":"လက်ရှိဈေးနှုန်း","Purchase Price":"ဝယ်ယူဈေးနှုန်း","Leverage":"လီဗာရေ့ချ်","Retry":"ပြန်ကြိုးစားရန်","View My Positions":"ကျွန်ုပ်၏ Position များကိုကြည့်ရန်","Payout":"ရရှိမည့်ငွေ","If Win":"နိုင်လျှင်","If Loss":"ရှုံးလျှင်"}
+};
+function tradingText(english: string): string {
+  let language = 'en-US';
+  try { language = localStorage.getItem('nsl-login-language') || 'en-US'; } catch {}
+  return TRADING_UI_COPY[language]?.[english] ?? english;
+}
+
 import {
   Dialog,
   DialogContent,
@@ -282,7 +302,7 @@ function TimeframeSheet({
       />
       <div className="fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-border bg-[hsl(222_10%_8%)] px-5 pb-10 pt-5">
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-border" />
-        <p className="mb-4 text-center text-sm font-bold tracking-tight">Select Timeframe</p>
+        <p className="mb-4 text-center text-sm font-bold tracking-tight"> {tradingText('Select Timeframe')} </p>
         <div className="grid grid-cols-4 gap-2 sm:grid-cols-5">
           {TIMEFRAMES.map(tf => (
             <button
@@ -304,7 +324,7 @@ function TimeframeSheet({
           onClick={onClose}
           className="mt-5 w-full rounded-xl py-3 text-sm text-muted-foreground hover:text-foreground transition"
         >
-          Cancel
+          {tradingText('Cancel')}
         </button>
       </div>
     </>
@@ -359,7 +379,7 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
       >
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trade Details</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"> {tradingText('Trade Details')} </p>
             <h2 id="trade-detail-title" className="mt-1 text-xl font-extrabold tracking-tight">
               {trade.asset}/USD
             </h2>
@@ -410,7 +430,7 @@ function TradeDetailModal({ trade, onClose }: { trade: Trade; onClose: () => voi
             </span>
           </div>
           <div className="flex items-center justify-between gap-4 px-1 py-3">
-            <span className="text-xs text-muted-foreground">Status</span>
+            <span className="text-xs text-muted-foreground"> {tradingText('Status')} </span>
             <span className={`rounded-full bg-secondary px-2.5 py-1 text-[10px] font-extrabold uppercase ${resultTone}`}>
               {resultLabel}
             </span>
@@ -568,13 +588,13 @@ function ActiveTradeStatusModal({
               </dd>
             </div>
             <div className="flex items-center justify-between gap-4 py-3">
-              <dt className="text-sm text-muted-foreground">Current Price</dt>
+              <dt className="text-sm text-muted-foreground"> {tradingText('Current Price')} </dt>
               <dd className="font-mono text-sm font-bold tabular-nums" data-testid="text-trade-current-price">
                 {currentPrice === null ? 'Waiting for quote' : `$${formatTradePrice(currentPrice)}`}
               </dd>
             </div>
             <div className="flex items-center justify-between gap-4 py-3">
-              <dt className="text-sm text-muted-foreground">Purchase Price</dt>
+              <dt className="text-sm text-muted-foreground"> {tradingText('Purchase Price')} </dt>
               <dd className="font-mono text-sm font-bold tabular-nums" data-testid="text-trade-purchase-price">
                 ${formatTradePrice(trade.entryPrice)}
               </dd>
@@ -792,7 +812,7 @@ export function TradingPage() {
       {/* ── Header row ── */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-4 py-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Trading Balance</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground"> {tradingText('Trading Balance')} </p>
           <p className="mt-0.5 font-mono text-xl font-extrabold">
             {account ? `$${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
           </p>
@@ -814,8 +834,8 @@ export function TradingPage() {
             {account && ' The last successfully loaded account balance remains visible.'}
           </span>
           <div className="flex gap-2">
-            {accountError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchAccount()} data-testid="button-retry-trading-account">Retry account</button>}
-            {tradesError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchTrades()} data-testid="button-retry-trades">Retry trades</button>}
+            {accountError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchAccount()} data-testid="button-retry-trading-account"> {tradingText('Retry account')} </button>}
+            {tradesError && <button type="button" className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground hover:bg-secondary" onClick={() => void refetchTrades()} data-testid="button-retry-trades"> {tradingText('Retry trades')} </button>}
           </div>
         </div>
       )}
@@ -830,7 +850,7 @@ export function TradingPage() {
         <div className="mb-3 flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-4">
           <AlertCircle size={18} className="mt-0.5 shrink-0 text-amber-400" />
           <div>
-            <p className="text-sm font-bold text-amber-300">No trading balance</p>
+            <p className="text-sm font-bold text-amber-300"> {tradingText('No trading balance')} </p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               Make a deposit and wait for admin approval. Your approved deposit amount will automatically fund your trading account.
             </p>
@@ -1009,7 +1029,7 @@ export function TradingPage() {
 
         {/* Timeframe */}
         <div className="mb-4">
-          <label className="mb-1 block text-xs font-bold text-muted-foreground">Expiry Timeframe</label>
+          <label className="mb-1 block text-xs font-bold text-muted-foreground"> {tradingText('Expiry Timeframe')} </label>
           <button
             type="button"
             onClick={() => setShowPicker(true)}
@@ -1027,17 +1047,17 @@ export function TradingPage() {
         {/* Payout summary */}
         <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Payout</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('Payout')} </p>
             <p className="font-mono font-bold text-primary">{Math.round(payoutRate * 100)}%</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Win</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Win')} </p>
             <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
           </div>
           <div className="h-full w-px bg-border/50" />
           <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">If Loss</p>
+            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Loss')} </p>
             <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
           </div>
         </div>
@@ -1052,8 +1072,8 @@ export function TradingPage() {
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
-            <span className="text-base font-extrabold tracking-tight">BUY LONG</span>
-            <span className="text-[11px] font-normal text-green-400/60">Price will rise ↑</span>
+            <span className="text-base font-extrabold tracking-tight"> {tradingText('BUY LONG')} </span>
+            <span className="text-[11px] font-normal text-green-400/60">{tradingText('Price will rise ↑')}</span>
           </button>
           <button
             type="button"
@@ -1063,8 +1083,8 @@ export function TradingPage() {
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
-            <span className="text-base font-extrabold tracking-tight">SELL SHORT</span>
-            <span className="text-[11px] font-normal text-red-400/60">Price will fall ↓</span>
+            <span className="text-base font-extrabold tracking-tight"> {tradingText('SELL SHORT')} </span>
+            <span className="text-[11px] font-normal text-red-400/60">{tradingText('Price will fall ↓')}</span>
           </button>
         </div>
         {tradeError && (
@@ -1282,7 +1302,7 @@ export function TradingPage() {
 
             <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-border/40 bg-secondary/25 p-3 text-center">
               <div>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Live reference</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{tradingText('Live reference')}</p>
                 <p className="mt-1 font-mono text-sm font-bold" data-testid="text-futures-mark-price">
                   {freshFuturesQuote && futuresQuote?.price
                     ? `$${futuresQuote.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`
@@ -1330,7 +1350,7 @@ export function TradingPage() {
 
             <div className="mb-4">
               <div className="mb-1.5 flex items-center justify-between">
-                <label className="text-xs font-bold text-muted-foreground">Leverage</label>
+                <label className="text-xs font-bold text-muted-foreground"> {tradingText('Leverage')} </label>
                 <div className="relative">
                   <select
                     value={futuresLeverage}
@@ -1417,7 +1437,7 @@ export function TradingPage() {
             {(accountError || futuresPositionsError) && (
               <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert" data-testid="status-futures-data-error">
                 <span>Futures balance or positions could not be loaded.</span>
-                <button type="button" className="font-bold underline" onClick={() => { void refetchAccount(); void refetchFuturesPositions(); }} data-testid="button-retry-futures-data">Retry</button>
+                <button type="button" className="font-bold underline" onClick={() => { void refetchAccount(); void refetchFuturesPositions(); }} data-testid="button-retry-futures-data"> {tradingText('Retry')} </button>
               </div>
             )}
             <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
@@ -1447,7 +1467,7 @@ export function TradingPage() {
                   <button type="button" data-testid="button-view-futures-positions" className="mt-2 underline" onClick={() => {
                     setShowFutures(false);
                     requestAnimationFrame(() => document.getElementById('futures-positions-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-                  }}>View My Positions</button>
+                  }}> {tradingText('View My Positions')} </button>
                 )}
               </div>
             )}
