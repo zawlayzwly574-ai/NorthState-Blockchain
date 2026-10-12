@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X, Search, Check } from 'lucide-react';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -629,6 +629,8 @@ function ActiveTradeStatusModal({
 
 export function TradingPage() {
   const [asset, setAsset] = useState('BTC');
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [assetSearch, setAssetSearch] = useState('');
   const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
@@ -858,44 +860,104 @@ export function TradingPage() {
         </div>
       )}
 
-      {/* ── Responsive trading workspace: persistent vertical asset rail ── */}
-      <div className="grid grid-cols-[4.15rem_minmax(0,1fr)] items-start gap-2 sm:grid-cols-[7.25rem_minmax(0,1fr)] sm:gap-3">
-        <aside className="sticky top-2 min-w-0 rounded-xl border border-border/60 bg-card/80 p-1 sm:rounded-2xl sm:p-2" aria-label="Choose trading asset">
-          <p className="mb-1 hidden px-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:block">Markets</p>
-          <div className="flex flex-col gap-1">
-        {tradingAssets.map(a => {
-          const mkt = market.find(m => m.symbol === a);
-          const chg = mkt?.change24h ?? 0;
-          return (
-            <button
-              key={a}
-              type="button"
-              onClick={() => {
-                setAsset(a);
-                setAmount(String(minTradeAmountFor(a)));
-              }}
-              className={`w-full min-w-0 rounded-lg px-1 py-2 text-[9px] font-bold leading-tight transition active:scale-95 sm:rounded-xl sm:px-2 sm:py-2.5 sm:text-xs ${
-                asset === a
-                  ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
-                  : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="block truncate">{a}</span>
-              {a === 'GOLD' ? (
-                <span className={`block font-mono text-[9px] font-normal ${asset === a ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                  up to 95%
-                </span>
-              ) : mkt && (
-                <span className={`mt-0.5 block truncate font-mono text-[8px] font-normal sm:text-[9px] ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
-                  {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
-                </span>
-              )}
-            </button>
-          );
-        })}
-          </div>
-        </aside>
+      {/* ── Trading workspace with compact searchable coin selector ── */}
+      <div className="min-w-0">
+        <div className="relative z-20 mb-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            aria-haspopup="listbox"
+            aria-expanded={assetPickerOpen}
+            onClick={() => { setAssetPickerOpen(open => !open); setAssetSearch(''); }}
+            className="flex min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-border/70 bg-card px-3 py-2.5 text-left shadow-sm transition hover:border-primary/60"
+            data-testid="button-trading-coin-selector"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-extrabold text-primary">
+              {asset.slice(0, 3)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-extrabold">{asset}/USDT</span>
+              <span className="block text-[11px] text-muted-foreground">
+                {marketAsset?.price != null ? '$' + Number(marketAsset.price).toLocaleString(undefined, { maximumFractionDigits: 8 }) : 'Market price loading…'}
+              </span>
+            </span>
+            <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${assetPickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          <span className="text-xs text-muted-foreground">Choose market</span>
 
+          {assetPickerOpen && (
+            <>
+              <button type="button" aria-label="Close coin selector" className="fixed inset-0 z-30 cursor-default bg-black/20" onClick={() => setAssetPickerOpen(false)} />
+              <div className="absolute left-0 top-full z-40 mt-2 w-[min(22rem,calc(100vw-2.5rem))] overflow-hidden rounded-2xl border border-border bg-[#101318] shadow-2xl" data-testid="panel-trading-coin-selector">
+                <div className="border-b border-white/10 p-3">
+                  <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3">
+                    <Search size={15} className="shrink-0 text-muted-foreground" />
+                    <input
+                      autoFocus
+                      type="search"
+                      value={assetSearch}
+                      onChange={event => setAssetSearch(event.target.value)}
+                      placeholder="Search coin or pair…"
+                      aria-label="Search coins or trading pairs"
+                      className="h-10 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+                      data-testid="input-search-trading-coins"
+                    />
+                    {assetSearch && <button type="button" onClick={() => setAssetSearch('')} className="px-1 text-xs text-gray-400 hover:text-white">Clear</button>}
+                  </label>
+                  <p className="mt-2 px-1 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+                    Markets · {tradingAssets.filter(a => {
+                      const m = market.find(item => item.symbol === a);
+                      const q = assetSearch.trim().toLowerCase();
+                      return !q || a.toLowerCase().includes(q) || (a + '/usdt').toLowerCase().includes(q) || (m?.name ?? '').toLowerCase().includes(q);
+                    }).length} available
+                  </p>
+                </div>
+                <div className="max-h-[min(55vh,24rem)] overflow-y-auto p-1.5" role="listbox" aria-label="Available trading coins">
+                  {tradingAssets.filter(a => {
+                    const m = market.find(item => item.symbol === a);
+                    const q = assetSearch.trim().toLowerCase();
+                    return !q || a.toLowerCase().includes(q) || (a + '/usdt').toLowerCase().includes(q) || (m?.name ?? '').toLowerCase().includes(q);
+                  }).map(a => {
+                    const mkt = market.find(m => m.symbol === a);
+                    const selected = asset === a;
+                    const chg = mkt?.change24h;
+                    return (
+                      <button
+                        key={a}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => {
+                          setAsset(a);
+                          setAmount(String(minTradeAmountFor(a)));
+                          setAssetPickerOpen(false);
+                          setAssetSearch('');
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/[0.06] ${selected ? 'bg-primary/10' : ''}`}
+                        data-testid={`option-trading-coin-${a}`}
+                      >
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-extrabold text-gray-200">{a.slice(0, 3)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-white">{a}<span className="ml-1 text-xs font-normal text-gray-500">/USDT</span></span>
+                          <span className="block truncate text-[11px] text-gray-500">{mkt?.name ?? (a === 'GOLD' ? 'Gold' : 'Market asset')}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block font-mono text-xs text-gray-200">{mkt?.price != null ? '$' + Number(mkt.price).toLocaleString(undefined, { maximumFractionDigits: 8 }) : '—'}</span>
+                          <span className={`block font-mono text-[10px] ${chg == null ? 'text-gray-500' : chg >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{chg == null ? (a === 'GOLD' ? 'Special market' : '—') : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`}</span>
+                        </span>
+                        {selected && <Check size={15} className="shrink-0 text-primary" />}
+                      </button>
+                    );
+                  })}
+                  {tradingAssets.filter(a => {
+                    const m = market.find(item => item.symbol === a);
+                    const q = assetSearch.trim().toLowerCase();
+                    return !q || a.toLowerCase().includes(q) || (a + '/usdt').toLowerCase().includes(q) || (m?.name ?? '').toLowerCase().includes(q);
+                  }).length === 0 && <p className="px-4 py-8 text-center text-sm text-gray-400">No matching coins found.</p>}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
         <main className="min-w-0">
       {/* ── Chart ── */}
       <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
