@@ -1054,6 +1054,25 @@ export function TradingPage() {
           </div>
         )}
 
+        {/* Compact paired expiry/payout buttons above the trade amount field. */}
+        <div className="mb-3">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: '60SI40%', secs: 60 },
+              { label: '90SI50%', secs: 90 },
+              { label: '180SI70%', secs: 180 },
+              { label: '300SI85%', secs: 300 },
+              { label: '1M100%', secs: 60 },
+            ].map((tf, idx) => (
+              <button key={tf.label + idx} type="button" onClick={() => setTimeframeSecs(tf.secs)}
+                aria-pressed={timeframeSecs === tf.secs}
+                className={"flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-extrabold transition sm:px-3 " + (timeframeSecs === tf.secs ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-primary/50")}>
+                <span>{tf.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Amount */}
         <div className="mb-3">
           <div className="mb-1 flex items-center justify-between">
@@ -1094,25 +1113,6 @@ export function TradingPage() {
             </p>
           )}
         </div>
-
-        {/* Compact expiry buttons; selecting one updates the existing trade duration state. */}
-        <div className="mb-3">
-          <label className="mb-1 block text-xs font-bold text-muted-foreground">{tradingText('Expiry Timeframe')}</label>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-1 sm:gap-2">
-            {[
-              { label: '60S', payoutLabel: '40%', secs: 60 },
-              { label: '90S', payoutLabel: '50%', secs: 90 },
-              { label: '180S', payoutLabel: '70%', secs: 180 },
-              { label: '300S', payoutLabel: '85%', secs: 300 },
-              { label: '1M', payoutLabel: '100%', secs: 60 },
-            ].map((tf, idx) => (
-              <button key={tf.label + idx} type="button" onClick={() => setTimeframeSecs(tf.secs)}
-                aria-pressed={timeframeSecs === tf.secs}
-                className={"flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-extrabold transition sm:px-3 " + (timeframeSecs === tf.secs ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-primary/50")}>
-                <span>{tf.label}</span><span>{tf.payoutLabel}</span>
-              </button>
-            ))}
-          </div>        </div>
 
         {/* Payout summary */}
         <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
