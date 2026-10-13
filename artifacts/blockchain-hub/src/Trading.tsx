@@ -1158,11 +1158,7 @@ export function TradingPage() {
           </p>
         )}
         </div>
-      </div>
-        </main>
-      </div>
-
-
+        </div>
         </section>
         <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
@@ -1176,6 +1172,8 @@ export function TradingPage() {
             <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">Order book data is not connected to a verified bids/asks API yet. Live market prices are shown in the chart; order levels will appear when a real feed is available.</p>
           </div>
         </section>
+      </div>
+        </main>
       </div>
       <FuturesPositions
         positions={futuresPositions}
