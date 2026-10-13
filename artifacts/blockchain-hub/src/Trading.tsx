@@ -1114,24 +1114,6 @@ export function TradingPage() {
           )}
         </div>
 
-        {/* Payout summary */}
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('Payout')} </p>
-            <p className="font-mono font-bold text-primary">{Math.round(payoutRate * 100)}%</p>
-          </div>
-          <div className="h-full w-px bg-border/50" />
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Win')} </p>
-            <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
-          </div>
-          <div className="h-full w-px bg-border/50" />
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Loss')} </p>
-            <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
-          </div>
-        </div>
-
         {/* Long / Short buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
