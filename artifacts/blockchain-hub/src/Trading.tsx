@@ -32,6 +32,36 @@ import {
 } from '@workspace/api-client-react';
 import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
 import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
+const COIN_ICON_SYMBOLS: Record<string, string> = {
+  BTC: 'btc', ETH: 'eth', USDT: 'usdt', BNB: 'bnb', XRP: 'xrp', USDC: 'usdc',
+  SOL: 'sol', TRX: 'trx', DOGE: 'doge', ADA: 'ada', AVAX: 'avax', DOT: 'dot',
+  LINK: 'link', LTC: 'ltc', BCH: 'bch', XLM: 'xlm', TON: 'ton', SHIB: 'shib',
+  UNI: 'uni', ETC: 'etc', XMR: 'xmr', ATOM: 'atom', NEAR: 'near', APT: 'apt',
+  ARB: 'arb', OP: 'op', FIL: 'fil', ICP: 'icp', SUI: 'sui', PEPE: 'pepe',
+  FDUSD: 'fdusd', DAI: 'dai', WBTC: 'wbtc', XAUT: 'xaut',
+};
+
+function TradingCoinIcon({ symbol, size = 36 }: { symbol: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const iconSymbol = COIN_ICON_SYMBOLS[symbol.toUpperCase()] ?? symbol.toLowerCase();
+  if (symbol.toUpperCase() === 'GOLD') {
+    return <span className="grid shrink-0 place-items-center rounded-full border border-yellow-400/40 bg-yellow-400/10 font-extrabold text-yellow-300" style={{ width: size, height: size, fontSize: size * 0.27 }}>Au</span>;
+  }
+  if (failed) {
+    return <span className="grid shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] font-extrabold text-gray-200" style={{ width: size, height: size, fontSize: size * 0.25 }}>{symbol.slice(0, 4)}</span>;
+  }
+  return <img
+    src={`https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`}
+    alt={`${symbol} logo`}
+    width={size}
+    height={size}
+    loading="lazy"
+    onError={() => setFailed(true)}
+    className="shrink-0 rounded-full object-contain"
+    style={{ width: size, height: size }}
+  />;
+}
+
 const TRADING_UI_COPY: Record<string, Record<string, string>> = {
 es: {"Select Timeframe":"Seleccionar intervalo","Cancel":"Cancelar","Trade Details":"Detalles de la operación","Status":"Estado","Trading Balance":"Saldo de trading","Retry account":"Reintentar cuenta","Retry trades":"Reintentar operaciones","No trading balance":"Sin saldo de trading","Trade Amount (USDT)":"Importe de operación (USDT)","Expiry Timeframe":"Plazo de vencimiento","BUY LONG":"COMPRAR / LARGO","SELL SHORT":"VENDER / CORTO","Current Price":"Precio actual","Purchase Price":"Precio de compra","Leverage":"Apalancamiento","Retry":"Reintentar","View My Positions":"Ver mis posiciones","Payout":"Pago","If Win":"Si ganas","If Loss":"Si pierdes","Price will rise ↑":"El precio subirá ↑","Price will fall ↓":"El precio bajará ↓","Available:":"Disponible:"},
 pt: {"Select Timeframe":"Selecionar período","Cancel":"Cancelar","Trade Details":"Detalhes da operação","Status":"Status","Trading Balance":"Saldo de trading","Retry account":"Tentar conta novamente","Retry trades":"Tentar operações novamente","No trading balance":"Sem saldo de trading","Trade Amount (USDT)":"Valor da operação (USDT)","Expiry Timeframe":"Prazo de vencimento","BUY LONG":"COMPRAR / LONG","SELL SHORT":"VENDER / SHORT","Current Price":"Preço atual","Purchase Price":"Preço de compra","Leverage":"Alavancagem","Retry":"Tentar novamente","View My Positions":"Ver minhas posições","Payout":"Pagamento","If Win":"Se ganhar","If Loss":"Se perder"},
@@ -916,7 +946,7 @@ export function TradingPage() {
                           className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left data-[selected=true]:bg-white/[0.08] data-[selected=true]:text-white ${selected ? 'bg-primary/10' : ''}`}
                           data-testid={`option-trading-coin-${a}`}
                         >
-                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.05] text-[10px] font-extrabold text-gray-200">{a.slice(0, 3)}</span>
+                          <TradingCoinIcon symbol={a} size={36} />
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-sm font-bold">{a}<span className="ml-1 text-xs font-normal text-gray-500">/USDT</span></span>
                             <span className="block truncate text-[11px] text-gray-500">{mkt?.name ?? (a === 'GOLD' ? 'Gold' : 'Market asset')}</span>
