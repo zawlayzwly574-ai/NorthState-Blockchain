@@ -862,8 +862,8 @@ export function TradingPage() {
       )}
 
       {/* ── Trading workspace with accessible searchable Combobox ── */}
-      <div className="min-w-0">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="min-w-0 text-white [color-scheme:dark]">
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-500/20 bg-black px-3 py-2 sm:px-4">
           <Popover open={assetPickerOpen} onOpenChange={setAssetPickerOpen}>
             <PopoverTrigger asChild>
               <button
@@ -871,7 +871,7 @@ export function TradingPage() {
                 role="combobox"
                 aria-expanded={assetPickerOpen}
                 aria-label="Choose trading coin"
-                className="flex min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-border/70 bg-card px-3 py-2.5 text-left shadow-sm transition hover:border-primary/60"
+                className="flex min-h-12 min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-yellow-500/40 bg-[#050505] px-3 py-2.5 text-left shadow-sm transition hover:border-yellow-400"
                 data-testid="button-trading-coin-selector"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-extrabold text-primary">
@@ -938,7 +938,7 @@ export function TradingPage() {
         </div>
         <main className="min-w-0">
       {/* ── Chart ── */}
-      <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="mb-2 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:mb-3 sm:rounded-2xl">
         <PriceChart
           key={asset}
           quote={futuresQuote}
@@ -950,9 +950,9 @@ export function TradingPage() {
       </div>
 
       {/* ── Order Panel ── */}
-      <div className="mb-3">
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
-          <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+      <div className="mb-3 min-w-0">
+        <div className="rounded-xl border border-yellow-500/20 bg-black p-3 sm:rounded-2xl sm:p-4">
+          <div className="mb-3 flex items-center justify-between gap-2 border-b border-yellow-500/15 pb-3 sm:mb-4">
             <div>
               <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
               <p className="mt-1 text-xs text-muted-foreground">Spot · fixed-expiry position</p>
@@ -1000,7 +1000,7 @@ export function TradingPage() {
                   key={tier.label}
                   type="button"
                   onClick={() => { setGoldTierIndex(idx); setAmount(String(tier.min)); }}
-                  className={`rounded-lg border py-2 text-[11px] font-bold transition ${
+                  className={`min-h-11 rounded-lg border py-2 text-[10px] font-bold transition sm:text-[11px] ${
                     goldTierIndex === idx
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground hover:text-foreground'
@@ -1113,7 +1113,7 @@ export function TradingPage() {
             type="button"
             onClick={() => handleTrade('long')}
             disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-20 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl bg-green-500/10 py-3 font-bold text-green-400 ring-1 ring-green-500/40 transition hover:bg-green-500/20 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-2xl sm:py-5"
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
@@ -1124,7 +1124,7 @@ export function TradingPage() {
             type="button"
             onClick={() => handleTrade('short')}
             disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-20 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl bg-red-500/10 py-3 font-bold text-red-400 ring-1 ring-red-500/40 transition hover:bg-red-500/20 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-2xl sm:py-5"
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
