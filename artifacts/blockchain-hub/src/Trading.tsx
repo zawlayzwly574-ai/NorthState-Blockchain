@@ -973,6 +973,7 @@ export function TradingPage() {
           <span className="text-xs text-muted-foreground">Choose market</span>
         </div>
         <main className="min-w-0">
+      {/* Chart remains full width above a compact two-column trading workspace. */}
       {/* ── Chart ── */}
       <div className="mb-2 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:mb-3 sm:rounded-2xl">
         <PriceChart
@@ -985,10 +986,13 @@ export function TradingPage() {
         />
       </div>
 
+
+      <div className="grid min-w-0 grid-cols-2 items-stretch gap-2 sm:gap-3 lg:gap-4">
+        <section className="min-w-0">
       {/* ── Order Panel ── */}
-      <div className="mb-3 min-w-0">
-        <div className="rounded-xl border border-yellow-500/20 bg-black p-3 sm:rounded-2xl sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-2 border-b border-yellow-500/15 pb-3 sm:mb-4">
+      <div className="min-w-0">
+        <div className="rounded-xl border border-yellow-500/20 bg-black p-2 sm:rounded-2xl sm:p-4">
+          <div className="mb-2 flex items-center justify-between gap-1 border-b border-yellow-500/15 pb-2 sm:mb-4 sm:gap-2 sm:pb-3">
             <div>
               <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
               <p className="mt-1 text-xs text-muted-foreground">Spot · fixed-expiry position</p>
@@ -1069,24 +1073,7 @@ export function TradingPage() {
               placeholder={String(minTrade)}
               data-testid="input-trade-amount"
             />
-            {!isGold && (
-              <div className="grid shrink-0 grid-cols-2 gap-2">
-                {[minTrade, minTrade * 2, minTrade * 5, minTrade * 10].map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setAmount(String(v))}
-                    className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
-                      Number(amount) === v
-                        ? 'border-primary/60 bg-primary/10 text-primary'
-                        : 'border-border/60 text-muted-foreground'
-                    }`}
-                  >
-                    {v >= 1000 ? `${v / 1000}K` : v}
-                  </button>
-                ))}
-              </div>
-            )}
+
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             Minimum trade &amp; balance for {asset}: <span className="font-mono font-bold text-foreground">${minTrade.toLocaleString()}</span>
@@ -1108,21 +1095,18 @@ export function TradingPage() {
           )}
         </div>
 
-        {/* Timeframe */}
-        <div className="mb-4">
-          <label className="mb-1 block text-xs font-bold text-muted-foreground"> {tradingText('Expiry Timeframe')} </label>
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
-            data-testid="button-timeframe-picker"
-          >
-            <div className="flex items-center gap-2">
-              <Clock size={14} className="text-muted-foreground" />
-              <span>{timeframeLabel}</span>
-            </div>
-            <ChevronUp size={15} className="text-muted-foreground" />
-          </button>
+        {/* Compact expiry buttons; selecting one updates the existing trade duration state. */}
+        <div className="mb-3">
+          <label className="mb-1 block text-xs font-bold text-muted-foreground">{tradingText('Expiry Timeframe')}</label>
+          <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
+            {[{ label: '60S', secs: 60 }, { label: '90S', secs: 90 }, { label: '180S', secs: 180 }, { label: '300S', secs: 300 }, { label: '1M', secs: 60 }].map((tf, idx) => (
+              <button key={`${tf.label}-${idx}`} type="button" onClick={() => setTimeframeSecs(tf.secs)}
+                aria-pressed={timeframeSecs === tf.secs}
+                className={`min-w-0 rounded-lg border px-1 py-2.5 text-[10px] font-extrabold transition sm:text-xs ${timeframeSecs === tf.secs ? 'border-primary bg-primary/10 text-primary' : 'border-border/60 text-muted-foreground hover:border-primary/50'}`}>
+                {tf.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Payout summary */}
@@ -1178,6 +1162,21 @@ export function TradingPage() {
         </main>
       </div>
 
+
+        </section>
+        <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
+          <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
+            <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK</h3>
+          </div>
+          <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
+            <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
+          </div>
+          <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
+            <span className="text-xs font-semibold text-muted-foreground sm:text-sm">Live order book feed</span>
+            <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">Order book data is not connected to a verified bids/asks API yet. Live market prices are shown in the chart; order levels will appear when a real feed is available.</p>
+          </div>
+        </section>
+      </div>
       <FuturesPositions
         positions={futuresPositions}
         isLoading={futuresPositionsLoading}
