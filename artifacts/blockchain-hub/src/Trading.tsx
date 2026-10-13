@@ -42,21 +42,27 @@ const COIN_ICON_SYMBOLS: Record<string, string> = {
 };
 
 function TradingCoinIcon({ symbol, size = 36 }: { symbol: string; size?: number }) {
-  const [failed, setFailed] = useState(false);
-  const iconSymbol = COIN_ICON_SYMBOLS[symbol.toUpperCase()] ?? symbol.toLowerCase();
-  if (symbol.toUpperCase() === 'GOLD') {
+  const [imageStage, setImageStage] = useState(0);
+  const normalized = symbol.toUpperCase();
+  const iconSymbol = COIN_ICON_SYMBOLS[normalized] ?? symbol.toLowerCase();
+  const cdnSymbol: Record<string, string> = { TRX: 'TRON', XAUT: 'XAUT', WBTC: 'WBTC', FDUSD: 'FDUSD' };
+  if (normalized === 'GOLD') {
     return <span className="grid shrink-0 place-items-center rounded-full border border-yellow-400/40 bg-yellow-400/10 font-extrabold text-yellow-300" style={{ width: size, height: size, fontSize: size * 0.27 }}>Au</span>;
   }
-  if (failed) {
-    return <span className="grid shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] font-extrabold text-gray-200" style={{ width: size, height: size, fontSize: size * 0.25 }}>{symbol.slice(0, 4)}</span>;
+  const sources = [
+    `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`,
+    `https://cdn.jsdelivr.net/gh/madenix/Crypto-logo-cdn@main/Logos/${cdnSymbol[normalized] ?? normalized}.svg`,
+  ];
+  if (imageStage >= sources.length) {
+    return <span title={`${symbol} logo unavailable`} className="grid shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] font-extrabold text-gray-200" style={{ width: size, height: size, fontSize: size * 0.25 }}>{symbol.slice(0, 4)}</span>;
   }
   return <img
-    src={`https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`}
+    src={sources[imageStage]}
     alt={`${symbol} logo`}
     width={size}
     height={size}
     loading="lazy"
-    onError={() => setFailed(true)}
+    onError={() => setImageStage(stage => stage + 1)}
     className="shrink-0 rounded-full object-contain"
     style={{ width: size, height: size }}
   />;
