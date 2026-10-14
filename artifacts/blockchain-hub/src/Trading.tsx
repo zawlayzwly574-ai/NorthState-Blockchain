@@ -3,7 +3,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, ChevronUp, ChevronDown, Clock, Trophy, AlertCircle, Zap, X, Check } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   AreaChart, Area, ResponsiveContainer, YAxis, ReferenceLine, Tooltip,
 } from 'recharts';
@@ -30,6 +32,54 @@ import {
 } from '@workspace/api-client-react';
 import type { FuturesPositionInputLeverage } from '@workspace/api-client-react';
 import { FuturesPositions, futuresErrorMessage } from './FuturesPositions';
+const COIN_ICON_SYMBOLS: Record<string, string> = {
+  BTC: 'btc', ETH: 'eth', USDT: 'usdt', BNB: 'bnb', XRP: 'xrp', USDC: 'usdc',
+  SOL: 'sol', TRX: 'trx', DOGE: 'doge', ADA: 'ada', AVAX: 'avax', DOT: 'dot',
+  LINK: 'link', LTC: 'ltc', BCH: 'bch', XLM: 'xlm', TON: 'ton', SHIB: 'shib',
+  UNI: 'uni', ETC: 'etc', XMR: 'xmr', ATOM: 'atom', NEAR: 'near', APT: 'apt',
+  ARB: 'arb', OP: 'op', FIL: 'fil', ICP: 'icp', SUI: 'sui', PEPE: 'pepe',
+  FDUSD: 'fdusd', DAI: 'dai', WBTC: 'wbtc', XAUT: 'xaut',
+};
+
+function TradingCoinIcon({ symbol, size = 36 }: { symbol: string; size?: number }) {
+  const [imageStage, setImageStage] = useState(0);
+  const normalized = symbol.toUpperCase();
+  const iconSymbol = COIN_ICON_SYMBOLS[normalized] ?? symbol.toLowerCase();
+  const cdnSymbol: Record<string, string> = { TRX: 'TRON', XAUT: 'XAUT', WBTC: 'WBTC', FDUSD: 'FDUSD' };
+  if (normalized === 'GOLD') {
+    return (
+      <span
+        role="img"
+        aria-label="Gold"
+        className="grid shrink-0 place-items-center overflow-hidden rounded-full"
+        style={{ width: size, height: size, backgroundColor: '#ffab00' }}
+      >
+        <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true">
+          <circle cx="50" cy="50" r="50" fill="#ffab00" />
+          <path d="M41 27 L59 27 L68 44 L32 44 Z M21 50 L39 50 L48 67 L12 67 Z M61 50 L79 50 L88 67 L52 67 Z" fill="#fff" />
+        </svg>
+      </span>
+    );
+  }
+  const sources = [
+    `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`,
+    `https://cdn.jsdelivr.net/gh/madenix/Crypto-logo-cdn@main/Logos/${cdnSymbol[normalized] ?? normalized}.svg`,
+  ];
+  if (imageStage >= sources.length) {
+    return <span title={`${symbol} logo unavailable`} className="grid shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.06] font-extrabold text-gray-200" style={{ width: size, height: size, fontSize: size * 0.25 }}>{symbol.slice(0, 4)}</span>;
+  }
+  return <img
+    src={sources[imageStage]}
+    alt={`${symbol} logo`}
+    width={size}
+    height={size}
+    loading="lazy"
+    onError={() => setImageStage(stage => stage + 1)}
+    className="shrink-0 rounded-full object-contain"
+    style={{ width: size, height: size }}
+  />;
+}
+
 const TRADING_UI_COPY: Record<string, Record<string, string>> = {
 es: {"Select Timeframe":"Seleccionar intervalo","Cancel":"Cancelar","Trade Details":"Detalles de la operación","Status":"Estado","Trading Balance":"Saldo de trading","Retry account":"Reintentar cuenta","Retry trades":"Reintentar operaciones","No trading balance":"Sin saldo de trading","Trade Amount (USDT)":"Importe de operación (USDT)","Expiry Timeframe":"Plazo de vencimiento","BUY LONG":"COMPRAR / LARGO","SELL SHORT":"VENDER / CORTO","Current Price":"Precio actual","Purchase Price":"Precio de compra","Leverage":"Apalancamiento","Retry":"Reintentar","View My Positions":"Ver mis posiciones","Payout":"Pago","If Win":"Si ganas","If Loss":"Si pierdes","Price will rise ↑":"El precio subirá ↑","Price will fall ↓":"El precio bajará ↓","Available:":"Disponible:"},
 pt: {"Select Timeframe":"Selecionar período","Cancel":"Cancelar","Trade Details":"Detalhes da operação","Status":"Status","Trading Balance":"Saldo de trading","Retry account":"Tentar conta novamente","Retry trades":"Tentar operações novamente","No trading balance":"Sem saldo de trading","Trade Amount (USDT)":"Valor da operação (USDT)","Expiry Timeframe":"Prazo de vencimento","BUY LONG":"COMPRAR / LONG","SELL SHORT":"VENDER / SHORT","Current Price":"Preço atual","Purchase Price":"Preço de compra","Leverage":"Alavancagem","Retry":"Tentar novamente","View My Positions":"Ver minhas posições","Payout":"Pagamento","If Win":"Se ganhar","If Loss":"Se perder"},
@@ -629,9 +679,12 @@ function ActiveTradeStatusModal({
 
 export function TradingPage() {
   const [asset, setAsset] = useState('BTC');
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
+  const [orderBook, setOrderBook] = useState<{ bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
+  const [orderBookError, setOrderBookError] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showFutures, setShowFutures] = useState(false);
   const [futuresContractType, setFuturesContractType] = useState<'Perpetual' | 'Quarterly'>('Perpetual');
@@ -667,6 +720,51 @@ export function TradingPage() {
   });
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const refreshOrderBook = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await fetch(`/api/trading/orderbook/${encodeURIComponent(marketSymbol)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error('Order book unavailable');
+        const data = await response.json();
+        const validLevels = (levels: unknown) => Array.isArray(levels) ? levels.filter((level: any) =>
+          Number.isFinite(Number(level?.price)) && Number(level.price) > 0
+          && Number.isFinite(Number(level?.size)) && Number(level.size) > 0
+          && Number.isFinite(Number(level?.total)) && Number(level.total) > 0
+        ).slice(0, 10) : [];
+        const updatedAt = Number(data?.updatedAt);
+        if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 15_000 || updatedAt > Date.now() + 2_000) {
+          throw new Error('Stale order book');
+        }
+        const bids = validLevels(data?.bids);
+        const asks = validLevels(data?.asks);
+        if (!bids.length && !asks.length) throw new Error('Empty order book');
+        if (!cancelled) {
+          setOrderBook({ bids, asks, updatedAt });
+          setOrderBookError(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setOrderBook(null);
+          setOrderBookError(true);
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+    setOrderBook(null);
+    setOrderBookError(false);
+    void refreshOrderBook();
+    const timer = window.setInterval(() => { void refreshOrderBook(); }, 3_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [marketSymbol]);
   const marketAsset = market.find(m => m.symbol === marketSymbol);
   const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
   const quoteAge = Date.now() - quoteTime;
@@ -858,47 +956,85 @@ export function TradingPage() {
         </div>
       )}
 
-      {/* ── Responsive trading workspace: persistent vertical asset rail ── */}
-      <div className="grid grid-cols-[4.15rem_minmax(0,1fr)] items-start gap-2 sm:grid-cols-[7.25rem_minmax(0,1fr)] sm:gap-3">
-        <aside className="sticky top-2 min-w-0 rounded-xl border border-border/60 bg-card/80 p-1 sm:rounded-2xl sm:p-2" aria-label="Choose trading asset">
-          <p className="mb-1 hidden px-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground sm:block">Markets</p>
-          <div className="flex flex-col gap-1">
-        {tradingAssets.map(a => {
-          const mkt = market.find(m => m.symbol === a);
-          const chg = mkt?.change24h ?? 0;
-          return (
-            <button
-              key={a}
-              type="button"
-              onClick={() => {
-                setAsset(a);
-                setAmount(String(minTradeAmountFor(a)));
-              }}
-              className={`w-full min-w-0 rounded-lg px-1 py-2 text-[9px] font-bold leading-tight transition active:scale-95 sm:rounded-xl sm:px-2 sm:py-2.5 sm:text-xs ${
-                asset === a
-                  ? 'bg-primary text-primary-foreground shadow-[0_4px_12px_hsl(var(--primary)/.3)]'
-                  : 'bg-secondary/60 text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <span className="block truncate">{a}</span>
-              {a === 'GOLD' ? (
-                <span className={`block font-mono text-[9px] font-normal ${asset === a ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                  up to 95%
+      {/* ── Trading workspace with accessible searchable Combobox ── */}
+      <div className="min-w-0 text-white [color-scheme:dark]">
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-500/20 bg-black px-3 py-2 sm:px-4">
+          <Popover open={assetPickerOpen} onOpenChange={setAssetPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                role="combobox"
+                aria-expanded={assetPickerOpen}
+                aria-label="Choose trading coin"
+                className="flex min-h-12 min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-yellow-500/40 bg-[#050505] px-3 py-2.5 text-left shadow-sm transition hover:border-yellow-400"
+                data-testid="button-trading-coin-selector"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-extrabold text-primary">
+                  {asset.slice(0, 3)}
                 </span>
-              ) : mkt && (
-                <span className={`mt-0.5 block truncate font-mono text-[8px] font-normal sm:text-[9px] ${chg >= 0 ? 'text-green-400' : 'text-red-400'} ${asset === a ? 'text-primary-foreground/70' : ''}`}>
-                  {chg >= 0 ? '+' : ''}{chg.toFixed(2)}%
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-extrabold">{asset}/USDT</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {marketAsset?.price != null ? '$' + Number(marketAsset.price).toLocaleString(undefined, { maximumFractionDigits: 8 }) : 'Market price loading…'}
+                  </span>
                 </span>
-              )}
-            </button>
-          );
-        })}
-          </div>
-        </aside>
-
+                <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${assetPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" sideOffset={8} className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/10 bg-[#101318] p-0 text-white shadow-2xl" data-testid="panel-trading-coin-selector">
+              <Command className="bg-transparent text-white" loop>
+                <div className="border-b border-white/10 px-1 pt-1">
+                  <CommandInput
+                    placeholder="Search coin or pair…"
+                    aria-label="Search coins or trading pairs"
+                    data-testid="input-search-trading-coins"
+                    className="text-white placeholder:text-gray-500"
+                  />
+                  <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-gray-500">Markets · {tradingAssets.length} available</p>
+                </div>
+                <CommandList className="max-h-[min(55vh,24rem)] p-1.5">
+                  <CommandEmpty className="py-8 text-center text-sm text-gray-400">No matching coins found.</CommandEmpty>
+                  <CommandGroup>
+                    {tradingAssets.map(a => {
+                      const mkt = market.find(m => m.symbol === a);
+                      const selected = asset === a;
+                      const chg = mkt?.change24h;
+                      return (
+                        <CommandItem
+                          key={a}
+                          value={`${a} ${a}/USDT ${mkt?.name ?? (a === 'GOLD' ? 'Gold' : 'Market asset')}`}
+                          onSelect={() => {
+                            setAsset(a);
+                            setAmount(String(minTradeAmountFor(a)));
+                            setAssetPickerOpen(false);
+                          }}
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-left data-[selected=true]:bg-white/[0.08] data-[selected=true]:text-white ${selected ? 'bg-primary/10' : ''}`}
+                          data-testid={`option-trading-coin-${a}`}
+                        >
+                          <TradingCoinIcon symbol={a} size={36} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold">{a}<span className="ml-1 text-xs font-normal text-gray-500">/USDT</span></span>
+                            <span className="block truncate text-[11px] text-gray-500">{mkt?.name ?? (a === 'GOLD' ? 'Gold' : 'Market asset')}</span>
+                          </span>
+                          <span className="shrink-0 text-right">
+                            <span className="block font-mono text-xs text-gray-200">{mkt?.price != null ? '$' + Number(mkt.price).toLocaleString(undefined, { maximumFractionDigits: 8 }) : '—'}</span>
+                            <span className={`block font-mono text-[10px] ${chg == null ? 'text-gray-500' : chg >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{chg == null ? (a === 'GOLD' ? 'Special market' : '—') : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`}</span>
+                          </span>
+                          <Check size={15} className={`shrink-0 ${selected ? 'text-primary opacity-100' : 'opacity-0'}`} />
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          <span className="text-xs text-muted-foreground">Choose market</span>
+        </div>
         <main className="min-w-0">
+      {/* Chart remains full width above a compact two-column trading workspace. */}
       {/* ── Chart ── */}
-      <div className="mb-3 overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div className="mb-2 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:mb-3 sm:rounded-2xl">
         <PriceChart
           key={asset}
           quote={futuresQuote}
@@ -909,10 +1045,13 @@ export function TradingPage() {
         />
       </div>
 
+
+      <div className="grid min-w-0 grid-cols-2 items-stretch gap-2 sm:gap-3 lg:gap-4">
+        <section className="min-w-0">
       {/* ── Order Panel ── */}
-      <div className="mb-3">
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
-          <div className="mb-4 flex items-center justify-between border-b border-border/60 pb-3">
+      <div className="min-w-0">
+        <div className="rounded-xl border border-yellow-500/20 bg-black p-2 sm:rounded-2xl sm:p-4">
+          <div className="mb-2 flex items-center justify-between gap-1 border-b border-yellow-500/15 pb-2 sm:mb-4 sm:gap-2 sm:pb-3">
             <div>
               <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
               <p className="mt-1 text-xs text-muted-foreground">Spot · fixed-expiry position</p>
@@ -960,7 +1099,7 @@ export function TradingPage() {
                   key={tier.label}
                   type="button"
                   onClick={() => { setGoldTierIndex(idx); setAmount(String(tier.min)); }}
-                  className={`rounded-lg border py-2 text-[11px] font-bold transition ${
+                  className={`min-h-11 rounded-lg border py-2 text-[10px] font-bold transition sm:text-[11px] ${
                     goldTierIndex === idx
                       ? 'border-primary/60 bg-primary/10 text-primary'
                       : 'border-border/60 text-muted-foreground hover:text-foreground'
@@ -973,6 +1112,25 @@ export function TradingPage() {
             </div>
           </div>
         )}
+
+        {/* Compact paired expiry/payout buttons above the trade amount field. */}
+        <div className="mb-3">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: '60SI40%', secs: 60 },
+              { label: '90SI50%', secs: 90 },
+              { label: '180SI70%', secs: 180 },
+              { label: '300SI85%', secs: 300 },
+              { label: '1M100%', secs: 60 },
+            ].map((tf, idx) => (
+              <button key={tf.label + idx} type="button" onClick={() => setTimeframeSecs(tf.secs)}
+                aria-pressed={timeframeSecs === tf.secs}
+                className={"flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-extrabold transition sm:px-3 " + (timeframeSecs === tf.secs ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-primary/50")}>
+                <span>{tf.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Amount */}
         <div className="mb-3">
@@ -993,24 +1151,7 @@ export function TradingPage() {
               placeholder={String(minTrade)}
               data-testid="input-trade-amount"
             />
-            {!isGold && (
-              <div className="grid shrink-0 grid-cols-2 gap-2">
-                {[minTrade, minTrade * 2, minTrade * 5, minTrade * 10].map(v => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setAmount(String(v))}
-                    className={`h-10 rounded-xl border px-2.5 text-[11px] font-bold transition hover:text-foreground ${
-                      Number(amount) === v
-                        ? 'border-primary/60 bg-primary/10 text-primary'
-                        : 'border-border/60 text-muted-foreground'
-                    }`}
-                  >
-                    {v >= 1000 ? `${v / 1000}K` : v}
-                  </button>
-                ))}
-              </div>
-            )}
+
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             Minimum trade &amp; balance for {asset}: <span className="font-mono font-bold text-foreground">${minTrade.toLocaleString()}</span>
@@ -1032,48 +1173,13 @@ export function TradingPage() {
           )}
         </div>
 
-        {/* Timeframe */}
-        <div className="mb-4">
-          <label className="mb-1 block text-xs font-bold text-muted-foreground"> {tradingText('Expiry Timeframe')} </label>
-          <button
-            type="button"
-            onClick={() => setShowPicker(true)}
-            className="flex h-10 w-full items-center justify-between rounded-xl border border-input bg-secondary/40 px-3 text-sm font-bold transition hover:border-primary/50"
-            data-testid="button-timeframe-picker"
-          >
-            <div className="flex items-center gap-2">
-              <Clock size={14} className="text-muted-foreground" />
-              <span>{timeframeLabel}</span>
-            </div>
-            <ChevronUp size={15} className="text-muted-foreground" />
-          </button>
-        </div>
-
-        {/* Payout summary */}
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-secondary/30 px-4 py-2.5 text-sm">
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('Payout')} </p>
-            <p className="font-mono font-bold text-primary">{Math.round(payoutRate * 100)}%</p>
-          </div>
-          <div className="h-full w-px bg-border/50" />
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Win')} </p>
-            <p className="font-mono font-bold text-green-400">+${potentialProfit}</p>
-          </div>
-          <div className="h-full w-px bg-border/50" />
-          <div className="text-center">
-            <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider"> {tradingText('If Loss')} </p>
-            <p className="font-mono font-bold text-red-400">-${tradeAmt}</p>
-          </div>
-        </div>
-
         {/* Long / Short buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => handleTrade('long')}
             disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-green-500/12 py-5 font-bold text-green-400 ring-1 ring-green-500/30 transition hover:bg-green-500/22 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-20 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl bg-green-500/10 py-3 font-bold text-green-400 ring-1 ring-green-500/40 transition hover:bg-green-500/20 hover:ring-green-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-2xl sm:py-5"
             data-testid="button-buy-long"
           >
             <TrendingUp size={24} strokeWidth={2.5} />
@@ -1084,7 +1190,7 @@ export function TradingPage() {
             type="button"
             onClick={() => handleTrade('short')}
             disabled={placing || !account || !!accountError || !tradesData || !!tradesError || !currentPrice || insufficient}
-            className="group relative flex flex-col items-center gap-1.5 overflow-hidden rounded-2xl bg-red-500/12 py-5 font-bold text-red-400 ring-1 ring-red-500/30 transition hover:bg-red-500/22 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40"
+            className="group relative flex min-h-20 flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl bg-red-500/10 py-3 font-bold text-red-400 ring-1 ring-red-500/40 transition hover:bg-red-500/20 hover:ring-red-500/60 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-2xl sm:py-5"
             data-testid="button-sell-short"
           >
             <TrendingDown size={24} strokeWidth={2.5} />
@@ -1098,10 +1204,53 @@ export function TradingPage() {
           </p>
         )}
         </div>
+        </div>
+        </section>
+        <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
+          <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
+              <span className={`text-[8px] sm:text-[10px] ${orderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{orderBook ? 'LIVE' : 'OFFLINE'}</span>
+            </div>
+            {orderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - orderBook.updatedAt) / 1000))}s ago</p>}
+          </div>
+          <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
+            <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
+          </div>
+          {orderBook ? (
+            <div className="space-y-0.5 px-1.5 py-2 sm:px-2">
+              <div className="space-y-0.5">
+                {[...orderBook.asks].reverse().map((level, i) => (
+                  <div key={`ask-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
+                    <span className="truncate text-red-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
+                    <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                    <span className="truncate text-right text-muted-foreground">{level.total.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="my-2 border-y border-white/10 py-2 text-center text-[10px] font-bold text-foreground sm:text-xs">
+                {currentPrice != null ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : '—'}
+              </div>
+              <div className="space-y-0.5">
+                {orderBook.bids.map((level, i) => (
+                  <div key={`bid-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
+                    <span className="truncate text-emerald-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
+                    <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                    <span className="truncate text-right text-muted-foreground">{level.total.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? 'Live feed unavailable' : 'Connecting live order book…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? 'This exchange has no fresh depth data for this asset right now. No sample prices are shown.' : 'Fetching verified bids and asks from the exchange.'}</p>
+            </div>
+          )}
+        </section>
       </div>
         </main>
       </div>
-
       <FuturesPositions
         positions={futuresPositions}
         isLoading={futuresPositionsLoading}

@@ -1021,7 +1021,46 @@ router.use((req, res, next) => {
   void requireVerifiedMember(req, res, next).catch((error) => next(error));
 });
 
-router.use(createFuturesRouter(getFuturesQuote, getTradingHistory));
+router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, asset) => {
+  // Use the same exchange market identity as the quote feed; GOLD is Tether Gold (XAUT).
+  const symbol = asset === "GOLD" ? "XAUT" : asset.toUpperCase();
+  if (!/^[A-Z0-9]{2,15}$/.test(symbol)) return null;
+  const pairs = [`${symbol}-USDT`, `${symbol}-USD`];
+  for (const pair of pairs) {
+    try {
+      const response = await fetch(
+        "https://www.okx.com/api/v5/market/books?instId=" + encodeURIComponent(pair) + "&sz=10",
+        { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(2500) },
+      );
+      if (!response.ok) continue;
+      const body = await response.json().catch(() => null) as any;
+      const raw = body?.code === "0" ? body?.data?.[0] : null;
+      const providerTimestamp = Number(raw?.ts);
+      const now = Date.now();
+      if (!raw || !Number.isFinite(providerTimestamp) || providerTimestamp <= 0
+        || providerTimestamp > now + 2000 || now - providerTimestamp > 15000
+        || !Array.isArray(raw.bids) || !Array.isArray(raw.asks)
+        || (!raw.bids.length && !raw.asks.length)) continue;
+      const levels = (rows: unknown[]) => {
+        let total = 0;
+        return rows.slice(0, 10).flatMap((row: any) => {
+          const price = Number(row?.[0]);
+          const size = Number(row?.[1]);
+          if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return [];
+          total += size;
+          return [{ price, size, total }];
+        });
+      };
+      const bids = levels(raw.bids);
+      const asks = levels(raw.asks);
+      if (!bids.length && !asks.length) continue;
+      return { bids, asks, updatedAt: providerTimestamp };
+    } catch (error) {
+      req.log.debug({ err: error, asset: symbol, pair }, "Exchange order book source unavailable");
+    }
+  }
+  return null;
+}));
 
 router.get("/profile", async (req, res) => {
   const profile = await ensureSeededUser(getUserId(req), { syncClerkIdentity: true, profileOnly: true });

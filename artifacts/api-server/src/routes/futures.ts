@@ -13,6 +13,8 @@ import {
 export type FuturesQuote = { price: number; updatedAt: number };
 type GetQuote = (req: Request, asset: string) => Promise<FuturesQuote | null>;
 type GetHistory = (req: Request, asset: string) => Promise<{ t: number; price: number }[]>;
+type OrderBookLevel = { price: number; size: number; total: number };
+type GetOrderBook = (req: Request, asset: string) => Promise<{ bids: OrderBookLevel[]; asks: OrderBookLevel[]; updatedAt: number } | null>;
 const LEVERAGE_OPTIONS = [1, 2, 5, 10, 20, 50, 100];
 
 export function positionPnl(position: FuturesPosition, mark: number) {
@@ -43,8 +45,28 @@ function responsePosition(position: FuturesPosition, quote: FuturesQuote | null 
   };
 }
 
-export function createFuturesRouter(getQuote: GetQuote, getHistory: GetHistory) {
+export function createFuturesRouter(getQuote: GetQuote, getHistory: GetHistory, getOrderBook?: GetOrderBook) {
   const router = Router();
+
+  router.get("/trading/orderbook/:asset", async (req, res) => {
+    const asset = String(req.params.asset).toUpperCase();
+    if (!getOrderBook) {
+      res.status(503).json({ error: "Order book feed is not configured." });
+      return;
+    }
+    try {
+      const book = await getOrderBook(req, asset);
+      if (!book || Date.now() - book.updatedAt > 15_000) {
+        res.status(503).json({ error: "Fresh order book data is temporarily unavailable." });
+        return;
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ asset: asset === "GOLD" ? "XAUT" : asset, ...book });
+    } catch (error) {
+      req.log.warn({ err: error, asset }, "Live order book unavailable");
+      res.status(503).json({ error: "Live order book is temporarily unavailable." });
+    }
+  });
 
   router.get("/trading/chart/:asset", async (req, res) => {
     res.json(await getHistory(req, String(req.params.asset).toUpperCase()));
