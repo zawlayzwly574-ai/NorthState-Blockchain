@@ -41,6 +41,7 @@ jobs:
         env:
           # Vite configs require PORT even during static production builds.
           PORT: 3000
+          BASE_PATH: "/"
         run: pnpm run build
 
   api-tests:
