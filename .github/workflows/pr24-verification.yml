@@ -38,6 +38,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck and build workspace
+        env:
+          # Vite configs require PORT even during static production builds.
+          PORT: 3000
+          BASE_PATH: "/"
         run: pnpm run build
 
   api-tests:

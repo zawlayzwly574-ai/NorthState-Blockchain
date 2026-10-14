@@ -1059,6 +1059,39 @@ router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, a
       req.log.debug({ err: error, asset: symbol, pair }, "Exchange order book source unavailable");
     }
   }
+  // Use Binance depth as a secondary source for assets with an explicit
+  // Binance spot-pair mapping. Never guess exchange symbols or synthesize levels.
+  // OKX remains first choice, and unsupported assets still report unavailable.
+  const binancePair = Object.values(binanceSymbols).find((pair) => pair === `${symbol}USDT`);
+  if (binancePair) {
+    for (const host of ["api.binance.com", "api1.binance.com", "api2.binance.com"]) {
+      try {
+        const response = await fetch(
+          `https://${host}/api/v3/depth?symbol=${encodeURIComponent(binancePair)}&limit=10`,
+          { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(2500) },
+        );
+        if (!response.ok) continue;
+        const body = await response.json().catch(() => null) as any;
+        const levels = (rows: unknown[]) => {
+          let total = 0;
+          return rows.slice(0, 10).flatMap((row: any) => {
+            const price = Number(row?.[0]);
+            const size = Number(row?.[1]);
+            if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return [];
+            total += size;
+            return [{ price, size, total }];
+          });
+        };
+        const bids = Array.isArray(body?.bids) ? levels(body.bids) : [];
+        const asks = Array.isArray(body?.asks) ? levels(body.asks) : [];
+        if (bids.length && asks.length) {
+          return { bids, asks, updatedAt: Date.now() };
+        }
+      } catch (error) {
+        req.log.debug({ err: error, asset: symbol, host }, "Fallback exchange order book source unavailable");
+      }
+    }
+  }
   return null;
 }));
 
