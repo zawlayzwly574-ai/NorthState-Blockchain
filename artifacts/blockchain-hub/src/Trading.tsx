@@ -671,6 +671,8 @@ export function TradingPage() {
   const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
+  const [orderBook, setOrderBook] = useState<{ bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
+  const [orderBookError, setOrderBookError] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showFutures, setShowFutures] = useState(false);
   const [futuresContractType, setFuturesContractType] = useState<'Perpetual' | 'Quarterly'>('Perpetual');
@@ -706,6 +708,51 @@ export function TradingPage() {
   });
 
   const marketSymbol = asset === 'GOLD' ? 'XAUT' : asset;
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const refreshOrderBook = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await fetch(`/api/trading/orderbook/${encodeURIComponent(marketSymbol)}`, {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error('Order book unavailable');
+        const data = await response.json();
+        const validLevels = (levels: unknown) => Array.isArray(levels) ? levels.filter((level: any) =>
+          Number.isFinite(Number(level?.price)) && Number(level.price) > 0
+          && Number.isFinite(Number(level?.size)) && Number(level.size) > 0
+          && Number.isFinite(Number(level?.total)) && Number(level.total) > 0
+        ).slice(0, 10) : [];
+        const updatedAt = Number(data?.updatedAt);
+        if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 15_000 || updatedAt > Date.now() + 2_000) {
+          throw new Error('Stale order book');
+        }
+        const bids = validLevels(data?.bids);
+        const asks = validLevels(data?.asks);
+        if (!bids.length && !asks.length) throw new Error('Empty order book');
+        if (!cancelled) {
+          setOrderBook({ bids, asks, updatedAt });
+          setOrderBookError(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setOrderBook(null);
+          setOrderBookError(true);
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+    setOrderBook(null);
+    setOrderBookError(false);
+    void refreshOrderBook();
+    const timer = window.setInterval(() => { void refreshOrderBook(); }, 3_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [marketSymbol]);
   const marketAsset = market.find(m => m.symbol === marketSymbol);
   const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
   const quoteAge = Date.now() - quoteTime;
@@ -1149,15 +1196,45 @@ export function TradingPage() {
         </section>
         <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
-            <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK</h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
+              <span className={`text-[8px] sm:text-[10px] ${orderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{orderBook ? 'LIVE' : 'OFFLINE'}</span>
+            </div>
+            {orderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - orderBook.updatedAt) / 1000))}s ago</p>}
           </div>
           <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
             <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
           </div>
-          <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-            <span className="text-xs font-semibold text-muted-foreground sm:text-sm">Live order book feed</span>
-            <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">Order book data is not connected to a verified bids/asks API yet. Live market prices are shown in the chart; order levels will appear when a real feed is available.</p>
-          </div>
+          {orderBook ? (
+            <div className="space-y-0.5 px-1.5 py-2 sm:px-2">
+              <div className="space-y-0.5">
+                {[...orderBook.asks].reverse().map((level, i) => (
+                  <div key={`ask-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
+                    <span className="truncate text-red-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
+                    <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                    <span className="truncate text-right text-muted-foreground">{level.total.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="my-2 border-y border-white/10 py-2 text-center text-[10px] font-bold text-foreground sm:text-xs">
+                {currentPrice != null ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : '—'}
+              </div>
+              <div className="space-y-0.5">
+                {orderBook.bids.map((level, i) => (
+                  <div key={`bid-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
+                    <span className="truncate text-emerald-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
+                    <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                    <span className="truncate text-right text-muted-foreground">{level.total.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? 'Live feed unavailable' : 'Connecting live order book…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? 'This exchange has no fresh depth data for this asset right now. No sample prices are shown.' : 'Fetching verified bids and asks from the exchange.'}</p>
+            </div>
+          )}
         </section>
       </div>
         </main>
