@@ -42,6 +42,9 @@ jobs:
           # Vite configs require PORT even during static production builds.
           PORT: 3000
           BASE_PATH: "/"
+          # Build-only placeholder: CI verifies compilation and does not deploy this artifact.
+          # Production Clerk keys remain configured in the deployment environment.
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
         run: pnpm run build
 
   api-tests:
