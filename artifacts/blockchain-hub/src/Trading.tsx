@@ -161,7 +161,17 @@ function resolveGoldPayoutRate(amount: number): number {
   return applicable?.payout ?? GOLD_TIERS[0].payout;
 }
 
-function payoutRateFor(asset: string, amount: number): number {
+const SI_PRESETS = [
+  { label: '60SI40%', secs: 60, minAmount: 5_000, payout: 0.40 },
+  { label: '90SI50%', secs: 90, minAmount: 20_000, payout: 0.50 },
+  { label: '180SI70%', secs: 180, minAmount: 50_000, payout: 0.70 },
+  { label: '300SI85%', secs: 300, minAmount: 100_000, payout: 0.85 },
+  { label: '1M100%', secs: 60, minAmount: 300_000, payout: 1.00 },
+] as const;
+
+function payoutRateFor(asset: string, amount: number, siPreset: string): number {
+  const selected = SI_PRESETS.find(preset => preset.label === siPreset);
+  if (selected) return selected.payout;
   if (asset === 'GOLD') return resolveGoldPayoutRate(amount);
   return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
 }
@@ -683,6 +693,7 @@ export function TradingPage() {
   const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
+  const [siPreset, setSiPreset] = useState('60SI40%');
   const [orderBook, setOrderBook] = useState<{ bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
   const [orderBookError, setOrderBookError] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
@@ -781,9 +792,10 @@ export function TradingPage() {
   const entryPrice = assetActiveTrade ? Number(assetActiveTrade.entryPrice) : undefined;
 
   const isGold = asset === 'GOLD';
-  const minTrade = minTradeAmountFor(asset);
+  const selectedSiPreset = SI_PRESETS.find(preset => preset.label === siPreset) ?? SI_PRESETS[0];
+  const minTrade = Math.max(minTradeAmountFor(asset), selectedSiPreset.minAmount);
   const tradeAmt = Math.max(1, Number(amount) || 0);
-  const payoutRate = payoutRateFor(asset, tradeAmt);
+  const payoutRate = payoutRateFor(asset, tradeAmt, selectedSiPreset.label);
   const potentialProfit = Math.floor(tradeAmt * payoutRate);
   const timeframeLabel = TIMEFRAMES.find(tf => tf.secs === timeframeSecs)?.label ?? '60s';
   const balance = Number(account?.balance ?? 0);
@@ -818,7 +830,7 @@ export function TradingPage() {
     setTradeError('');
     try {
       const placedTrade = await placeTradeHook.mutateAsync({
-        data: { asset, direction, amount: tradeAmt, timeframeSecs },
+        data: { asset, direction, amount: tradeAmt, timeframeSecs, siPreset } as any,
       });
       setActiveSpotTrade({
         id: placedTrade.tradeId,
@@ -1116,17 +1128,16 @@ export function TradingPage() {
         {/* Compact paired expiry/payout buttons above the trade amount field. */}
         <div className="mb-3">
           <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: '60SI40%', secs: 60 },
-              { label: '90SI50%', secs: 90 },
-              { label: '180SI70%', secs: 180 },
-              { label: '300SI85%', secs: 300 },
-              { label: '1M100%', secs: 60 },
-            ].map((tf, idx) => (
-              <button key={tf.label + idx} type="button" onClick={() => setTimeframeSecs(tf.secs)}
-                aria-pressed={timeframeSecs === tf.secs}
-                className={"flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-extrabold transition sm:px-3 " + (timeframeSecs === tf.secs ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-primary/50")}>
-                <span>{tf.label}</span>
+            {SI_PRESETS.map(preset => (
+              <button key={preset.label} type="button"
+                onClick={() => {
+                  setSiPreset(preset.label);
+                  setTimeframeSecs(preset.secs);
+                  setAmount(String(Math.max(minTradeAmountFor(asset), preset.minAmount)));
+                }}
+                aria-pressed={siPreset === preset.label}
+                className={"flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-xs font-extrabold transition sm:px-3 " + (siPreset === preset.label ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-primary/50")}>
+                <span>{preset.label}</span>
               </button>
             ))}
           </div>
