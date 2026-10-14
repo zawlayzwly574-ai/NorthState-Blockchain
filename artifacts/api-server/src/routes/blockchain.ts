@@ -1059,6 +1059,37 @@ router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, a
       req.log.debug({ err: error, asset: symbol, pair }, "Exchange order book source unavailable");
     }
   }
+  // BTC order-book fallback: OKX may be reachable for quotes while its depth
+  // endpoint is unavailable. Use Binance's public BTCUSDT depth endpoint only
+  // for BTC; never synthesize levels or change trading/account data.
+  if (symbol === "BTC") {
+    try {
+      const response = await fetch(
+        "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=10",
+        { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(2500) },
+      );
+      if (response.ok) {
+        const body = await response.json().catch(() => null) as any;
+        const levels = (rows: unknown[]) => {
+          let total = 0;
+          return rows.slice(0, 10).flatMap((row: any) => {
+            const price = Number(row?.[0]);
+            const size = Number(row?.[1]);
+            if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return [];
+            total += size;
+            return [{ price, size, total }];
+          });
+        };
+        const bids = Array.isArray(body?.bids) ? levels(body.bids) : [];
+        const asks = Array.isArray(body?.asks) ? levels(body.asks) : [];
+        if (bids.length && asks.length) {
+          return { bids, asks, updatedAt: Date.now() };
+        }
+      }
+    } catch (error) {
+      req.log.debug({ err: error, asset: symbol }, "Fallback BTC order book source unavailable");
+    }
+  }
   return null;
 }));
 
