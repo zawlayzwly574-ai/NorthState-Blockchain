@@ -1092,6 +1092,52 @@ router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, a
       }
     }
   }
+  // Third provider fallback: Bybit's public spot order book. This is real exchange
+  // depth only; unsupported instruments remain unavailable rather than showing
+  // fabricated levels. XAUT is used for the app's GOLD tokenized-gold market.
+  const bybitPairByAsset: Record<string, string> = {
+    BTC: "BTCUSDT", ETH: "ETHUSDT", BNB: "BNBUSDT", USDC: "USDCUSDT",
+    DAI: "DAIUSDT", FDUSD: "FDUSDUSDT", XRP: "XRPUSDT", SOL: "SOLUSDT",
+    TRX: "TRXUSDT", ZEC: "ZECUSDT", DOGE: "DOGEUSDT", LINK: "LINKUSDT",
+    ADA: "ADAUSDT", XLM: "XLMUSDT", BCH: "BCHUSDT", USD1: "USD1USDT",
+    USDE: "USDEUSDT", LTC: "LTCUSDT", TON: "TONUSDT", HBAR: "HBARUSDT",
+    AVAX: "AVAXUSDT", SUI: "SUIUSDT", SHIB: "SHIBUSDT", UNI: "UNIUSDT",
+    XAUT: "XAUTUSDT", TAO: "TAOUSDT", NEAR: "NEARUSDT",
+  };
+  const bybitPair = bybitPairByAsset[symbol] ?? binancePair;
+  if (bybitPair) {
+    try {
+      const response = await fetch(
+        `https://api.bybit.com/v5/market/orderbook?category=spot&symbol=${encodeURIComponent(bybitPair)}&limit=10`,
+        { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(3500) },
+      );
+      if (response.ok) {
+        const body = await response.json().catch(() => null) as any;
+        const raw = body?.retCode === 0 ? body?.result : null;
+        const providerTimestamp = Number(body?.time ?? raw?.ts);
+        const now = Date.now();
+        const levels = (rows: unknown[]) => {
+          let total = 0;
+          return rows.slice(0, 10).flatMap((row: any) => {
+            const price = Number(row?.[0]);
+            const size = Number(row?.[1]);
+            if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return [];
+            total += size;
+            return [{ price, size, total }];
+          });
+        };
+        const bids = Array.isArray(raw?.b) ? levels(raw.b) : [];
+        const asks = Array.isArray(raw?.a) ? levels(raw.a) : [];
+        if (Number.isFinite(providerTimestamp) && providerTimestamp > 0
+          && providerTimestamp <= now + 2000 && now - providerTimestamp <= 15000
+          && bids.length > 0 && asks.length > 0) {
+          return { bids, asks, updatedAt: providerTimestamp };
+        }
+      }
+    } catch (error) {
+      req.log.debug({ err: error, asset: symbol, pair: bybitPair }, "Bybit order book source unavailable");
+    }
+  }
   return null;
 }));
 
