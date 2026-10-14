@@ -610,6 +610,8 @@ function ClerkAuthPage({ signUp = false }: { signUp?: boolean }) {
 
 function KycStatusScreen({ status }: { status: string }) {
   const [, setLocation] = useLocation();
+  const { language } = useAppLanguage();
+  const pageCopy = APP_PAGE_COPY[language] ?? APP_PAGE_COPY['en-US'];
   if (status === 'pending') {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-4 py-12 text-center">
