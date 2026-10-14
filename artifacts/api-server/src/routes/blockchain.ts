@@ -1059,16 +1059,18 @@ router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, a
       req.log.debug({ err: error, asset: symbol, pair }, "Exchange order book source unavailable");
     }
   }
-  // BTC order-book fallback: OKX may be reachable for quotes while its depth
-  // endpoint is unavailable. Use Binance's public BTCUSDT depth endpoint only
-  // for BTC; never synthesize levels or change trading/account data.
-  if (symbol === "BTC") {
-    try {
-      const response = await fetch(
-        "https://api.binance.com/api/v3/depth?symbol=BTCUSDT&limit=10",
-        { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(2500) },
-      );
-      if (response.ok) {
+  // Use Binance depth as a secondary source for assets with an explicit
+  // Binance spot-pair mapping. Never guess exchange symbols or synthesize levels.
+  // OKX remains first choice, and unsupported assets still report unavailable.
+  const binancePair = Object.values(binanceSymbols).find((pair) => pair === `${symbol}USDT`);
+  if (binancePair) {
+    for (const host of ["api.binance.com", "api1.binance.com", "api2.binance.com"]) {
+      try {
+        const response = await fetch(
+          `https://${host}/api/v3/depth?symbol=${encodeURIComponent(binancePair)}&limit=10`,
+          { headers: { accept: "application/json", "user-agent": "NorthStateBlockchain/1.0" }, signal: AbortSignal.timeout(2500) },
+        );
+        if (!response.ok) continue;
         const body = await response.json().catch(() => null) as any;
         const levels = (rows: unknown[]) => {
           let total = 0;
@@ -1085,9 +1087,9 @@ router.use(createFuturesRouter(getFuturesQuote, getTradingHistory, async (req, a
         if (bids.length && asks.length) {
           return { bids, asks, updatedAt: Date.now() };
         }
+      } catch (error) {
+        req.log.debug({ err: error, asset: symbol, host }, "Fallback exchange order book source unavailable");
       }
-    } catch (error) {
-      req.log.debug({ err: error, asset: symbol }, "Fallback BTC order book source unavailable");
     }
   }
   return null;
