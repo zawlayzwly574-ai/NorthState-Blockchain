@@ -47,7 +47,19 @@ function TradingCoinIcon({ symbol, size = 36 }: { symbol: string; size?: number 
   const iconSymbol = COIN_ICON_SYMBOLS[normalized] ?? symbol.toLowerCase();
   const cdnSymbol: Record<string, string> = { TRX: 'TRON', XAUT: 'XAUT', WBTC: 'WBTC', FDUSD: 'FDUSD' };
   if (normalized === 'GOLD') {
-    return <span className="grid shrink-0 place-items-center rounded-full border border-yellow-400/40 bg-yellow-400/10 font-extrabold text-yellow-300" style={{ width: size, height: size, fontSize: size * 0.27 }}>Au</span>;
+    return (
+      <span
+        role="img"
+        aria-label="Gold"
+        className="grid shrink-0 place-items-center overflow-hidden rounded-full"
+        style={{ width: size, height: size, backgroundColor: '#ffab00' }}
+      >
+        <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true">
+          <circle cx="50" cy="50" r="50" fill="#ffab00" />
+          <path d="M41 27 L59 27 L68 44 L32 44 Z M21 50 L39 50 L48 67 L12 67 Z M61 50 L79 50 L88 67 L52 67 Z" fill="#fff" />
+        </svg>
+      </span>
+    );
   }
   const sources = [
     `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${iconSymbol}.png`,
