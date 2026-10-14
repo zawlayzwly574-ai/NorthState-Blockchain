@@ -2885,7 +2885,17 @@ function resolveGoldPayoutRate(amount: number): number {
   return applicable?.payout ?? GOLD_TIERS[0].payout;
 }
 
-function payoutRateFor(asset: string, amount: number): number {
+const SI_PRESETS = [
+  { label: "60SI40%", secs: 60, minAmount: 5_000, payout: 0.40 },
+  { label: "90SI50%", secs: 90, minAmount: 20_000, payout: 0.50 },
+  { label: "180SI70%", secs: 180, minAmount: 50_000, payout: 0.70 },
+  { label: "300SI85%", secs: 300, minAmount: 100_000, payout: 0.85 },
+  { label: "1M100%", secs: 60, minAmount: 300_000, payout: 1.00 },
+] as const;
+
+function payoutRateFor(asset: string, amount: number, siPreset?: string): number {
+  const selected = SI_PRESETS.find((preset) => preset.label === siPreset);
+  if (selected) return selected.payout;
   if (asset === "GOLD") return resolveGoldPayoutRate(amount);
   return ASSET_PAYOUT_RATE[asset] ?? DEFAULT_PAYOUT_RATE;
 }
@@ -3114,8 +3124,8 @@ router.get("/trading/trades", async (req, res) => {
 
 router.post("/trading/trades", async (req, res) => {
   const userId = getUserId(req);
-  const { asset, direction, amount, timeframeSecs } = req.body as {
-    asset?: string; direction?: string; amount?: number; timeframeSecs?: number;
+  const { asset, direction, amount, timeframeSecs, siPreset } = req.body as {
+    asset?: string; direction?: string; amount?: number; timeframeSecs?: number; siPreset?: string;
   };
   if (!asset || !direction || !amount || !timeframeSecs) {
     res.status(400).json({ error: "Missing required fields." }); return;
@@ -3132,8 +3142,15 @@ router.post("/trading/trades", async (req, res) => {
   }
   const amountString = normalizeStablecoinAmount(String(amount));
   if (!amountString) { res.status(400).json({ error: "Amount must be a positive value with up to 8 decimal places." }); return; }
-  const minTrade = minTradeAmountFor(assetSymbol);
   const amountNumber = Number(amountString);
+  const selectedSiPreset = SI_PRESETS.find((preset) => preset.label === siPreset);
+  if (siPreset && !selectedSiPreset) {
+    res.status(400).json({ error: "Choose a valid SI trading preset." }); return;
+  }
+  if (selectedSiPreset && timeframeSecs !== selectedSiPreset.secs) {
+    res.status(400).json({ error: "The selected SI preset does not match its expiry timeframe." }); return;
+  }
+  const minTrade = Math.max(minTradeAmountFor(assetSymbol), selectedSiPreset?.minAmount ?? 0);
   if (amountNumber < minTrade) {
     res.status(400).json({ error: `Minimum trade amount for ${assetSymbol} is ${minTrade.toLocaleString()} USDT.` });
     return;
@@ -3144,7 +3161,7 @@ router.post("/trading/trades", async (req, res) => {
     res.status(400).json({ error: `Your trading balance must be at least ${minTrade.toLocaleString()} USDT to trade ${assetSymbol}.` });
     return;
   }
-  const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber);
+  const resolvedPayoutRate = payoutRateFor(assetSymbol, amountNumber, selectedSiPreset?.label);
   const entryQuote = await getFuturesQuote(req, assetSymbol);
   if (!entryQuote || !isFreshExecutionQuote(entryQuote)) {
     res.status(503).json({ error: "A fresh exchange trade is unavailable. No Spot order was opened." });
