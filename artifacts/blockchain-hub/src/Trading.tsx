@@ -1196,7 +1196,7 @@ export function TradingPage() {
         </div>
         </div>
         </section>
-        <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-border/60 bg-card sm:rounded-2xl" aria-label="Order book">
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div>
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
