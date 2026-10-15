@@ -348,6 +348,8 @@ export interface SupportMessage {
   threadId: number;
   senderRole: 'user' | 'admin';
   content: string;
+  originalContent?: string;
+  translated?: boolean;
   createdAt: string;
 }
 
