@@ -2965,11 +2965,11 @@ function resolveGoldPayoutRate(amount: number): number {
 }
 
 const SI_PRESETS = [
-  { label: "60SI40%", secs: 60, minAmount: 5_000, payout: 0.40 },
-  { label: "90SI50%", secs: 90, minAmount: 20_000, payout: 0.50 },
-  { label: "180SI70%", secs: 180, minAmount: 50_000, payout: 0.70 },
-  { label: "300SI85%", secs: 300, minAmount: 100_000, payout: 0.85 },
-  { label: "1M100%", secs: 60, minAmount: 300_000, payout: 1.00 },
+  { label: "60SI40%", secs: 60, minAmount: 10_000, payout: 0.40 },
+  { label: "90SI50%", secs: 90, minAmount: 40_000, payout: 0.50 },
+  { label: "180SI70%", secs: 180, minAmount: 70_000, payout: 0.70 },
+  { label: "300SI85%", secs: 300, minAmount: 150_000, payout: 0.85 },
+  { label: "1M100%", secs: 600, minAmount: 350_000, payout: 1.00 },
 ] as const;
 
 function payoutRateFor(asset: string, amount: number, siPreset?: string): number {
