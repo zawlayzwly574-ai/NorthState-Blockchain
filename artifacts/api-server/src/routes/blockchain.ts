@@ -2081,7 +2081,7 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
       displayName: profile?.displayName ?? (publicSupportName(msgs) || "Unknown"),
       email: profile?.email ?? "",
       threadId: thread.id,
-      lastMessage: last ? publicSupportDisplayContent(last.content) : "",
+      lastMessage: last ? publicSupportDisplayContent(supportContentForViewer(last.content, last.senderRole, "admin")) : "",
       lastMessageAt: (last?.createdAt ?? thread.createdAt).toISOString(),
       unreadCount,
     };
