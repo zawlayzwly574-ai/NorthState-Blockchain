@@ -2109,9 +2109,29 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     displayName: profile?.displayName ?? (publicSupportName(messages) || "Unknown"),
     email: profile?.email ?? "",
     threadId: thread.id,
-    messages: messages.map(m => ({
-      id: m.id, threadId: m.threadId, senderRole: m.senderRole,
-      content: publicSupportDisplayContent(m.content), createdAt: m.createdAt.toISOString(),
+    messages: await Promise.all(messages.map(async m => {
+      let stored = m.content;
+      if (m.senderRole === "user") {
+        const cached = parseSupportTranslation(stored);
+        if (!cached || cached.targetLanguage !== String(req.query.language || "my")) {
+          const original = cached?.originalText ?? stored;
+          const visible = publicSupportDisplayContent(original);
+          try {
+            const targetLanguage = String(req.query.language || "my");
+            const sourceLanguage = await detectSupportLanguage(visible);
+            const translated = sourceLanguage === targetLanguage ? visible : await translateSupportText(visible, targetLanguage, sourceLanguage);
+            const translatedText = original.startsWith("Guest support request\\nName: ")
+              ? original.replace(/(Guest support request\\nName: [^\\n]*\\n\\n)[\\s\\S]*$/, "$1" + translated)
+              : translated;
+            stored = encodeSupportTranslation({ version: 1, originalText: original, translatedText, sourceLanguage, targetLanguage });
+            await db.update(supportMessagesTable).set({ content: stored }).where(eq(supportMessagesTable.id, m.id));
+          } catch (error) {
+            req.log?.warn({ err: error, messageId: m.id }, "Incoming support translation unavailable");
+            stored = original;
+          }
+        }
+      }
+      return { id: m.id, threadId: m.threadId, senderRole: m.senderRole, content: supportContentForViewer(stored, m.senderRole, "admin"), createdAt: m.createdAt.toISOString() };
     })),
   });
 });
