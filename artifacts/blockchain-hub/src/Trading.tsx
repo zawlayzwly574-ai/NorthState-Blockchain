@@ -763,8 +763,7 @@ export function TradingPage() {
       } catch {
         if (!cancelled) {
           // Keep the last verified exchange snapshot during brief provider/network
-          // outages. If unavailable, the UI falls back to a separately labeled
-          // chart-linked simulated ladder; it is never presented as exchange depth.
+          // outages. Never substitute chart quotes for actual order-book depth.
           setOrderBookError(true);
         }
       } finally {
@@ -796,7 +795,6 @@ export function TradingPage() {
   const assetActiveTrade = activeTrades.find(t => t.asset === asset);
   const entryPrice = assetActiveTrade ? Number(assetActiveTrade.entryPrice) : undefined;
 
-  const isGold = asset === 'GOLD';
   const selectedSiPreset = SI_PRESETS.find(preset => preset.label === siPreset) ?? SI_PRESETS[0];
   const minTrade = Math.max(minTradeAmountFor(asset), selectedSiPreset.minAmount);
   const tradeAmt = Math.max(1, Number(amount) || 0);
@@ -1184,9 +1182,8 @@ export function TradingPage() {
         </section>
         <section className="min-w-0 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:rounded-2xl" aria-label="Order book">
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
-            <div className="flex items-center justify-between gap-2">
+            <div>
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'CONNECTING'}</span>
             </div>
             {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{`Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
           </div>
