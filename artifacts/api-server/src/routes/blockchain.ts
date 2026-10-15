@@ -13,6 +13,7 @@ import {
   passkeysTable,
   supportMessagesTable,
   supportThreadsTable,
+  webPushSubscriptionsTable,
   tradesTable,
   tradingAccountsTable,
   transactionsTable,
@@ -22,6 +23,7 @@ import { createFuturesRouter, type FuturesQuote } from "./futures";
 import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportText } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
+import { savePushSubscription, removeUserPushSubscription, removeAdminPushSubscription, sendPushToAdmins, sendPushToUser } from "../lib/push-notifications";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -1615,6 +1617,14 @@ async function createTransaction(
     });
     return created;
   });
+  if (type !== "send") {
+    void sendPushToAdmins({
+      title: `New ${type === "withdrawal" ? "withdrawal" : "deposit"} request`,
+      body: `${body.amount} ${body.asset} is awaiting review.`,
+      url: "/",
+      tag: "transactions",
+    });
+  }
   return {
     id: String(transaction.id),
     type,
@@ -1934,6 +1944,38 @@ router.post("/sms/verify-otp", async (req, res) => {
   res.json({ verified: true, phoneNumber: phone });
 });
 
+// Web Push subscriptions are opt-in and scoped to the authenticated owner.
+router.post("/push/subscribe", async (req, res) => {
+  const userId = getUserId(req);
+  try {
+    await savePushSubscription("user", userId, req.body, req.get("user-agent"));
+    res.status(201).json({ subscribed: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid push subscription." });
+  }
+});
+router.delete("/push/subscribe", async (req, res) => {
+  const userId = getUserId(req);
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : "";
+  if (!endpoint) { res.status(400).json({ error: "Subscription endpoint is required." }); return; }
+  await removeUserPushSubscription(userId, endpoint);
+  res.json({ unsubscribed: true });
+});
+router.post("/admin/push/subscribe", requireAdmin, async (req, res) => {
+  try {
+    await savePushSubscription("admin", null, req.body, req.get("user-agent"));
+    res.status(201).json({ subscribed: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid push subscription." });
+  }
+});
+router.delete("/admin/push/subscribe", requireAdmin, async (req, res) => {
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : "";
+  if (!endpoint) { res.status(400).json({ error: "Subscription endpoint is required." }); return; }
+  await removeAdminPushSubscription(endpoint);
+  res.json({ unsubscribed: true });
+});
+
 // ─── Support chat ─────────────────────────────────────────────────────────────
 
 // Public pre-login contact form. Messages are stored in the existing support inbox so
@@ -2042,10 +2084,13 @@ router.post("/support/messages", async (req, res) => {
     [thread] = await db.insert(supportThreadsTable)
       .values({ clerkUserId: userId, status: "open" }).returning();
   }
+  const originalText = content.trim();
   const [message] = await db.insert(supportMessagesTable)
-    .values({ threadId: thread.id, senderRole: "user", content: content.trim() }).returning();
+    .values({ threadId: thread.id, senderRole: "user", content: originalText, originalText })
+    .returning();
   await db.update(supportThreadsTable).set({ updatedAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
+  void sendPushToAdmins({ title: "New support message", body: originalText.slice(0, 160), url: "/", tag: "support" });
   res.json({ sent: true, messageId: message.id });
 });
 
@@ -2205,6 +2250,12 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
   await db.update(supportThreadsTable)
     .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
+  void sendPushToUser(userId, {
+    title: "Support replied",
+    body: translatedText.slice(0, 160),
+    url: "/",
+    tag: "support",
+  });
   res.json({ sent: true, messageId: message.id, targetLanguage, translationApplied });
 });
 
@@ -2893,6 +2944,12 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
     res.status(409).json({ error: "The member's persisted trading account is missing. Reconcile it before approving this transaction." });
     return;
   }
+  void sendPushToUser(result.transaction.clerkUserId, {
+    title: "Transaction approved",
+    body: `${result.transaction.type} ${result.transaction.amount} ${result.transaction.asset} was approved.`,
+    url: "/",
+    tag: `transaction-${result.transaction.id}`,
+  });
   res.json(await enrichTransaction(result.transaction));
 });
 
@@ -2911,6 +2968,12 @@ router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) =>
     .update(activitiesTable)
     .set({ status: "failed" })
     .where(eq(activitiesTable.transactionId, txId));
+  void sendPushToUser(tx.clerkUserId, {
+    title: "Transaction update",
+    body: `${tx.type} ${tx.amount} ${tx.asset} was not approved.`,
+    url: "/",
+    tag: `transaction-${tx.id}`,
+  });
   res.json(await enrichTransaction(tx));
 });
 
