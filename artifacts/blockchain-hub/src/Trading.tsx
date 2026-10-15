@@ -763,14 +763,16 @@ export function TradingPage() {
         }
       } catch {
         if (!cancelled) {
-          setOrderBook(null);
+          // Keep the last verified exchange snapshot during brief provider/network
+          // outages. The timestamp remains the provider timestamp, so the UI can
+          // clearly distinguish cached depth from a live feed; never synthesize levels.
+          setOrderBook((previous) => previous);
           setOrderBookError(true);
         }
       } finally {
         inFlight = false;
       }
     };
-    setOrderBook(null);
     setOrderBookError(false);
     void refreshOrderBook();
     const timer = window.setInterval(() => { void refreshOrderBook(); }, 3_000);
