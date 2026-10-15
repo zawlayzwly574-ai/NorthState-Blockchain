@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Check, MessageSquare, Pencil, Send, Trash2, User2, X } from 'lucide-react';
+import { ArrowLeft, Bell, Check, MessageSquare, Pencil, Send, Trash2, User2, X } from 'lucide-react';
 import {
   useAdminSupportThreads,
   useAdminSupportThread,
   useAdminSupportReply,
   useAdminSupportSetLanguage,
+  saveAdminPushSubscription,
   useUpdateAdminSupportMessage,
   useDeleteAdminSupportMessage,
   type SupportThreadItem,
@@ -29,6 +30,8 @@ export default function Support() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [messageActionError, setMessageActionError] = useState('');
+  const [pushStatus, setPushStatus] = useState('');
+  const [pushBusy, setPushBusy] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: threads = [], isLoading } = useAdminSupportThreads();
@@ -57,6 +60,33 @@ export default function Support() {
     setMessageActionError('');
     setEditingMessageId(null);
     setEditingContent('');
+  };
+
+  const handleEnablePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('This browser does not support Web Push notifications.');
+      }
+      const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim();
+      if (!publicKey) throw new Error('Push notifications are not configured for this deployment yet.');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Please allow notifications in your browser settings.');
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const keyBytes = Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - publicKey.length % 4) % 4)), char => char.charCodeAt(0));
+      const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyBytes,
+      });
+      await saveAdminPushSubscription(subscription.toJSON());
+      setPushStatus('Push notifications enabled on this device.');
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Could not enable notifications.');
+    } finally {
+      setPushBusy(false);
+    }
   };
 
   const handleLanguageChange = async (targetLanguage: string) => {
@@ -140,7 +170,11 @@ export default function Support() {
               {totalUnread} new
             </span>
           )}
+          <button type="button" onClick={() => void handleEnablePush()} disabled={pushBusy} className="ml-auto inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-50" data-testid="button-enable-admin-push">
+            <Bell size={14} /> {pushBusy ? 'Enabling…' : 'Enable notifications'}
+          </button>
         </div>
+        {pushStatus && <p role="status" className="mt-2 break-words text-xs text-muted-foreground">{pushStatus}</p>}
         <p className="mt-1 text-sm text-muted-foreground">Manage and respond to user support threads in real time</p>
         <p className="mt-1 text-xs text-muted-foreground">Free auto-translation uses public translation services. Do not send passwords, recovery phrases, or other secrets in support chat.</p>
       </div>
