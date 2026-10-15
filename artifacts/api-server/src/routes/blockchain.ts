@@ -19,6 +19,7 @@ import {
   walletProfilesTable,
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
+import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, supportContentForViewer, translateSupportText } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
 import {
@@ -2125,12 +2126,28 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
     [thread] = await db.insert(supportThreadsTable)
       .values({ clerkUserId: userId, status: "open" }).returning();
   }
-  const [message] = await db.insert(supportMessagesTable)
-    .values({ threadId: thread.id, senderRole: "admin", content: content.trim() }).returning();
-  await db.update(supportThreadsTable)
-    .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
-    .where(eq(supportThreadsTable.id, thread.id));
-  res.json({ sent: true, messageId: message.id });
+  try {
+    const latestUserMessage = await db.select().from(supportMessagesTable)
+      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
+      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
+    let targetLanguage = "en";
+    if (latestUserMessage[0]) {
+      const raw = parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content;
+      targetLanguage = await detectSupportLanguage(publicSupportDisplayContent(raw));
+    }
+    const sourceLanguage = await detectSupportLanguage(content.trim());
+    const translated = sourceLanguage === targetLanguage ? content.trim() : await translateSupportText(content.trim(), targetLanguage, sourceLanguage);
+    const storedContent = encodeSupportTranslation({ version: 1, originalText: content.trim(), translatedText: translated, sourceLanguage, targetLanguage });
+    const [message] = await db.insert(supportMessagesTable)
+      .values({ threadId: thread.id, senderRole: "admin", content: storedContent }).returning();
+    await db.update(supportThreadsTable)
+      .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
+      .where(eq(supportThreadsTable.id, thread.id));
+    res.json({ sent: true, messageId: message.id, targetLanguage });
+  } catch (error) {
+    req.log?.warn({ err: error }, "Could not translate support reply; message was not sent");
+    res.status(503).json({ error: error instanceof Error ? error.message : "Free translation is temporarily unavailable. Please retry." });
+  }
 });
 
 router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (req, res) => {
