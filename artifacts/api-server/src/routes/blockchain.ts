@@ -2027,7 +2027,7 @@ router.get("/support/messages", async (req, res) => {
     threadId: thread.id,
     messages: messages.map(m => ({
       id: m.id, threadId: m.threadId, senderRole: m.senderRole,
-      content: m.content, createdAt: m.createdAt.toISOString(),
+      content: supportContentForViewer(m.content, m.senderRole, "user"), createdAt: m.createdAt.toISOString(),
     })),
   });
 });
