@@ -377,10 +377,10 @@ export function useAdminSupportThreads() {
   });
 }
 
-export function useAdminSupportThread(userId: string) {
+export function useAdminSupportThread(userId: string, language = "my") {
   return useQuery<SupportThreadDetail>({
-    queryKey: ['admin', 'support', userId],
-    queryFn: () => apiClient(`/support/${userId}`),
+    queryKey: ['admin', 'support', userId, language],
+    queryFn: () => apiClient(`/support/${encodeURIComponent(userId)}?language=${encodeURIComponent(language)}`),
     enabled: !!userId,
     refetchInterval: 3000,
   });
