@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, webPushSubscriptionsTable } from "@workspace/db";
 import { sendWebPush } from "./web-push";
 
@@ -57,7 +57,7 @@ export async function removeAdminPushSubscription(endpoint: string) {
 async function deliver(ownerType: "admin" | "user", clerkUserId: string | null, payload: PushPayload) {
   try {
     const conditions = clerkUserId
-      ? and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.clerkUserId, clerkUserId), eq(webPushSubscriptionsTable.disabledAt, null))
+      ? and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.clerkUserId, clerkUserId), isNull(webPushSubscriptionsTable.disabledAt))
       : and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.disabledAt, null));
     const subscriptions = await db.select().from(webPushSubscriptionsTable).where(conditions);
     await Promise.allSettled(subscriptions.map(async subscription => {
