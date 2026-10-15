@@ -2147,28 +2147,43 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
     [thread] = await db.insert(supportThreadsTable)
       .values({ clerkUserId: userId, status: "open" }).returning();
   }
+  const originalText = content.trim();
+  let targetLanguage = "und";
+  let sourceLanguage = "und";
+  let translatedText = originalText;
+  let translationApplied = false;
+
+  // Translation is an enhancement, never a prerequisite for sending support messages.
+  // If any public translation provider times out, is offline, or rejects the request,
+  // persist and send the original text instead of returning a 503.
   try {
     const latestUserMessage = await db.select().from(supportMessagesTable)
       .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
       .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
-    let targetLanguage = "en";
-    if (latestUserMessage[0]) {
-      const raw = parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content;
-      targetLanguage = await detectSupportLanguage(publicSupportDisplayContent(raw));
-    }
-    const sourceLanguage = await detectSupportLanguage(content.trim());
-    const translated = sourceLanguage === targetLanguage ? content.trim() : await translateSupportText(content.trim(), targetLanguage, sourceLanguage);
-    const storedContent = encodeSupportTranslation({ version: 1, originalText: content.trim(), translatedText: translated, sourceLanguage, targetLanguage });
-    const [message] = await db.insert(supportMessagesTable)
-      .values({ threadId: thread.id, senderRole: "admin", content: storedContent }).returning();
-    await db.update(supportThreadsTable)
-      .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
-      .where(eq(supportThreadsTable.id, thread.id));
-    res.json({ sent: true, messageId: message.id, targetLanguage });
+    targetLanguage = latestUserMessage[0]
+      ? await detectSupportLanguage(publicSupportDisplayContent(parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content))
+      : "en";
+    sourceLanguage = await detectSupportLanguage(originalText);
+    translatedText = sourceLanguage === targetLanguage
+      ? originalText
+      : await translateSupportText(originalText, targetLanguage, sourceLanguage);
+    translationApplied = translatedText !== originalText;
   } catch (error) {
-    req.log?.warn({ err: error }, "Could not translate support reply; message was not sent");
-    res.status(503).json({ error: error instanceof Error ? error.message : "Free translation is temporarily unavailable. Please retry." });
+    req.log?.warn({ err: error }, "Support translation unavailable; sending original admin reply");
+    translatedText = originalText;
+    sourceLanguage = "und";
+    targetLanguage = "und";
   }
+
+  const storedContent = encodeSupportTranslation({
+    version: 1, originalText, translatedText, sourceLanguage, targetLanguage,
+  });
+  const [message] = await db.insert(supportMessagesTable)
+    .values({ threadId: thread.id, senderRole: "admin", content: storedContent }).returning();
+  await db.update(supportThreadsTable)
+    .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
+    .where(eq(supportThreadsTable.id, thread.id));
+  res.json({ sent: true, messageId: message.id, targetLanguage, translationApplied });
 });
 
 router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (req, res) => {
@@ -2202,7 +2217,10 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(403).json({ error: "Only admin replies can be edited." }); return;
   }
 
-  let storedContent = content;
+  let storedContent = encodeSupportTranslation({
+    version: 1, originalText: content, translatedText: content,
+    sourceLanguage: "und", targetLanguage: "und",
+  });
   try {
     const latestUserMessage = await db.select().from(supportMessagesTable)
       .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
@@ -2215,7 +2233,8 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
       storedContent = encodeSupportTranslation({ version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage });
     }
   } catch (error) {
-    res.status(503).json({ error: error instanceof Error ? error.message : "Free translation is temporarily unavailable. Please retry." }); return;
+    // Preserve the admin's edit even when translation services are unavailable.
+    req.log?.warn({ err: error, messageId }, "Support edit saved without translation");
   }
   const [updated] = await db.update(supportMessagesTable)
     .set({ content: storedContent })
