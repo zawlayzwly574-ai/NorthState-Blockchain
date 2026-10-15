@@ -704,6 +704,7 @@ export function TradingPage() {
   const [futuresLeverage, setFuturesLeverage] = useState<FuturesPositionInputLeverage>(20);
   const [futuresNotice, setFuturesNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
+  const [showFuturesHistory, setShowFuturesHistory] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [flash, setFlash] = useState<{ msg: string; type: 'win' | 'loss' } | null>(null);
   const [tradeError, setTradeError] = useState('');
@@ -987,8 +988,8 @@ export function TradingPage() {
       )}
 
       {/* ── Trading workspace with accessible searchable Combobox ── */}
-      <div className="min-w-0 text-white [color-scheme:dark]">
-        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-yellow-500/20 bg-black px-3 py-2 sm:px-4">
+      <div className="min-w-0 rounded-2xl border border-border/60 bg-card p-2 text-foreground sm:p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-secondary/30 px-3 py-2 sm:px-4">
           <Popover open={assetPickerOpen} onOpenChange={setAssetPickerOpen}>
             <PopoverTrigger asChild>
               <button
@@ -996,7 +997,7 @@ export function TradingPage() {
                 role="combobox"
                 aria-expanded={assetPickerOpen}
                 aria-label="Choose trading coin"
-                className="flex min-h-12 min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-yellow-500/40 bg-[#050505] px-3 py-2.5 text-left shadow-sm transition hover:border-yellow-400"
+                className="flex min-h-12 min-w-[12rem] max-w-full items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 text-left shadow-sm transition hover:border-yellow-400"
                 data-testid="button-trading-coin-selector"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-extrabold text-primary">
@@ -1011,7 +1012,7 @@ export function TradingPage() {
                 <ChevronDown size={16} className={`shrink-0 text-muted-foreground transition-transform ${assetPickerOpen ? 'rotate-180' : ''}`} />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" sideOffset={8} className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/10 bg-[#101318] p-0 text-white shadow-2xl" data-testid="panel-trading-coin-selector">
+            <PopoverContent align="start" sideOffset={8} className="w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-border bg-card p-0 text-foreground shadow-2xl" data-testid="panel-trading-coin-selector">
               <Command className="bg-transparent text-white" loop>
                 <div className="border-b border-white/10 px-1 pt-1">
                   <CommandInput
@@ -1064,7 +1065,7 @@ export function TradingPage() {
         <main className="min-w-0">
       {/* Chart remains full width above a compact two-column trading workspace. */}
       {/* ── Chart ── */}
-      <div className="mb-2 overflow-hidden rounded-xl border border-yellow-500/20 bg-black sm:mb-3 sm:rounded-2xl">
+      <div className="mb-2 overflow-hidden rounded-xl border border-border/60 bg-card sm:mb-3 sm:rounded-2xl">
         <PriceChart
           key={asset}
           quote={futuresQuote}
@@ -1080,7 +1081,7 @@ export function TradingPage() {
         <section className="min-w-0">
       {/* ── Order Panel ── */}
       <div className="min-w-0">
-        <div className="rounded-xl border border-yellow-500/20 bg-black p-2 sm:rounded-2xl sm:p-4">
+        <div className="rounded-xl border border-border/60 bg-card p-2 sm:rounded-2xl sm:p-4">
           <div className="mb-2 flex items-center justify-between gap-1 border-b border-yellow-500/15 pb-2 sm:mb-4 sm:gap-2 sm:pb-3">
             <div>
               <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
@@ -1238,13 +1239,6 @@ export function TradingPage() {
       </div>
         </main>
       </div>
-      <FuturesPositions
-        positions={futuresPositions}
-        isLoading={futuresPositionsLoading}
-        error={futuresPositionsError}
-        onRetry={() => { void refetchFuturesPositions(); }}
-      />
-
       {/* ── Active Trades ── */}
       {activeTrades.length > 0 && (
         <div className="mb-3 rounded-2xl border border-border/60 bg-card p-4">
@@ -1314,13 +1308,12 @@ export function TradingPage() {
       )}
 
       {/* ── Trade History ── */}
-      {history.length > 0 && (
-        <div className="rounded-2xl border border-border/60 bg-card p-4">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-bold">
-            <Trophy size={14} className="text-muted-foreground" />
-            Recent Spot History
-          </h3>
-          <div className="space-y-1.5">
+      <div className="rounded-2xl border border-border/60 bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-bold"><Trophy size={14} className="text-muted-foreground" />Recent Spot History</h3>
+            <button type="button" onClick={() => setShowFuturesHistory(value => !value)} aria-pressed={showFuturesHistory} className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-extrabold text-primary transition hover:bg-primary/15" data-testid="button-toggle-futures-history">{showFuturesHistory ? "Show Spot History" : "Futures Positions & History"}</button>
+          </div>
+          {!showFuturesHistory ? (history.length > 0 ? <div className="space-y-1.5">
             {history.map(trade => (
               <button
                 type="button"
@@ -1366,9 +1359,30 @@ export function TradingPage() {
                 </div>
               </button>
             ))}
-          </div>
+          </div> : <p className="py-6 text-center text-sm text-muted-foreground">No completed spot trades yet.</p>) : (
+            <div className="space-y-3">
+              <FuturesPositions positions={futuresPositions} isLoading={futuresPositionsLoading} error={futuresPositionsError} onRetry={() => { void refetchFuturesPositions(); }} />
+              <div className="rounded-xl border border-border/60 bg-secondary/15 p-3">
+                <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wider text-muted-foreground">Closed Futures Trade History</h4>
+                {(futuresPositions ?? []).filter(position => position.status !== "active").length ? <div className="space-y-1.5">
+                  {(futuresPositions ?? []).filter(position => position.status !== "active").slice(0, 20).map(position => (
+                    <details key={position.id} className="rounded-xl border border-border/50 bg-card px-3 py-2" data-testid={"details-closed-futures-" + position.id}>
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-sm"><span className="flex items-center gap-2"><span className={"rounded-md px-2 py-1 text-[10px] font-extrabold uppercase " + (position.direction === "long" ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400")}>{position.direction}</span><span className="font-bold">{position.asset}/USDT · {position.leverage}x</span></span><span className="text-xs text-muted-foreground">#{position.id} · Details</span></summary>
+                      <div className="mt-3 grid grid-cols-2 gap-3 border-t border-border/50 pt-3 text-xs sm:grid-cols-3">
+                        <div><p className="text-muted-foreground">Entry price</p><p className="mt-1 font-mono font-bold">${Number(position.entryPrice).toLocaleString(undefined, { maximumFractionDigits: 8 })}</p></div>
+                        <div><p className="text-muted-foreground">Close price</p><p className="mt-1 font-mono font-bold">{position.markPrice == null ? "—" : "$" + Number(position.markPrice).toLocaleString(undefined, { maximumFractionDigits: 8 })}</p></div>
+                        <div><p className="text-muted-foreground">Margin</p><p className="mt-1 font-mono font-bold">${Number(position.margin).toFixed(2)} USDT</p></div>
+                        <div><p className="text-muted-foreground">Realized PnL</p><p className={"mt-1 font-mono font-bold " + (Number(position.realizedPnl ?? 0) >= 0 ? "text-green-400" : "text-red-400")}>{position.realizedPnl == null ? "—" : (Number(position.realizedPnl) >= 0 ? "+" : "-") + "$" + Math.abs(Number(position.realizedPnl)).toFixed(2)}</p></div>
+                        <div><p className="text-muted-foreground">Opened</p><p className="mt-1">{new Date(position.openedAt).toLocaleString()}</p></div>
+                        <div><p className="text-muted-foreground">Closed</p><p className="mt-1">{position.closedAt ? new Date(position.closedAt).toLocaleString() : "—"}</p></div>
+                      </div>
+                    </details>
+                  ))}
+                </div> : <p className="py-4 text-center text-sm text-muted-foreground">No closed futures trades yet.</p>}
+              </div>
+            </div>
+          )}
         </div>
-      )}
 
       {/* Futures trade modal — execution is separate from spot orders */}
       {showFutures && (
@@ -1379,7 +1393,7 @@ export function TradingPage() {
             aria-hidden="true"
           />
           <div
-            className="fixed inset-x-3 top-1/2 z-50 max-h-[calc(100dvh-1.5rem)] -translate-y-1/2 overflow-y-auto rounded-3xl border border-primary/25 bg-[hsl(222_10%_8%)] p-5 shadow-[0_24px_80px_rgba(0,0,0,.65),0_0_40px_hsl(var(--primary)/.08)] sm:left-1/2 sm:right-auto sm:w-[min(32rem,calc(100vw-2rem))] sm:-translate-x-1/2 sm:p-6"
+            className="fixed inset-x-3 top-1/2 z-50 max-h-[calc(100dvh-1.5rem)] -translate-y-1/2 overflow-y-auto rounded-3xl border border-primary/25 bg-card p-5 shadow-[0_24px_80px_rgba(0,0,0,.35)] sm:left-1/2 sm:right-auto sm:w-[min(32rem,calc(100vw-2rem))] sm:-translate-x-1/2 sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="futures-modal-title"
