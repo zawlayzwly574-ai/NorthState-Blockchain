@@ -764,9 +764,8 @@ export function TradingPage() {
       } catch {
         if (!cancelled) {
           // Keep the last verified exchange snapshot during brief provider/network
-          // outages. The timestamp remains the provider timestamp, so the UI can
-          // clearly distinguish cached depth from a live feed; never synthesize levels.
-          setOrderBook((previous) => previous);
+          // outages. If unavailable, the UI falls back to a separately labeled
+          // chart-linked simulated ladder; it is never presented as exchange depth.
           setOrderBookError(true);
         }
       } finally {
@@ -778,13 +777,40 @@ export function TradingPage() {
     const timer = window.setInterval(() => { void refreshOrderBook(); }, 3_000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [marketSymbol]);
-  const visibleOrderBook = orderBook?.symbol === marketSymbol ? orderBook : null;
+  const verifiedOrderBook = orderBook?.symbol === marketSymbol ? orderBook : null;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
   const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
   const quoteAge = Date.now() - quoteTime;
   const currentQuoteFresh = !!futuresQuote?.price && Number.isFinite(quoteTime) && quoteAge >= -2_000 && quoteAge <= 15_000;
   // Spot entry uses the same recent exchange trade as Futures, never the slower display snapshot.
   const currentPrice = currentQuoteFresh ? futuresQuote?.price ?? null : null;
+
+  // When the exchange order-book endpoint is unavailable, keep the panel connected to
+  // the same fresh chart quote with an explicitly SIMULATED depth ladder. This is
+  // display-only liquidity, not exchange liquidity and must never be used for execution.
+  // The quote query refreshes every second, so prices, sizes, and cumulative totals update
+  // along with the chart without inventing a market price.
+  const quoteSecond = Math.floor(Date.now() / 1_000);
+  const simulatedOrderBook = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
+    ? (() => {
+        const tick = Math.max(currentPrice * 0.0001, 10 ** (-Math.max(2, Math.min(8, Math.floor(8 - Math.log10(currentPrice))))));
+        const makeLevels = (side: 'bid' | 'ask') => {
+          let runningTotal = 0;
+          return Array.from({ length: 10 }, (_, index) => {
+            const distance = index + 1;
+            const price = side === 'bid'
+              ? Math.max(tick, currentPrice - tick * distance)
+              : currentPrice + tick * distance;
+            const size = Number((0.02 + (((quoteSecond + distance * (side === 'bid' ? 7 : 11)) % 19) / 100)).toFixed(6));
+            runningTotal += size;
+            return { price, size, total: Number(runningTotal.toFixed(6)) };
+          });
+        };
+        return { symbol: marketSymbol, bids: makeLevels('bid'), asks: makeLevels('ask'), updatedAt: quoteTime, simulated: true as const };
+      })()
+    : null;
+  const visibleOrderBook = verifiedOrderBook ?? simulatedOrderBook;
+  const isSimulatedOrderBook = !verifiedOrderBook && !!simulatedOrderBook;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -1224,9 +1250,9 @@ export function TradingPage() {
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${visibleOrderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
+              <span className={`text-[8px] sm:text-[10px] ${isSimulatedOrderBook ? 'text-amber-300' : visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{isSimulatedOrderBook ? 'SIMULATED' : visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
             </div>
-            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago</p>}
+            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{isSimulatedOrderBook ? 'Illustrative depth linked to chart quote · not exchange liquidity' : `Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
           </div>
           <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
             <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
@@ -1257,8 +1283,8 @@ export function TradingPage() {
             </div>
           ) : (
             <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? (visibleOrderBook ? 'Showing last verified order book' : 'Live feed unavailable') : 'Connecting live order book…'}</span>
-              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? (visibleOrderBook ? 'Exchange feed is temporarily unavailable. These are the last verified bids and asks; check the update time above. No sample prices are shown.' : 'No recent verified exchange depth is available for this asset. No sample prices are shown.') : 'Fetching verified bids and asks from the exchange.'}</p>
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{currentPrice != null ? 'Waiting for order-book levels…' : orderBookError ? 'Live price unavailable' : 'Connecting live order book…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{currentPrice != null ? 'The chart quote is available, but no fresh quote can currently be used to build the illustrative depth ladder.' : 'No fresh chart quote is available. The order book will reconnect automatically when the quote feed returns.'}</p>
             </div>
           )}
         </section>
