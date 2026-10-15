@@ -787,7 +787,6 @@ export function TradingPage() {
   // Render only provider-verified order-book depth. When no fresh exchange
   // snapshot exists, leave the book empty rather than displaying fabricated levels.
   const visibleOrderBook = verifiedOrderBook;
-  const isSimulatedOrderBook = false;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
