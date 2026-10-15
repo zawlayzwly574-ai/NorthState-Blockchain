@@ -1,0 +1,41 @@
+name: Support translation and Web Push validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "artifacts/api-server/**"
+      - "artifacts/admin-panel/**"
+      - "artifacts/blockchain-hub/**"
+      - "lib/db/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/support-translation-push-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck workspace
+        run: pnpm run typecheck
+      - name: Build API server
+        run: pnpm --filter @workspace/api-server run build
+      - name: Run API tests
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
+        run: pnpm --filter @workspace/api-server run test

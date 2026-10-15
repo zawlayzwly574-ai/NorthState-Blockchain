@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Check, MessageSquare, Pencil, Send, Trash2, User2, X } from 'lucide-react';
+import { ArrowLeft, Bell, Check, MessageSquare, Pencil, Send, Trash2, User2, X } from 'lucide-react';
 import {
   useAdminSupportThreads,
   useAdminSupportThread,
   useAdminSupportReply,
+  useAdminSupportSetLanguage,
+  saveAdminPushSubscription,
   useUpdateAdminSupportMessage,
   useDeleteAdminSupportMessage,
   type SupportThreadItem,
@@ -28,13 +30,23 @@ export default function Support() {
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [messageActionError, setMessageActionError] = useState('');
+  const [pushStatus, setPushStatus] = useState('');
+  const [pushBusy, setPushBusy] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: threads = [], isLoading } = useAdminSupportThreads();
   const { data: thread } = useAdminSupportThread(selectedUserId ?? '', adminLanguage);
   const replyMut = useAdminSupportReply();
+  const setLanguageMut = useAdminSupportSetLanguage();
   const updateMessageMut = useUpdateAdminSupportMessage();
   const deleteMessageMut = useDeleteAdminSupportMessage();
+
+  // Keep the selector tied to this customer's persisted target language.
+  useEffect(() => {
+    if (selectedUserId && thread?.userId === selectedUserId && thread.targetLanguage) {
+      setAdminLanguage(thread.targetLanguage);
+    }
+  }, [selectedUserId, thread?.userId, thread?.targetLanguage]);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -48,6 +60,44 @@ export default function Support() {
     setMessageActionError('');
     setEditingMessageId(null);
     setEditingContent('');
+  };
+
+  const handleEnablePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('This browser does not support Web Push notifications.');
+      }
+      const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim();
+      if (!publicKey) throw new Error('Push notifications are not configured for this deployment yet.');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Please allow notifications in your browser settings.');
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const keyBytes = Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - publicKey.length % 4) % 4)), char => char.charCodeAt(0));
+      const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyBytes,
+      });
+      await saveAdminPushSubscription(subscription.toJSON());
+      setPushStatus('Push notifications enabled on this device.');
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Could not enable notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const handleLanguageChange = async (targetLanguage: string) => {
+    if (!selectedUserId) return;
+    setAdminLanguage(targetLanguage);
+    setMessageActionError('');
+    try {
+      await setLanguageMut.mutateAsync({ userId: selectedUserId, targetLanguage });
+    } catch (error) {
+      setMessageActionError(error instanceof Error ? error.message : 'Could not save this customer language.');
+    }
   };
 
   const handleSend = async () => {
@@ -120,7 +170,11 @@ export default function Support() {
               {totalUnread} new
             </span>
           )}
+          <button type="button" onClick={() => void handleEnablePush()} disabled={pushBusy} className="ml-auto inline-flex min-h-9 items-center gap-2 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-secondary disabled:opacity-50" data-testid="button-enable-admin-push">
+            <Bell size={14} /> {pushBusy ? 'Enabling…' : 'Enable notifications'}
+          </button>
         </div>
+        {pushStatus && <p role="status" className="mt-2 break-words text-xs text-muted-foreground">{pushStatus}</p>}
         <p className="mt-1 text-sm text-muted-foreground">Manage and respond to user support threads in real time</p>
         <p className="mt-1 text-xs text-muted-foreground">Free auto-translation uses public translation services. Do not send passwords, recovery phrases, or other secrets in support chat.</p>
       </div>
@@ -212,8 +266,8 @@ export default function Support() {
                     <p className="truncate text-xs text-muted-foreground">{thread?.email || 'Guest · in-app support'}</p>
                   </div>
                   <label className="flex shrink-0 flex-col gap-1 text-[10px] font-semibold text-muted-foreground">
-                    Translate to
-                    <select value={adminLanguage} onChange={e => setAdminLanguage(e.target.value)} aria-label="Translate incoming support messages to" className="max-w-[132px] rounded-lg border border-border bg-secondary px-2 py-2 text-xs text-foreground">
+                    User's target language
+                    <select value={adminLanguage} onChange={e => void handleLanguageChange(e.target.value)} aria-label="Set this customer's target language" disabled={setLanguageMut.isPending} className="max-w-[150px] rounded-lg border border-border bg-secondary px-2 py-2 text-xs text-foreground">
                       <option value="my">မြန်မာ (Burmese)</option>
                       <option value="en">English</option>
                       <option value="es">Español</option>

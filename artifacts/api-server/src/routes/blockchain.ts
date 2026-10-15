@@ -22,6 +22,7 @@ import { createFuturesRouter, type FuturesQuote } from "./futures";
 import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportText } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
+import { savePushSubscription, removeUserPushSubscription, removeAdminPushSubscription, sendPushToAdmins, sendPushToUser } from "../lib/push-notifications";
 import {
   CreateDepositBody,
   CreateDepositResponse,
@@ -1615,6 +1616,14 @@ async function createTransaction(
     });
     return created;
   });
+  if (type !== "send") {
+    void sendPushToAdmins({
+      title: `New ${type === "withdrawal" ? "withdrawal" : "deposit"} request`,
+      body: "A deposit or withdrawal request is awaiting review.",
+      url: "/",
+      tag: "transactions",
+    });
+  }
   return {
     id: String(transaction.id),
     type,
@@ -1934,6 +1943,38 @@ router.post("/sms/verify-otp", async (req, res) => {
   res.json({ verified: true, phoneNumber: phone });
 });
 
+// Web Push subscriptions are opt-in and scoped to the authenticated owner.
+router.post("/push/subscribe", async (req, res) => {
+  const userId = getUserId(req);
+  try {
+    await savePushSubscription("user", userId, req.body, req.get("user-agent"));
+    res.status(201).json({ subscribed: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid push subscription." });
+  }
+});
+router.delete("/push/subscribe", async (req, res) => {
+  const userId = getUserId(req);
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : "";
+  if (!endpoint) { res.status(400).json({ error: "Subscription endpoint is required." }); return; }
+  await removeUserPushSubscription(userId, endpoint);
+  res.json({ unsubscribed: true });
+});
+router.post("/admin/push/subscribe", requireAdmin, async (req, res) => {
+  try {
+    await savePushSubscription("admin", null, req.body, req.get("user-agent"));
+    res.status(201).json({ subscribed: true });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Invalid push subscription." });
+  }
+});
+router.delete("/admin/push/subscribe", requireAdmin, async (req, res) => {
+  const endpoint = typeof req.body?.endpoint === "string" ? req.body.endpoint : "";
+  if (!endpoint) { res.status(400).json({ error: "Subscription endpoint is required." }); return; }
+  await removeAdminPushSubscription(endpoint);
+  res.json({ unsubscribed: true });
+});
+
 // ─── Support chat ─────────────────────────────────────────────────────────────
 
 // Public pre-login contact form. Messages are stored in the existing support inbox so
@@ -2042,10 +2083,13 @@ router.post("/support/messages", async (req, res) => {
     [thread] = await db.insert(supportThreadsTable)
       .values({ clerkUserId: userId, status: "open" }).returning();
   }
+  const originalText = content.trim();
   const [message] = await db.insert(supportMessagesTable)
-    .values({ threadId: thread.id, senderRole: "user", content: content.trim() }).returning();
+    .values({ threadId: thread.id, senderRole: "user", content: originalText, originalText })
+    .returning();
   await db.update(supportThreadsTable).set({ updatedAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
+  void sendPushToAdmins({ title: "New support message", body: "A customer sent a new support message.", url: "/", tag: "support" });
   res.json({ sent: true, messageId: message.id });
 });
 
@@ -2110,6 +2154,7 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     displayName: profile?.displayName ?? (publicSupportName(messages) || "Unknown"),
     email: profile?.email ?? "",
     threadId: thread.id,
+    targetLanguage: normalizeSupportLanguage(thread.targetLanguage, "my"),
     messages: await Promise.all(messages.map(async m => {
       let stored = m.content;
       if (m.senderRole === "user") {
@@ -2125,16 +2170,42 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
               ? original.replace(/(Guest support request\nName: [^\n]*\n\n)[\\s\\S]*$/, "$1" + translated)
               : translated;
             stored = encodeSupportTranslation({ version: 1, originalText: original, translatedText, sourceLanguage, targetLanguage });
-            await db.update(supportMessagesTable).set({ content: stored }).where(eq(supportMessagesTable.id, m.id));
+            await db.update(supportMessagesTable).set({
+              content: stored, originalText: original, translatedText, targetLanguage,
+            }).where(eq(supportMessagesTable.id, m.id));
           } catch (error) {
             req.log?.warn({ err: error, messageId: m.id }, "Incoming support translation unavailable");
             stored = original;
           }
         }
       }
-      return { id: m.id, threadId: m.threadId, senderRole: m.senderRole, content: publicSupportDisplayContent(supportContentForViewer(stored, m.senderRole, "admin")), originalContent: parseSupportTranslation(stored)?.originalText ?? undefined, translated: Boolean(parseSupportTranslation(stored)), createdAt: m.createdAt.toISOString() };
+      const envelope = parseSupportTranslation(stored);
+      const originalText = m.originalText ?? envelope?.originalText ?? undefined;
+      const translatedText = m.translatedText ?? envelope?.translatedText ?? undefined;
+      return {
+        id: m.id, threadId: m.threadId, senderRole: m.senderRole,
+        content: publicSupportDisplayContent(supportContentForViewer(stored, m.senderRole, "admin")),
+        originalContent: originalText, translated: Boolean(translatedText && originalText !== translatedText),
+        createdAt: m.createdAt.toISOString(),
+      };
     })),
   });
+});
+
+router.patch("/admin/support/:userId/language", requireAdmin, async (req, res) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
+  const targetLanguage = normalizeSupportLanguage(req.body?.targetLanguage, "my");
+  let [thread] = await db.select().from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
+  if (!thread) {
+    [thread] = await db.insert(supportThreadsTable)
+      .values({ clerkUserId: userId, status: "open", targetLanguage }).returning();
+  } else {
+    [thread] = await db.update(supportThreadsTable)
+      .set({ targetLanguage, updatedAt: new Date() })
+      .where(eq(supportThreadsTable.id, thread.id)).returning();
+  }
+  res.json({ saved: true, userId, targetLanguage: thread.targetLanguage });
 });
 
 router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
@@ -2145,44 +2216,45 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
   if (!thread) {
     [thread] = await db.insert(supportThreadsTable)
-      .values({ clerkUserId: userId, status: "open" }).returning();
+      .values({ clerkUserId: userId, status: "open", targetLanguage: "my" }).returning();
   }
   const originalText = content.trim();
-  let targetLanguage = "und";
+  const targetLanguage = normalizeSupportLanguage(thread.targetLanguage, "my");
   let sourceLanguage = "und";
   let translatedText = originalText;
   let translationApplied = false;
 
   // Translation is an enhancement, never a prerequisite for sending support messages.
-  // If any public translation provider times out, is offline, or rejects the request,
-  // persist and send the original text instead of returning a 503.
+  // If providers are unreachable, preserve the original message and still send it.
   try {
-    const latestUserMessage = await db.select().from(supportMessagesTable)
-      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
-      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
-    targetLanguage = latestUserMessage[0]
-      ? await detectSupportLanguage(publicSupportDisplayContent(parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content))
-      : "en";
     sourceLanguage = await detectSupportLanguage(originalText);
     translatedText = sourceLanguage === targetLanguage
       ? originalText
       : await translateSupportText(originalText, targetLanguage, sourceLanguage);
     translationApplied = translatedText !== originalText;
   } catch (error) {
-    req.log?.warn({ err: error }, "Support translation unavailable; sending original admin reply");
+    req.log?.warn({ err: error, userId, targetLanguage }, "Support translation unavailable; sending original admin reply");
     translatedText = originalText;
     sourceLanguage = "und";
-    targetLanguage = "und";
   }
 
   const storedContent = encodeSupportTranslation({
     version: 1, originalText, translatedText, sourceLanguage, targetLanguage,
   });
   const [message] = await db.insert(supportMessagesTable)
-    .values({ threadId: thread.id, senderRole: "admin", content: storedContent }).returning();
+    .values({
+      threadId: thread.id, senderRole: "admin", content: storedContent,
+      originalText, translatedText, targetLanguage,
+    }).returning();
   await db.update(supportThreadsTable)
     .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
+  void sendPushToUser(userId, {
+    title: "Support replied",
+    body: "Your support team sent a new reply.",
+    url: "/",
+    tag: "support",
+  });
   res.json({ sent: true, messageId: message.id, targetLanguage, translationApplied });
 });
 
@@ -2198,8 +2270,10 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(400).json({ error: "Message must contain 1–4000 characters." }); return;
   }
 
-  const [thread] = await db.select({ id: supportThreadsTable.id })
-    .from(supportThreadsTable)
+  const [thread] = await db.select({
+    id: supportThreadsTable.id,
+    targetLanguage: supportThreadsTable.targetLanguage,
+  }).from(supportThreadsTable)
     .where(eq(supportThreadsTable.clerkUserId, userId))
     .limit(1);
   if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
@@ -2217,27 +2291,21 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(403).json({ error: "Only admin replies can be edited." }); return;
   }
 
-  let storedContent = encodeSupportTranslation({
-    version: 1, originalText: content, translatedText: content,
-    sourceLanguage: "und", targetLanguage: "und",
-  });
+  const targetLanguage = normalizeSupportLanguage(thread.targetLanguage, "my");
+  let sourceLanguage = "und";
+  let translatedText = content;
   try {
-    const latestUserMessage = await db.select().from(supportMessagesTable)
-      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
-      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
-    if (latestUserMessage[0]) {
-      const raw = parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content;
-      const targetLanguage = await detectSupportLanguage(publicSupportDisplayContent(raw));
-      const sourceLanguage = await detectSupportLanguage(content);
-      const translatedText = sourceLanguage === targetLanguage ? content : await translateSupportText(content, targetLanguage, sourceLanguage);
-      storedContent = encodeSupportTranslation({ version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage });
-    }
+    sourceLanguage = await detectSupportLanguage(content);
+    translatedText = sourceLanguage === targetLanguage ? content : await translateSupportText(content, targetLanguage, sourceLanguage);
   } catch (error) {
     // Preserve the admin's edit even when translation services are unavailable.
     req.log?.warn({ err: error, messageId }, "Support edit saved without translation");
   }
+  const storedContent = encodeSupportTranslation({
+    version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage,
+  });
   const [updated] = await db.update(supportMessagesTable)
-    .set({ content: storedContent })
+    .set({ content: storedContent, originalText: content, translatedText, targetLanguage })
     .where(and(
       eq(supportMessagesTable.id, messageId),
       eq(supportMessagesTable.threadId, thread.id),
@@ -2871,6 +2939,12 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
     res.status(409).json({ error: "The member's persisted trading account is missing. Reconcile it before approving this transaction." });
     return;
   }
+  void sendPushToUser(result.transaction.clerkUserId, {
+    title: "Transaction approved",
+    body: "Your transaction request was approved.",
+    url: "/",
+    tag: `transaction-${result.transaction.id}`,
+  });
   res.json(await enrichTransaction(result.transaction));
 });
 
@@ -2889,6 +2963,12 @@ router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) =>
     .update(activitiesTable)
     .set({ status: "failed" })
     .where(eq(activitiesTable.transactionId, txId));
+  void sendPushToUser(tx.clerkUserId, {
+    title: "Transaction update",
+    body: "Your transaction request was not approved.",
+    url: "/",
+    tag: `transaction-${tx.id}`,
+  });
   res.json(await enrichTransaction(tx));
 });
 

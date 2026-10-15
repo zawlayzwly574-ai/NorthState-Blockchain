@@ -1,6 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import {
+  bigserial,
   boolean,
   check,
   index,
@@ -33,6 +34,7 @@ export const supportThreadsTable = pgTable("support_threads", {
   id: serial("id").primaryKey(),
   clerkUserId: text("clerk_user_id").notNull().unique(),
   status: text("status").notNull().default("open"),
+  targetLanguage: text("target_language").notNull().default("my"),
   adminLastReadAt: timestamp("admin_last_read_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -43,8 +45,31 @@ export const supportMessagesTable = pgTable("support_messages", {
   threadId: integer("thread_id").notNull(),
   senderRole: text("sender_role").notNull(), // 'user' | 'admin'
   content: text("content").notNull(),
+  originalText: text("original_text"),
+  translatedText: text("translated_text"),
+  targetLanguage: text("target_language"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const webPushSubscriptionsTable = pgTable("web_push_subscriptions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  ownerType: text("owner_type").notNull(),
+  clerkUserId: text("clerk_user_id"),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  failureCount: integer("failure_count").notNull().default(0),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+}, (table) => [
+  check("web_push_subscriptions_owner_identity_check",
+    sql`(${table.ownerType} = 'admin' AND ${table.clerkUserId} IS NULL) OR
+         (${table.ownerType} = 'user' AND ${table.clerkUserId} IS NOT NULL)`),
+  index("web_push_subscriptions_owner_idx").on(table.ownerType, table.clerkUserId).where(sql`${table.disabledAt} IS NULL`),
+]);
 
 // ─── Trading / Futures ────────────────────────────────────────────────────────
 

@@ -3041,7 +3041,7 @@ const SUPPORT_COPY: Record<string, Record<string, string>> = {
   my: { title: 'North State Blockchain အကူအညီ', replyTime: 'အကောင့်မဝင်ဘဲ ဒီ Support chat မှာ အကြောင်းပြန်စာကို ဖတ်နိုင်ပါတယ်', contact: 'အကောင့်မဝင်မီ Support ကို ဆက်သွယ်ရန်', intro: 'ဒီ Support chat ကနေ အကောင့်မဝင်ဘဲ စာပို့နိုင်ပြီး Admin အကြောင်းပြန်စာကို ဒီနေရာမှာပဲ ပြန်ဖတ်နိုင်ပါတယ်။ Email မလိုပါ။', name: 'သင့်အမည်', placeholder: 'ဘယ်လိုကူညီပေးရမလဲ။ (စာလုံး ၅,၀၀၀ အထိ)', send: 'စာပို့ရန်', sending: 'ပို့နေသည်…', sent: 'စာပို့ပြီးပါပြီ', conversation: 'Support စကားပြောခန်း', followup: 'Admin အကြောင်းပြန်စာကို ဒီ Support chat ထဲမှာ ဖတ်နိုင်ပါတယ်။ ဒီ browser ကို မပြောင်းပါနဲ့။ Email သို့မဟုတ် အကောင့်မလိုပါ။', error: 'စာပို့မရပါ။ ထပ်မံကြိုးစားပါ။', closeChat: "Chat ပိတ်ရန်", supportTeam: "Support အဖွဲ့ · ", loadingConversation: "စကားပြောခန်းကို ဖွင့်နေသည်…", signedInLoading: "ဖွင့်နေသည်…", signedInEmptyTitle: "ဘယ်လိုကူညီပေးရမလဲ။", signedInEmptyDescription: "စာပို့ထားပါ။ Support အဖွဲ့က အမြန်ဆုံး ပြန်လည်ဖြေကြားပေးပါမယ်။", customerSupport: "Customer Support" },
 };
 function SupportChatWidget() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useAuth();
   const { language } = useAppLanguage();
   const supportCopy = SUPPORT_COPY[language] ?? SUPPORT_COPY['en-US'];
   const [open, setOpen] = useState(false);
@@ -3052,6 +3052,8 @@ function SupportChatWidget() {
   const [guestError, setGuestError] = useState('');
   const [guestSending, setGuestSending] = useState(false);
   const [sending, setSending] = useState(false);
+  const [pushStatus, setPushStatus] = useState('');
+  const [pushBusy, setPushBusy] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
@@ -3084,6 +3086,41 @@ function SupportChatWidget() {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages.length, open]);
+
+  const handleEnablePush = async () => {
+    if (pushBusy) return;
+    setPushBusy(true);
+    setPushStatus('');
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('This browser does not support push notifications.');
+      }
+      const publicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY?.trim();
+      if (!publicKey) throw new Error('Push notifications are not configured for this deployment yet.');
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Please allow notifications in your browser settings.');
+      const registration = await navigator.serviceWorker.register(`${basePath}/sw.js` || '/sw.js');
+      const keyBytes = Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - publicKey.length % 4) % 4)), char => char.charCodeAt(0));
+      const subscription = await registration.pushManager.getSubscription() ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyBytes,
+      });
+      const token = await getToken();
+      if (!token) throw new Error('Please sign in again before enabling notifications.');
+      const response = await fetch(`${apiBaseUrl || 'https://northstate-blockchain-api.onrender.com'}/api/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not save this device subscription.');
+      setPushStatus('Push notifications enabled on this device.');
+    } catch (error) {
+      setPushStatus(error instanceof Error ? error.message : 'Could not enable notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -3119,15 +3156,21 @@ function SupportChatWidget() {
             <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
               <MessageCircle size={17} />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-bold">{supportCopy.title}</p>
               <p className="text-[11px] text-muted-foreground">{supportCopy.replyTime}</p>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="ml-auto rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label={supportCopy.closeChat}>
+            {isSignedIn && (
+              <button type="button" onClick={() => void handleEnablePush()} disabled={pushBusy} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50" aria-label="Enable push notifications" title="Enable push notifications" data-testid="button-enable-user-push">
+                <Bell size={16} />
+              </button>
+            )}
+            <button type="button" onClick={() => setOpen(false)} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label={supportCopy.closeChat}>
               <X size={16} />
             </button>
           </div>
 
+          {pushStatus && <p role="status" className="shrink-0 px-4 pt-2 text-[11px] text-muted-foreground">{pushStatus}</p>}
           {/* Messages */}
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 space-y-3">
             {!isLoaded ? null : !isSignedIn ? (
