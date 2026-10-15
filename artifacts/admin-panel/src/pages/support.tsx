@@ -4,6 +4,7 @@ import {
   useAdminSupportThreads,
   useAdminSupportThread,
   useAdminSupportReply,
+  useAdminSupportSetLanguage,
   useUpdateAdminSupportMessage,
   useDeleteAdminSupportMessage,
   type SupportThreadItem,
@@ -33,8 +34,16 @@ export default function Support() {
   const { data: threads = [], isLoading } = useAdminSupportThreads();
   const { data: thread } = useAdminSupportThread(selectedUserId ?? '', adminLanguage);
   const replyMut = useAdminSupportReply();
+  const setLanguageMut = useAdminSupportSetLanguage();
   const updateMessageMut = useUpdateAdminSupportMessage();
   const deleteMessageMut = useDeleteAdminSupportMessage();
+
+  // Keep the selector tied to this customer's persisted target language.
+  useEffect(() => {
+    if (selectedUserId && thread?.userId === selectedUserId && thread.targetLanguage) {
+      setAdminLanguage(thread.targetLanguage);
+    }
+  }, [selectedUserId, thread?.userId, thread?.targetLanguage]);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -48,6 +57,17 @@ export default function Support() {
     setMessageActionError('');
     setEditingMessageId(null);
     setEditingContent('');
+  };
+
+  const handleLanguageChange = async (targetLanguage: string) => {
+    if (!selectedUserId) return;
+    setAdminLanguage(targetLanguage);
+    setMessageActionError('');
+    try {
+      await setLanguageMut.mutateAsync({ userId: selectedUserId, targetLanguage });
+    } catch (error) {
+      setMessageActionError(error instanceof Error ? error.message : 'Could not save this customer language.');
+    }
   };
 
   const handleSend = async () => {
@@ -212,8 +232,8 @@ export default function Support() {
                     <p className="truncate text-xs text-muted-foreground">{thread?.email || 'Guest · in-app support'}</p>
                   </div>
                   <label className="flex shrink-0 flex-col gap-1 text-[10px] font-semibold text-muted-foreground">
-                    Translate to
-                    <select value={adminLanguage} onChange={e => setAdminLanguage(e.target.value)} aria-label="Translate incoming support messages to" className="max-w-[132px] rounded-lg border border-border bg-secondary px-2 py-2 text-xs text-foreground">
+                    User's target language
+                    <select value={adminLanguage} onChange={e => void handleLanguageChange(e.target.value)} aria-label="Set this customer's target language" disabled={setLanguageMut.isPending} className="max-w-[150px] rounded-lg border border-border bg-secondary px-2 py-2 text-xs text-foreground">
                       <option value="my">မြန်မာ (Burmese)</option>
                       <option value="en">English</option>
                       <option value="es">Español</option>
