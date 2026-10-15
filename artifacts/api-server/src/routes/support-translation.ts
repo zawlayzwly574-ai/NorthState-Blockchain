@@ -43,7 +43,7 @@ async function googleTranslate(text: string, targetLanguage: string, sourceLangu
 export async function detectSupportLanguage(text: string): Promise<string> {
   try { return (await googleTranslate(text, "en", "auto")).detectedLanguage; }
   catch {
-    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\\/+$/, "");
+    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "")
     const response = await fetch(base + "/detect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text.slice(0, 4000) }), signal: AbortSignal.timeout(12000) });
     if (!response.ok) throw new Error("Free translation service could not detect the message language.");
     const data = await response.json() as Array<{ language?: string }>;
@@ -56,7 +56,7 @@ export async function detectSupportLanguage(text: string): Promise<string> {
 export async function translateSupportText(text: string, targetLanguage: string, sourceLanguage = "auto"): Promise<string> {
   try { return (await googleTranslate(text, targetLanguage, sourceLanguage)).translatedText; }
   catch (googleError) {
-    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\\/+$/, "");
+    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "")
     const response = await fetch(base + "/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text.slice(0, 4000), source: sourceLanguage, target: targetLanguage, format: "text" }), signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error("Free translation is temporarily unavailable. Please retry; the message was not sent.");
     const data = await response.json() as { translatedText?: string };
