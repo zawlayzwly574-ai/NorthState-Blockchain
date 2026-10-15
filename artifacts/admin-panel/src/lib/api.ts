@@ -360,6 +360,13 @@ export function useSetTradeOutcome() {
 }
 
 // Support chat
+export function saveAdminPushSubscription(subscription: PushSubscriptionJSON) {
+  return apiClient('/push/subscribe', {
+    method: 'POST',
+    body: JSON.stringify(subscription),
+  });
+}
+
 export interface SupportMessage {
   id: number;
   threadId: number;
