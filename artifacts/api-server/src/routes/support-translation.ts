@@ -41,28 +41,51 @@ async function googleTranslate(text: string, targetLanguage: string, sourceLangu
 }
 
 export async function detectSupportLanguage(text: string): Promise<string> {
-  try { return (await googleTranslate(text, "en", "auto")).detectedLanguage; }
-  catch {
-    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "")
-    const response = await fetch(base + "/detect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text.slice(0, 4000) }), signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error("Free translation service could not detect the message language.");
-    const data = await response.json() as Array<{ language?: string }>;
-    const language = data?.[0]?.language;
-    if (!language) throw new Error("The message language could not be detected.");
-    return language.toLowerCase();
+  try {
+    return (await googleTranslate(text, "en", "auto")).detectedLanguage;
+  } catch {
+    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "");
+    try {
+      const response = await fetch(base + "/detect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: text.slice(0, 4000) }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw new Error(`Translation provider returned HTTP ${response.status}.`);
+      const data = await response.json() as Array<{ language?: string }>;
+      const language = data?.[0]?.language;
+      if (!language) throw new Error("The provider returned no detected language.");
+      return language.toLowerCase();
+    } catch (fallbackError) {
+      const detail = fallbackError instanceof Error ? fallbackError.message : "network request failed";
+      throw new Error(`Free translation services are unreachable right now (Google Translate and fallback provider). Language detection failed: ${detail}`);
+    }
   }
 }
 
 export async function translateSupportText(text: string, targetLanguage: string, sourceLanguage = "auto"): Promise<string> {
-  try { return (await googleTranslate(text, targetLanguage, sourceLanguage)).translatedText; }
-  catch (googleError) {
-    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "")
-    const response = await fetch(base + "/translate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text.slice(0, 4000), source: sourceLanguage, target: targetLanguage, format: "text" }), signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error("Free translation is temporarily unavailable. Please retry; the message was not sent.");
-    const data = await response.json() as { translatedText?: string };
-    const result = data?.translatedText?.trim();
-    if (!result) throw googleError;
-    return result;
+  try {
+    return (await googleTranslate(text, targetLanguage, sourceLanguage)).translatedText;
+  } catch (googleError) {
+    const base = (process.env.FREE_TRANSLATE_URL || DEFAULT_TRANSLATE_URL).replace(/\/+$/, "");
+    try {
+      const response = await fetch(base + "/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ q: text.slice(0, 4000), source: sourceLanguage, target: targetLanguage, format: "text" }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`Translation provider returned HTTP ${response.status}.`);
+      const data = await response.json() as { translatedText?: string };
+      const result = data?.translatedText?.trim();
+      if (!result) throw new Error("The provider returned an empty translation.");
+      return result;
+    } catch (fallbackError) {
+      const detail = fallbackError instanceof Error ? fallbackError.message : "network request failed";
+      const primaryDetail = googleError instanceof Error ? googleError.message : "Google Translate request failed";
+      throw new Error(`Free translation is temporarily unreachable. Neither Google Translate nor the fallback provider completed the request. Please retry later; the message was not sent. Details: ${detail} (${primaryDetail})`);
+    }
   }
 }
 export function normalizeSupportLanguage(language: unknown, fallback = "my"): string {
