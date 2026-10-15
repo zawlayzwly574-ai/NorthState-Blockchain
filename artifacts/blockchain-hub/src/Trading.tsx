@@ -1200,7 +1200,7 @@ export function TradingPage() {
             <div>
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
             </div>
-            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{`Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
+            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{verifiedOrderBook ? "EXCHANGE DEPTH" : "INDICATIVE · QUOTE-DERIVED"} · {Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s</p>}
           </div>
           <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
             <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
@@ -1231,8 +1231,7 @@ export function TradingPage() {
             </div>
           ) : (
             <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{currentPrice != null ? 'Waiting for order-book levels…' : 'Connecting to the latest chart price…'}</span>
-              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{currentPrice != null ? 'The chart quote is available. Order-book levels will appear as soon as a valid quote is ready.' : 'Waiting for the chart price feed. The order book will update automatically when the next valid quote arrives.'}</p>
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">Market quote temporarily unavailable</span>
             </div>
           )}
         </section>
