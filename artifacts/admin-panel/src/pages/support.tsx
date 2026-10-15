@@ -289,6 +289,12 @@ export default function Support() {
                         ) : (
                           <>
                             <p className="break-words text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{msg.content}</p>
+                            {msg.senderRole === "user" && msg.translated && msg.originalContent && msg.originalContent !== msg.content && (
+                              <details className="mt-2 border-t border-current/10 pt-2 text-xs opacity-80">
+                                <summary className="cursor-pointer font-semibold">Show original message</summary>
+                                <p className="mt-2 whitespace-pre-wrap break-words">{msg.originalContent}</p>
+                              </details>
+                            )}
                             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                               <p className={`text-[10px] ${msg.senderRole === 'admin' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
                                 {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
