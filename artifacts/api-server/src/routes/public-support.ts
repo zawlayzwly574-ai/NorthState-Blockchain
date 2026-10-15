@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, supportMessagesTable, supportThreadsTable } from "@workspace/db";
 import { supportContentForViewer } from "./support-translation";
+import { sendPushToAdmins } from "../lib/push-notifications";
 
 const router = Router();
 const recentSubmissions = new Map<string, { count: number; resetAt: number }>();
@@ -58,7 +59,9 @@ router.post("/support/public-message", async (req: Request, res: Response) => {
       threadId: thread.id,
       senderRole: "user",
       content: `Guest support request\nName: ${name}\n\n${content}`,
+      originalText: `Guest support request\nName: ${name}\n\n${content}`,
     });
+    void sendPushToAdmins({ title: "New guest support message", body: content.slice(0, 160), url: "/", tag: "support" });
     await db.update(supportThreadsTable).set({ updatedAt: new Date() })
       .where(eq(supportThreadsTable.id, thread.id));
     res.status(201).json({ sent: true, guestId, threadId: thread.id });
@@ -123,8 +126,9 @@ router.post("/support/guest/:guestId/messages", async (req: Request, res: Respon
       return;
     }
     const [message] = await db.insert(supportMessagesTable)
-      .values({ threadId: thread.id, senderRole: "user", content })
+      .values({ threadId: thread.id, senderRole: "user", content, originalText: content })
       .returning();
+    void sendPushToAdmins({ title: "New guest support reply", body: content.slice(0, 160), url: "/", tag: "support" });
     await db.update(supportThreadsTable).set({ updatedAt: new Date() })
       .where(eq(supportThreadsTable.id, thread.id));
     res.status(201).json({ sent: true, messageId: message.id });
