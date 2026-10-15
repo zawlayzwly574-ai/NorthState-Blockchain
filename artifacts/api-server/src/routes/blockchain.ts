@@ -2270,8 +2270,10 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(400).json({ error: "Message must contain 1–4000 characters." }); return;
   }
 
-  const [thread] = await db.select({ id: supportThreadsTable.id })
-    .from(supportThreadsTable)
+  const [thread] = await db.select({
+    id: supportThreadsTable.id,
+    targetLanguage: supportThreadsTable.targetLanguage,
+  }).from(supportThreadsTable)
     .where(eq(supportThreadsTable.clerkUserId, userId))
     .limit(1);
   if (!thread) { res.status(404).json({ error: "Support thread not found." }); return; }
@@ -2289,27 +2291,21 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(403).json({ error: "Only admin replies can be edited." }); return;
   }
 
-  let storedContent = encodeSupportTranslation({
-    version: 1, originalText: content, translatedText: content,
-    sourceLanguage: "und", targetLanguage: "und",
-  });
+  const targetLanguage = normalizeSupportLanguage(thread.targetLanguage, "my");
+  let sourceLanguage = "und";
+  let translatedText = content;
   try {
-    const latestUserMessage = await db.select().from(supportMessagesTable)
-      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
-      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
-    if (latestUserMessage[0]) {
-      const raw = parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content;
-      const targetLanguage = await detectSupportLanguage(publicSupportDisplayContent(raw));
-      const sourceLanguage = await detectSupportLanguage(content);
-      const translatedText = sourceLanguage === targetLanguage ? content : await translateSupportText(content, targetLanguage, sourceLanguage);
-      storedContent = encodeSupportTranslation({ version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage });
-    }
+    sourceLanguage = await detectSupportLanguage(content);
+    translatedText = sourceLanguage === targetLanguage ? content : await translateSupportText(content, targetLanguage, sourceLanguage);
   } catch (error) {
     // Preserve the admin's edit even when translation services are unavailable.
     req.log?.warn({ err: error, messageId }, "Support edit saved without translation");
   }
+  const storedContent = encodeSupportTranslation({
+    version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage,
+  });
   const [updated] = await db.update(supportMessagesTable)
-    .set({ content: storedContent })
+    .set({ content: storedContent, originalText: content, translatedText, targetLanguage })
     .where(and(
       eq(supportMessagesTable.id, messageId),
       eq(supportMessagesTable.threadId, thread.id),
