@@ -2542,15 +2542,6 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
         destination: `Admin balance adjustment (${direction}; ${beforeAmount} -> ${afterAmount} ${asset}): ${reason}`,
         status: "completed",
       }).returning();
-      await tx.insert(activitiesTable).values({
-        clerkUserId: userId,
-        type: direction === "credit" ? "deposit" : "withdrawal",
-        asset,
-        amount: String(coinAmount),
-        value: afterValue.toFixed(2),
-        status: "completed",
-        transactionId: transaction.id,
-      });
       return { amount: afterAmount, value: afterValue };
     });
     if ("error" in holdingResult) {
@@ -2612,15 +2603,6 @@ router.post("/admin/users/:userId/balance-adjustment", requireAdmin, async (req,
       destination: `Admin balance adjustment (${direction}; ${beforeBalance} -> ${afterBalance} USDT): ${reason}`,
       status: "completed",
     }).returning();
-    await tx.insert(activitiesTable).values({
-      clerkUserId: userId,
-      type: direction === "credit" ? "deposit" : "withdrawal",
-      asset: "USDT",
-      amount: amountString,
-      value: amountString,
-      status: "completed",
-      transactionId: transaction.id,
-    });
     return { account: updatedAccount };
   });
 
