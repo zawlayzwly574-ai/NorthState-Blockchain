@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, supportMessagesTable, supportThreadsTable } from "@workspace/db";
+import { supportContentForViewer } from "./support-translation";
 
 const router = Router();
 const recentSubmissions = new Map<string, { count: number; resetAt: number }>();
