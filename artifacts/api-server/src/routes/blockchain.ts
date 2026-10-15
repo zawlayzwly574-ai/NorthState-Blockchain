@@ -2110,6 +2110,7 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
     displayName: profile?.displayName ?? (publicSupportName(messages) || "Unknown"),
     email: profile?.email ?? "",
     threadId: thread.id,
+    targetLanguage: normalizeSupportLanguage(thread.targetLanguage, "my"),
     messages: await Promise.all(messages.map(async m => {
       let stored = m.content;
       if (m.senderRole === "user") {
@@ -2125,16 +2126,42 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
               ? original.replace(/(Guest support request\nName: [^\n]*\n\n)[\\s\\S]*$/, "$1" + translated)
               : translated;
             stored = encodeSupportTranslation({ version: 1, originalText: original, translatedText, sourceLanguage, targetLanguage });
-            await db.update(supportMessagesTable).set({ content: stored }).where(eq(supportMessagesTable.id, m.id));
+            await db.update(supportMessagesTable).set({
+              content: stored, originalText: original, translatedText, targetLanguage,
+            }).where(eq(supportMessagesTable.id, m.id));
           } catch (error) {
             req.log?.warn({ err: error, messageId: m.id }, "Incoming support translation unavailable");
             stored = original;
           }
         }
       }
-      return { id: m.id, threadId: m.threadId, senderRole: m.senderRole, content: publicSupportDisplayContent(supportContentForViewer(stored, m.senderRole, "admin")), originalContent: parseSupportTranslation(stored)?.originalText ?? undefined, translated: Boolean(parseSupportTranslation(stored)), createdAt: m.createdAt.toISOString() };
+      const envelope = parseSupportTranslation(stored);
+      const originalText = m.originalText ?? envelope?.originalText ?? undefined;
+      const translatedText = m.translatedText ?? envelope?.translatedText ?? undefined;
+      return {
+        id: m.id, threadId: m.threadId, senderRole: m.senderRole,
+        content: publicSupportDisplayContent(supportContentForViewer(stored, m.senderRole, "admin")),
+        originalContent: originalText, translated: Boolean(translatedText && originalText !== translatedText),
+        createdAt: m.createdAt.toISOString(),
+      };
     })),
   });
+});
+
+router.patch("/admin/support/:userId/language", requireAdmin, async (req, res) => {
+  const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
+  const targetLanguage = normalizeSupportLanguage(req.body?.targetLanguage, "my");
+  let [thread] = await db.select().from(supportThreadsTable)
+    .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
+  if (!thread) {
+    [thread] = await db.insert(supportThreadsTable)
+      .values({ clerkUserId: userId, status: "open", targetLanguage }).returning();
+  } else {
+    [thread] = await db.update(supportThreadsTable)
+      .set({ targetLanguage, updatedAt: new Date() })
+      .where(eq(supportThreadsTable.id, thread.id)).returning();
+  }
+  res.json({ saved: true, userId, targetLanguage: thread.targetLanguage });
 });
 
 router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
@@ -2145,41 +2172,36 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
   if (!thread) {
     [thread] = await db.insert(supportThreadsTable)
-      .values({ clerkUserId: userId, status: "open" }).returning();
+      .values({ clerkUserId: userId, status: "open", targetLanguage: "my" }).returning();
   }
   const originalText = content.trim();
-  let targetLanguage = "und";
+  const targetLanguage = normalizeSupportLanguage(thread.targetLanguage, "my");
   let sourceLanguage = "und";
   let translatedText = originalText;
   let translationApplied = false;
 
   // Translation is an enhancement, never a prerequisite for sending support messages.
-  // If any public translation provider times out, is offline, or rejects the request,
-  // persist and send the original text instead of returning a 503.
+  // If providers are unreachable, preserve the original message and still send it.
   try {
-    const latestUserMessage = await db.select().from(supportMessagesTable)
-      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
-      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
-    targetLanguage = latestUserMessage[0]
-      ? await detectSupportLanguage(publicSupportDisplayContent(parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content))
-      : "en";
     sourceLanguage = await detectSupportLanguage(originalText);
     translatedText = sourceLanguage === targetLanguage
       ? originalText
       : await translateSupportText(originalText, targetLanguage, sourceLanguage);
     translationApplied = translatedText !== originalText;
   } catch (error) {
-    req.log?.warn({ err: error }, "Support translation unavailable; sending original admin reply");
+    req.log?.warn({ err: error, userId, targetLanguage }, "Support translation unavailable; sending original admin reply");
     translatedText = originalText;
     sourceLanguage = "und";
-    targetLanguage = "und";
   }
 
   const storedContent = encodeSupportTranslation({
     version: 1, originalText, translatedText, sourceLanguage, targetLanguage,
   });
   const [message] = await db.insert(supportMessagesTable)
-    .values({ threadId: thread.id, senderRole: "admin", content: storedContent }).returning();
+    .values({
+      threadId: thread.id, senderRole: "admin", content: storedContent,
+      originalText, translatedText, targetLanguage,
+    }).returning();
   await db.update(supportThreadsTable)
     .set({ updatedAt: new Date(), adminLastReadAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
