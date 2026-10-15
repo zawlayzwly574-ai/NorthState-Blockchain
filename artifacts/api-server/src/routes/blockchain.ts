@@ -2120,8 +2120,8 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
             const targetLanguage = String(req.query.language || "my");
             const sourceLanguage = await detectSupportLanguage(visible);
             const translated = sourceLanguage === targetLanguage ? visible : await translateSupportText(visible, targetLanguage, sourceLanguage);
-            const translatedText = original.startsWith("Guest support request\\nName: ")
-              ? original.replace(/(Guest support request\\nName: [^\\n]*\\n\\n)[\\s\\S]*$/, "$1" + translated)
+            const translatedText = original.startsWith("Guest support request\nName: ")
+              ? original.replace(/(Guest support request\nName: [^\n]*\n\n)[\\s\\S]*$/, "$1" + translated)
               : translated;
             stored = encodeSupportTranslation({ version: 1, originalText: original, translatedText, sourceLanguage, targetLanguage });
             await db.update(supportMessagesTable).set({ content: stored }).where(eq(supportMessagesTable.id, m.id));
