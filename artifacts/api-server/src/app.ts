@@ -39,7 +39,13 @@ function enforceAllowedBrowserOrigins(
     return;
   }
 
-  if (origin !== requestOrigin(req) && !configuredCorsOrigins.has(origin)) {
+  // Vercel production and preview deployments for this admin panel use
+  // generated subdomains. Allow only this project's Vercel hostname family;
+  // API authentication still remains enforced by the admin key.
+  const isAdminPanelVercelOrigin =
+    /^https:\/\/north-state-blockchain-admin-panel(?:-[a-z0-9-]+)?\.vercel\.app$/i.test(origin);
+
+  if (origin !== requestOrigin(req) && !configuredCorsOrigins.has(origin) && !isAdminPanelVercelOrigin) {
     res.status(403).json({ error: "Origin is not allowed." });
     return;
   }
