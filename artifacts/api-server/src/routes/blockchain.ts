@@ -13,7 +13,6 @@ import {
   passkeysTable,
   supportMessagesTable,
   supportThreadsTable,
-  webPushSubscriptionsTable,
   tradesTable,
   tradingAccountsTable,
   transactionsTable,
