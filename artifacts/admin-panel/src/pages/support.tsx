@@ -21,6 +21,7 @@ function formatRelative(iso: string) {
 
 export default function Support() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [adminLanguage, setAdminLanguage] = useState('my');
   const [replyInput, setReplyInput] = useState('');
   const [sending, setSending] = useState(false);
   const [replyError, setReplyError] = useState('');
@@ -30,7 +31,7 @@ export default function Support() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data: threads = [], isLoading } = useAdminSupportThreads();
-  const { data: thread } = useAdminSupportThread(selectedUserId ?? '');
+  const { data: thread } = useAdminSupportThread(selectedUserId ?? '', adminLanguage);
   const replyMut = useAdminSupportReply();
   const updateMessageMut = useUpdateAdminSupportMessage();
   const deleteMessageMut = useDeleteAdminSupportMessage();
@@ -205,10 +206,30 @@ export default function Support() {
                   <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/15 text-primary font-bold text-sm">
                     {thread?.displayName?.charAt(0)?.toUpperCase() ?? <User2 size={17} />}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{thread?.displayName ?? '…'}</p>
                     <p className="truncate text-xs text-muted-foreground">{thread?.email || 'Guest · in-app support'}</p>
                   </div>
+                  <label className="flex shrink-0 flex-col gap-1 text-[10px] font-semibold text-muted-foreground">
+                    Translate to
+                    <select value={adminLanguage} onChange={e => setAdminLanguage(e.target.value)} aria-label="Translate incoming support messages to" className="max-w-[132px] rounded-lg border border-border bg-secondary px-2 py-2 text-xs text-foreground">
+                      <option value="my">မြန်မာ (Burmese)</option>
+                      <option value="en">English</option>
+                      <option value="es">Español</option>
+                      <option value="pt">Português</option>
+                      <option value="fr">Français</option>
+                      <option value="th">ไทย</option>
+                      <option value="vi">Tiếng Việt</option>
+                      <option value="ms">Bahasa Melayu</option>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="zh">中文</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                      <option value="hi">हिन्दी</option>
+                      <option value="ar">العربية</option>
+                      <option value="de">Deutsch</option>
+                    </select>
+                  </label>
                 </div>
               </div>
 
