@@ -65,7 +65,7 @@ async function deliver(ownerType: "admin" | "user", clerkUserId: string | null, 
   try {
     const conditions = clerkUserId
       ? and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.clerkUserId, clerkUserId), isNull(webPushSubscriptionsTable.disabledAt))
-      : and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.disabledAt, null));
+      : and(eq(webPushSubscriptionsTable.ownerType, ownerType), isNull(webPushSubscriptionsTable.disabledAt));
     const subscriptions = await db.select().from(webPushSubscriptionsTable).where(conditions);
     await Promise.allSettled(subscriptions.map(async subscription => {
       try {
