@@ -1619,7 +1619,7 @@ async function createTransaction(
   if (type !== "send") {
     void sendPushToAdmins({
       title: `New ${type === "withdrawal" ? "withdrawal" : "deposit"} request`,
-      body: `${body.amount} ${body.asset} is awaiting review.`,
+      body: "A deposit or withdrawal request is awaiting review.",
       url: "/",
       tag: "transactions",
     });
@@ -2089,7 +2089,7 @@ router.post("/support/messages", async (req, res) => {
     .returning();
   await db.update(supportThreadsTable).set({ updatedAt: new Date() })
     .where(eq(supportThreadsTable.id, thread.id));
-  void sendPushToAdmins({ title: "New support message", body: originalText.slice(0, 160), url: "/", tag: "support" });
+  void sendPushToAdmins({ title: "New support message", body: "A customer sent a new support message.", url: "/", tag: "support" });
   res.json({ sent: true, messageId: message.id });
 });
 
@@ -2251,7 +2251,7 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
     .where(eq(supportThreadsTable.id, thread.id));
   void sendPushToUser(userId, {
     title: "Support replied",
-    body: translatedText.slice(0, 160),
+    body: "Your support team sent a new reply.",
     url: "/",
     tag: "support",
   });
@@ -2945,7 +2945,7 @@ router.patch("/admin/transactions/:id/approve", requireAdmin, async (req, res) =
   }
   void sendPushToUser(result.transaction.clerkUserId, {
     title: "Transaction approved",
-    body: `${result.transaction.type} ${result.transaction.amount} ${result.transaction.asset} was approved.`,
+    body: "Your transaction request was approved.",
     url: "/",
     tag: `transaction-${result.transaction.id}`,
   });
@@ -2969,7 +2969,7 @@ router.patch("/admin/transactions/:id/reject", requireAdmin, async (req, res) =>
     .where(eq(activitiesTable.transactionId, txId));
   void sendPushToUser(tx.clerkUserId, {
     title: "Transaction update",
-    body: `${tx.type} ${tx.amount} ${tx.asset} was not approved.`,
+    body: "Your transaction request was not approved.",
     url: "/",
     tag: `transaction-${tx.id}`,
   });
