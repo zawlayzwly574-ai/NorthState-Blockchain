@@ -41,6 +41,9 @@ async function googleTranslate(text: string, targetLanguage: string, sourceLangu
 }
 
 export async function detectSupportLanguage(text: string): Promise<string> {
+  // Detect Burmese locally so Myanmar-language replies do not depend on an external
+  // language-detection request being reachable.
+  if (/[\u1000-\u109F\uAA60-\uAA7F\uA9E0-\uA9FF]/u.test(text)) return "my";
   try {
     return (await googleTranslate(text, "en", "auto")).detectedLanguage;
   } catch {
@@ -82,9 +85,27 @@ export async function translateSupportText(text: string, targetLanguage: string,
       if (!result) throw new Error("The provider returned an empty translation.");
       return result;
     } catch (fallbackError) {
-      const detail = fallbackError instanceof Error ? fallbackError.message : "network request failed";
-      const primaryDetail = googleError instanceof Error ? googleError.message : "Google Translate request failed";
-      throw new Error(`Free translation is temporarily unreachable. Neither Google Translate nor the fallback provider completed the request. Please retry later; the message was not sent. Details: ${detail} (${primaryDetail})`);
+      try {
+        // Third provider fallback. Public MyMemory has request-size/rate limits, so
+        // only send a short segment and let the UI retry if all providers fail.
+        const params = new URLSearchParams({
+          q: text.slice(0, 450),
+          langpair: `${sourceLanguage === "und" ? "auto" : sourceLanguage}|${targetLanguage}`,
+        });
+        const response = await fetch("https://api.mymemory.translated.net/get?" + params.toString(), {
+          signal: AbortSignal.timeout(12000),
+        });
+        if (!response.ok) throw new Error(`MyMemory returned HTTP ${response.status}.`);
+        const data = await response.json() as { responseStatus?: number; responseData?: { translatedText?: string } };
+        const result = data?.responseData?.translatedText?.trim();
+        if (data.responseStatus === 200 && result && result.toLowerCase() !== "null") return result;
+        throw new Error("MyMemory returned no translation.");
+      } catch (lastError) {
+        const detail = lastError instanceof Error ? lastError.message : "network request failed";
+        const fallbackDetail = fallbackError instanceof Error ? fallbackError.message : "LibreTranslate request failed";
+        const primaryDetail = googleError instanceof Error ? googleError.message : "Google Translate request failed";
+        throw new Error(`Free translation is temporarily unreachable. Google Translate, LibreTranslate, and MyMemory failed. Please retry later; the message was not sent. Details: ${detail} (${fallbackDetail}; ${primaryDetail})`);
+      }
     }
   }
 }
