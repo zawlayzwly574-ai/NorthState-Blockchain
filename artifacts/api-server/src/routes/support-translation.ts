@@ -34,7 +34,7 @@ async function googleTranslate(text: string, targetLanguage: string, sourceLangu
   const params = new URLSearchParams({ client: "gtx", sl: sourceLanguage, tl: targetLanguage, dt: "t", q: text.slice(0, 4000) });
   const response = await fetch("https://translate.googleapis.com/translate_a/single?" + params.toString(), { signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error("Free translation service returned an error.");
-  const data = await response.json() as [Array<Array<[string]>> | null, unknown, string?];
+  const data = await response.json() as [Array<Array<string>> | null, unknown, string?];
   const translatedText = (data?.[0] ?? []).map(chunk => chunk?.[0] ?? "").join("").trim();
   if (!translatedText || !data?.[2]) throw new Error("Free translation service returned an empty result.");
   return { translatedText, detectedLanguage: data[2].toLowerCase() };
