@@ -385,6 +385,7 @@ export interface SupportThreadDetail {
   displayName: string;
   email: string;
   threadId: number;
+  targetLanguage: string;
   messages: SupportMessage[];
 }
 
@@ -402,6 +403,21 @@ export function useAdminSupportThread(userId: string, language = "my") {
     queryFn: () => apiClient(`/support/${encodeURIComponent(userId)}?language=${encodeURIComponent(language)}`),
     enabled: !!userId,
     refetchInterval: 3000,
+  });
+}
+
+export function useAdminSupportSetLanguage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, targetLanguage }: { userId: string; targetLanguage: string }) =>
+      apiClient(`/support/${encodeURIComponent(userId)}/language`, {
+        method: 'PATCH',
+        body: JSON.stringify({ targetLanguage }),
+      }),
+    onSuccess: (_data: unknown, variables: { userId: string; targetLanguage: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'support', variables.userId] });
+    },
   });
 }
 
