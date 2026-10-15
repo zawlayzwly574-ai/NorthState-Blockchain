@@ -162,11 +162,11 @@ function resolveGoldPayoutRate(amount: number): number {
 }
 
 const SI_PRESETS = [
-  { label: '60SI40%', secs: 60, minAmount: 5_000, payout: 0.40 },
-  { label: '90SI50%', secs: 90, minAmount: 20_000, payout: 0.50 },
-  { label: '180SI70%', secs: 180, minAmount: 50_000, payout: 0.70 },
-  { label: '300SI85%', secs: 300, minAmount: 100_000, payout: 0.85 },
-  { label: '1M100%', secs: 60, minAmount: 300_000, payout: 1.00 },
+  { label: '60SI40%', secs: 60, minAmount: 10_000, payout: 0.40 },
+  { label: '90SI50%', secs: 90, minAmount: 40_000, payout: 0.50 },
+  { label: '180SI70%', secs: 180, minAmount: 70_000, payout: 0.70 },
+  { label: '300SI85%', secs: 300, minAmount: 150_000, payout: 0.85 },
+  { label: '1M100%', secs: 600, minAmount: 350_000, payout: 1.00 },
 ] as const;
 
 function payoutRateFor(asset: string, amount: number, siPreset: string): number {
@@ -691,7 +691,6 @@ export function TradingPage() {
   const [asset, setAsset] = useState('BTC');
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [amount, setAmount] = useState(String(minTradeAmountFor('BTC')));
-  const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [siPreset, setSiPreset] = useState('60SI40%');
   const [orderBook, setOrderBook] = useState<{ symbol: string; bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
@@ -785,32 +784,10 @@ export function TradingPage() {
   // Spot entry uses the same recent exchange trade as Futures, never the slower display snapshot.
   const currentPrice = currentQuoteFresh ? futuresQuote?.price ?? null : null;
 
-  // When the exchange order-book endpoint is unavailable, keep the panel connected to
-  // the same fresh chart quote with an explicitly SIMULATED depth ladder. This is
-  // display-only liquidity, not exchange liquidity and must never be used for execution.
-  // The quote query refreshes every second, so prices, sizes, and cumulative totals update
-  // along with the chart without inventing a market price.
-  const quoteSecond = Math.floor(Date.now() / 1_000);
-  const simulatedOrderBook = currentPrice != null && Number.isFinite(currentPrice) && currentPrice > 0
-    ? (() => {
-        const tick = Math.max(currentPrice * 0.0001, 10 ** (-Math.max(2, Math.min(8, Math.floor(8 - Math.log10(currentPrice))))));
-        const makeLevels = (side: 'bid' | 'ask') => {
-          let runningTotal = 0;
-          return Array.from({ length: 10 }, (_, index) => {
-            const distance = index + 1;
-            const price = side === 'bid'
-              ? Math.max(tick, currentPrice - tick * distance)
-              : currentPrice + tick * distance;
-            const size = Number((0.02 + (((quoteSecond + distance * (side === 'bid' ? 7 : 11)) % 19) / 100)).toFixed(6));
-            runningTotal += size;
-            return { price, size, total: Number(runningTotal.toFixed(6)) };
-          });
-        };
-        return { symbol: marketSymbol, bids: makeLevels('bid'), asks: makeLevels('ask'), updatedAt: quoteTime, simulated: true as const };
-      })()
-    : null;
-  const visibleOrderBook = verifiedOrderBook ?? simulatedOrderBook;
-  const isSimulatedOrderBook = !verifiedOrderBook && !!simulatedOrderBook;
+  // Render only provider-verified order-book depth. When no fresh exchange
+  // snapshot exists, leave the book empty rather than displaying fabricated levels.
+  const visibleOrderBook = verifiedOrderBook;
+  const isSimulatedOrderBook = false;
 
   const activeTrades = trades.filter(t => t.status === 'active');
   const history = trades.filter(t => t.status === 'completed').slice(0, 12);
@@ -1114,46 +1091,6 @@ export function TradingPage() {
             </button>
           </div>
 
-        {/* GOLD investment tier picker */}
-        {isGold && (
-          <div className="mb-3">
-            <label className="mb-1 block text-xs font-bold text-muted-foreground">Investment Tier</label>
-            <select
-              value={goldTierIndex}
-              onChange={e => {
-                const idx = Number(e.target.value);
-                setGoldTierIndex(idx);
-                setAmount(String(GOLD_TIERS[idx].min));
-              }}
-              className="h-10 w-full rounded-xl border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none transition focus:border-primary"
-              data-testid="select-gold-tier"
-            >
-              {GOLD_TIERS.map((tier, idx) => (
-                <option key={tier.label} value={idx}>
-                  {tier.label} USDT — {Math.round(tier.payout * 100)}% payout
-                </option>
-              ))}
-            </select>
-            <div className="mt-2 grid grid-cols-5 gap-1.5">
-              {GOLD_TIERS.map((tier, idx) => (
-                <button
-                  key={tier.label}
-                  type="button"
-                  onClick={() => { setGoldTierIndex(idx); setAmount(String(tier.min)); }}
-                  className={`min-h-11 rounded-lg border py-2 text-[10px] font-bold transition sm:text-[11px] ${
-                    goldTierIndex === idx
-                      ? 'border-primary/60 bg-primary/10 text-primary'
-                      : 'border-border/60 text-muted-foreground hover:text-foreground'
-                  }`}
-                  title={`${tier.label} USDT`}
-                >
-                  {Math.round(tier.payout * 100)}%
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Compact paired expiry/payout buttons above the trade amount field. */}
         <div className="mb-3">
           <div className="grid grid-cols-2 gap-2">
@@ -1250,9 +1187,9 @@ export function TradingPage() {
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${isSimulatedOrderBook ? 'text-amber-300' : visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{isSimulatedOrderBook ? 'DEPTH' : visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'CONNECTING'}</span>
+              <span className={`text-[8px] sm:text-[10px] ${visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'CONNECTING'}</span>
             </div>
-            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{isSimulatedOrderBook ? 'Illustrative depth · not exchange liquidity' : `Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
+            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{`Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
           </div>
           <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
             <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
