@@ -61,7 +61,7 @@ router.post("/support/public-message", async (req: Request, res: Response) => {
       content: `Guest support request\nName: ${name}\n\n${content}`,
       originalText: `Guest support request\nName: ${name}\n\n${content}`,
     });
-    void sendPushToAdmins({ title: "New guest support message", body: content.slice(0, 160), url: "/", tag: "support" });
+    void sendPushToAdmins({ title: "New guest support message", body: "A customer sent a new support message.", url: "/", tag: "support" });
     await db.update(supportThreadsTable).set({ updatedAt: new Date() })
       .where(eq(supportThreadsTable.id, thread.id));
     res.status(201).json({ sent: true, guestId, threadId: thread.id });
@@ -128,7 +128,7 @@ router.post("/support/guest/:guestId/messages", async (req: Request, res: Respon
     const [message] = await db.insert(supportMessagesTable)
       .values({ threadId: thread.id, senderRole: "user", content, originalText: content })
       .returning();
-    void sendPushToAdmins({ title: "New guest support reply", body: content.slice(0, 160), url: "/", tag: "support" });
+    void sendPushToAdmins({ title: "New guest support reply", body: "A customer sent a new support reply.", url: "/", tag: "support" });
     await db.update(supportThreadsTable).set({ updatedAt: new Date() })
       .where(eq(supportThreadsTable.id, thread.id));
     res.status(201).json({ sent: true, messageId: message.id });
