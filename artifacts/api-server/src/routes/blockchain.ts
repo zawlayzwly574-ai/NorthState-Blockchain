@@ -2201,8 +2201,23 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
     res.status(403).json({ error: "Only admin replies can be edited." }); return;
   }
 
+  let storedContent = content;
+  try {
+    const latestUserMessage = await db.select().from(supportMessagesTable)
+      .where(and(eq(supportMessagesTable.threadId, thread.id), eq(supportMessagesTable.senderRole, "user")))
+      .orderBy(desc(supportMessagesTable.createdAt)).limit(1);
+    if (latestUserMessage[0]) {
+      const raw = parseSupportTranslation(latestUserMessage[0].content)?.originalText ?? latestUserMessage[0].content;
+      const targetLanguage = await detectSupportLanguage(publicSupportDisplayContent(raw));
+      const sourceLanguage = await detectSupportLanguage(content);
+      const translatedText = sourceLanguage === targetLanguage ? content : await translateSupportText(content, targetLanguage, sourceLanguage);
+      storedContent = encodeSupportTranslation({ version: 1, originalText: content, translatedText, sourceLanguage, targetLanguage });
+    }
+  } catch (error) {
+    res.status(503).json({ error: error instanceof Error ? error.message : "Free translation is temporarily unavailable. Please retry." }); return;
+  }
   const [updated] = await db.update(supportMessagesTable)
-    .set({ content })
+    .set({ content: storedContent })
     .where(and(
       eq(supportMessagesTable.id, messageId),
       eq(supportMessagesTable.threadId, thread.id),
@@ -2219,7 +2234,7 @@ router.patch("/admin/support/:userId/messages/:messageId", requireAdmin, async (
       id: updated.id,
       threadId: updated.threadId,
       senderRole: updated.senderRole,
-      content: updated.content,
+      content: supportContentForViewer(updated.content, updated.senderRole, "admin"),
       createdAt: updated.createdAt.toISOString(),
     },
   });
