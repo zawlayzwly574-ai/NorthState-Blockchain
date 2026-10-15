@@ -36,4 +36,6 @@ jobs:
       - name: Build API server
         run: pnpm --filter @workspace/api-server run build
       - name: Run API tests
+        env:
+          DATABASE_URL: postgresql://test:test@127.0.0.1:5432/test
         run: pnpm --filter @workspace/api-server run test
