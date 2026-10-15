@@ -2132,7 +2132,7 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
           }
         }
       }
-      return { id: m.id, threadId: m.threadId, senderRole: m.senderRole, content: supportContentForViewer(stored, m.senderRole, "admin"), createdAt: m.createdAt.toISOString() };
+      return { id: m.id, threadId: m.threadId, senderRole: m.senderRole, content: supportContentForViewer(stored, m.senderRole, "admin"), originalContent: parseSupportTranslation(stored)?.originalText ?? undefined, translated: Boolean(parseSupportTranslation(stored)), createdAt: m.createdAt.toISOString() };
     })),
   });
 });
