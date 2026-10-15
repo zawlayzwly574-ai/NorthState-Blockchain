@@ -122,6 +122,7 @@ export default function Support() {
           )}
         </div>
         <p className="mt-1 text-sm text-muted-foreground">Manage and respond to user support threads in real time</p>
+        <p className="mt-1 text-xs text-muted-foreground">Free auto-translation uses public translation services. Do not send passwords, recovery phrases, or other secrets in support chat.</p>
       </div>
 
       <div className="admin-support-layout flex min-h-0 min-w-0 flex-1 gap-4">
