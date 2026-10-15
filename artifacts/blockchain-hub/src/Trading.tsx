@@ -1250,7 +1250,7 @@ export function TradingPage() {
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${isSimulatedOrderBook ? 'text-amber-300' : visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{isSimulatedOrderBook ? 'SIMULATED' : visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
+              <span className={`text-[8px] sm:text-[10px] ${isSimulatedOrderBook ? 'text-amber-300' : visibleOrderBook ? (orderBookError ? 'text-amber-300' : 'text-emerald-400') : 'text-muted-foreground'}`}>{isSimulatedOrderBook ? 'SIMULATED' : visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'CONNECTING'}</span>
             </div>
             {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">{isSimulatedOrderBook ? 'Illustrative depth linked to chart quote · not exchange liquidity' : `Updated ${Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago`}</p>}
           </div>
@@ -1283,8 +1283,8 @@ export function TradingPage() {
             </div>
           ) : (
             <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{currentPrice != null ? 'Waiting for order-book levels…' : orderBookError ? 'Live price unavailable' : 'Connecting live order book…'}</span>
-              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{currentPrice != null ? 'The chart quote is available, but no fresh quote can currently be used to build the illustrative depth ladder.' : 'No fresh chart quote is available. The order book will reconnect automatically when the quote feed returns.'}</p>
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{currentPrice != null ? 'Waiting for order-book levels…' : 'Connecting to the latest chart price…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{currentPrice != null ? 'The chart quote is available. Order-book levels will appear as soon as a valid quote is ready.' : 'Waiting for the chart price feed. The order book will update automatically when the next valid quote arrives.'}</p>
             </div>
           )}
         </section>
