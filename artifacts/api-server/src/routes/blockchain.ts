@@ -2224,18 +2224,24 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
   let translatedText = originalText;
   let translationApplied = false;
 
-  // Translation is an enhancement, never a prerequisite for sending support messages.
-  // If providers are unreachable, preserve the original message and still send it.
   try {
     sourceLanguage = await detectSupportLanguage(originalText);
     translatedText = sourceLanguage === targetLanguage
       ? originalText
       : await translateSupportText(originalText, targetLanguage, sourceLanguage);
     translationApplied = translatedText !== originalText;
+    // Do not silently deliver the source-language text when the administrator
+    // explicitly selected a different language. The UI can safely retry instead.
+    if (sourceLanguage !== targetLanguage && !translationApplied) {
+      res.status(503).json({ error: "Translation did not produce a translated reply. Please retry; no message was sent." });
+      return;
+    }
   } catch (error) {
-    req.log?.warn({ err: error, userId, targetLanguage }, "Support translation unavailable; sending original admin reply");
-    translatedText = originalText;
-    sourceLanguage = "und";
+    req.log?.warn({ err: error, userId, targetLanguage }, "Support translation failed; refusing to send untranslated reply");
+    res.status(503).json({
+      error: "Translation is temporarily unavailable. Your reply was not sent; please retry shortly.",
+    });
+    return;
   }
 
   const storedContent = encodeSupportTranslation({
