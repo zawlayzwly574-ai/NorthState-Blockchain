@@ -651,7 +651,7 @@ const binanceSymbols: Record<string, string> = {
 const getFuturesQuote = createFuturesQuoteFetcher(marketDefinitions, binanceSymbols, marketHeaders);
 const getTradingHistory = createTradingHistoryFetcher(marketDefinitions, binanceSymbols, marketHeaders);
 const getExchangeMarketSnapshot = createMarketSnapshotFetcher(marketDefinitions);
-const VALID_SPOT_TIMEFRAMES = new Set([60, 90, 120, 180, 300, 900, 1800, 3600, 86400, 259200, 864000, 1296000, 2592000]);
+const VALID_SPOT_TIMEFRAMES = new Set([60, 90, 120, 180, 300, 600, 900, 1800, 3600, 86400, 259200, 864000, 1296000, 2592000]);
 const isFreshExecutionQuote = (quote: FuturesQuote | null | undefined, now = Date.now()) =>
   !!quote && Number.isFinite(quote.price) && quote.price > 0 &&
   Number.isFinite(quote.updatedAt) && quote.updatedAt <= now + 2_000 &&
