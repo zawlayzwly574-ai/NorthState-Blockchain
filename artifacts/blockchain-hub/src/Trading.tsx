@@ -694,7 +694,7 @@ export function TradingPage() {
   const [goldTierIndex, setGoldTierIndex] = useState(0);
   const [timeframeSecs, setTimeframeSecs] = useState(60);
   const [siPreset, setSiPreset] = useState('60SI40%');
-  const [orderBook, setOrderBook] = useState<{ bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
+  const [orderBook, setOrderBook] = useState<{ symbol: string; bids: { price: number; size: number; total: number }[]; asks: { price: number; size: number; total: number }[]; updatedAt: number } | null>(null);
   const [orderBookError, setOrderBookError] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [showFutures, setShowFutures] = useState(false);
@@ -758,7 +758,7 @@ export function TradingPage() {
         const asks = validLevels(data?.asks);
         if (!bids.length && !asks.length) throw new Error('Empty order book');
         if (!cancelled) {
-          setOrderBook({ bids, asks, updatedAt });
+          setOrderBook({ symbol: marketSymbol, bids, asks, updatedAt });
           setOrderBookError(false);
         }
       } catch {
@@ -778,6 +778,7 @@ export function TradingPage() {
     const timer = window.setInterval(() => { void refreshOrderBook(); }, 3_000);
     return () => { cancelled = true; window.clearInterval(timer); };
   }, [marketSymbol]);
+  const visibleOrderBook = orderBook?.symbol === marketSymbol ? orderBook : null;
   const marketAsset = market.find(m => m.symbol === marketSymbol);
   const quoteTime = Date.parse(futuresQuote?.updatedAt ?? '');
   const quoteAge = Date.now() - quoteTime;
@@ -1223,17 +1224,17 @@ export function TradingPage() {
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${orderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{orderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
+              <span className={`text-[8px] sm:text-[10px] ${visibleOrderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{visibleOrderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
             </div>
-            {orderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - orderBook.updatedAt) / 1000))}s ago</p>}
+            {visibleOrderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - visibleOrderBook.updatedAt) / 1000))}s ago</p>}
           </div>
           <div className="grid grid-cols-3 gap-1 border-b border-white/5 px-2 py-2 text-[8px] text-muted-foreground sm:px-3 sm:text-[10px]">
             <span>Price</span><span className="text-right">Size</span><span className="text-right">Total</span>
           </div>
-          {orderBook ? (
+          {visibleOrderBook ? (
             <div className="space-y-0.5 px-1.5 py-2 sm:px-2">
               <div className="space-y-0.5">
-                {[...orderBook.asks].reverse().map((level, i) => (
+                {[...visibleOrderBook.asks].reverse().map((level, i) => (
                   <div key={`ask-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
                     <span className="truncate text-red-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
                     <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
@@ -1245,7 +1246,7 @@ export function TradingPage() {
                 {currentPrice != null ? currentPrice.toLocaleString(undefined, { maximumFractionDigits: 8 }) : '—'}
               </div>
               <div className="space-y-0.5">
-                {orderBook.bids.map((level, i) => (
+                {visibleOrderBook.bids.map((level, i) => (
                   <div key={`bid-${i}-${level.price}`} className="grid grid-cols-3 gap-1 rounded px-1 py-1 text-[8px] tabular-nums sm:px-2 sm:text-[10px]">
                     <span className="truncate text-emerald-400">{level.price.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span>
                     <span className="truncate text-right text-foreground">{level.size.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
@@ -1256,8 +1257,8 @@ export function TradingPage() {
             </div>
           ) : (
             <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? (orderBook ? 'Showing last verified order book' : 'Live feed unavailable') : 'Connecting live order book…'}</span>
-              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? (orderBook ? 'Exchange feed is temporarily unavailable. These are the last verified bids and asks; check the update time above. No sample prices are shown.' : 'No recent verified exchange depth is available for this asset. No sample prices are shown.') : 'Fetching verified bids and asks from the exchange.'}</p>
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? (visibleOrderBook ? 'Showing last verified order book' : 'Live feed unavailable') : 'Connecting live order book…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? (visibleOrderBook ? 'Exchange feed is temporarily unavailable. These are the last verified bids and asks; check the update time above. No sample prices are shown.' : 'No recent verified exchange depth is available for this asset. No sample prices are shown.') : 'Fetching verified bids and asks from the exchange.'}</p>
             </div>
           )}
         </section>
