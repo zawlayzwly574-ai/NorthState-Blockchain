@@ -19,8 +19,15 @@ export async function savePushSubscription(
   const auth = typeof input.keys?.auth === "string" ? input.keys.auth : "";
   let parsed: URL;
   try { parsed = new URL(endpoint); } catch { throw new Error("Invalid push endpoint."); }
-  if (parsed.protocol !== "https:" || !p256dh || !auth) {
-    throw new Error("A valid HTTPS push subscription with encryption keys is required.");
+  const host = parsed.hostname.toLowerCase();
+  const trustedPushHost =
+    host === "fcm.googleapis.com" ||
+    host === "push.services.mozilla.com" ||
+    host.endsWith(".push.services.mozilla.com") ||
+    host === "web.push.apple.com" ||
+    host.endsWith(".notify.windows.com");
+  if (parsed.protocol !== "https:" || !trustedPushHost || !p256dh || !auth) {
+    throw new Error("A valid subscription from a supported HTTPS push service is required.");
   }
   if ((ownerType === "user" && !clerkUserId) || (ownerType === "admin" && clerkUserId)) {
     throw new Error("Invalid push subscription owner.");
