@@ -1,7 +1,7 @@
 import { createInsertSchema } from "drizzle-zod";
 import { sql } from "drizzle-orm";
 import {
-  bigint,
+  bigserial,
   boolean,
   check,
   index,
@@ -52,7 +52,7 @@ export const supportMessagesTable = pgTable("support_messages", {
 });
 
 export const webPushSubscriptionsTable = pgTable("web_push_subscriptions", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+  id: bigserial("id", { mode: "number" }).primaryKey(),
   ownerType: text("owner_type").notNull(),
   clerkUserId: text("clerk_user_id"),
   endpoint: text("endpoint").notNull().unique(),
@@ -68,7 +68,7 @@ export const webPushSubscriptionsTable = pgTable("web_push_subscriptions", {
   check("web_push_subscriptions_owner_identity_check",
     sql`(${table.ownerType} = 'admin' AND ${table.clerkUserId} IS NULL) OR
          (${table.ownerType} = 'user' AND ${table.clerkUserId} IS NOT NULL)`),
-  index("web_push_subscriptions_owner_idx").on(table.ownerType, table.clerkUserId),
+  index("web_push_subscriptions_owner_idx").on(table.ownerType, table.clerkUserId).where(sql`${table.disabledAt} IS NULL`),
 ]);
 
 // ─── Trading / Futures ────────────────────────────────────────────────────────
