@@ -1223,7 +1223,7 @@ export function TradingPage() {
           <div className="border-b border-yellow-500/15 px-2 py-3 sm:px-4">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-[11px] font-extrabold tracking-wide text-foreground sm:text-sm">ORDER BOOK · {marketSymbol}</h3>
-              <span className={`text-[8px] sm:text-[10px] ${orderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{orderBook ? 'LIVE' : 'OFFLINE'}</span>
+              <span className={`text-[8px] sm:text-[10px] ${orderBook ? 'text-emerald-400' : 'text-muted-foreground'}`}>{orderBook ? (orderBookError ? 'STALE' : 'LIVE') : 'OFFLINE'}</span>
             </div>
             {orderBook && <p className="mt-1 text-[8px] text-muted-foreground sm:text-[10px]">Updated {Math.max(0, Math.floor((Date.now() - orderBook.updatedAt) / 1000))}s ago</p>}
           </div>
@@ -1256,8 +1256,8 @@ export function TradingPage() {
             </div>
           ) : (
             <div className="flex min-h-44 flex-col items-center justify-center gap-2 px-2 py-4 text-center sm:min-h-64 sm:px-4">
-              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? 'Live feed unavailable' : 'Connecting live order book…'}</span>
-              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? 'This exchange has no fresh depth data for this asset right now. No sample prices are shown.' : 'Fetching verified bids and asks from the exchange.'}</p>
+              <span className="text-xs font-semibold text-muted-foreground sm:text-sm">{orderBookError ? (orderBook ? 'Showing last verified order book' : 'Live feed unavailable') : 'Connecting live order book…'}</span>
+              <p className="text-[10px] leading-relaxed text-muted-foreground sm:text-xs">{orderBookError ? (orderBook ? 'Exchange feed is temporarily unavailable. These are the last verified bids and asks; check the update time above. No sample prices are shown.' : 'No recent verified exchange depth is available for this asset. No sample prices are shown.') : 'Fetching verified bids and asks from the exchange.'}</p>
             </div>
           )}
         </section>
