@@ -19,7 +19,7 @@ import {
   walletProfilesTable,
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
-import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, supportContentForViewer, translateSupportText } from "./support-translation";
+import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportText } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
 import {
@@ -2091,6 +2091,7 @@ router.get("/admin/support", requireAdmin, async (_req, res) => {
 
 router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
   const userId = Array.isArray(req.params.userId) ? req.params.userId[0] ?? "" : req.params.userId;
+  const adminLanguage = normalizeSupportLanguage(req.query.language, "my");
   const [thread] = await db.select().from(supportThreadsTable)
     .where(eq(supportThreadsTable.clerkUserId, userId)).limit(1);
   if (!thread) { res.json({ userId, displayName: "", email: "", threadId: 0, messages: [] }); return; }
@@ -2113,11 +2114,11 @@ router.get("/admin/support/:userId", requireAdmin, async (req, res) => {
       let stored = m.content;
       if (m.senderRole === "user") {
         const cached = parseSupportTranslation(stored);
-        if (!cached || cached.targetLanguage !== String(req.query.language || "my")) {
+        if (!cached || cached.targetLanguage !== adminLanguage) {
           const original = cached?.originalText ?? stored;
           const visible = publicSupportDisplayContent(original);
           try {
-            const targetLanguage = String(req.query.language || "my");
+            const targetLanguage = adminLanguage;
             const sourceLanguage = await detectSupportLanguage(visible);
             const translated = sourceLanguage === targetLanguage ? visible : await translateSupportText(visible, targetLanguage, sourceLanguage);
             const translatedText = original.startsWith("Guest support request\nName: ")
