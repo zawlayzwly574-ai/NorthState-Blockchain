@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '';
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+const DEFAULT_API_BASE_URL = 'https://northstate-blockchain-api.onrender.com';
+
+function normalizeApiBaseUrl(value: string) {
+  // Accept either the API origin or an origin accidentally configured with /api.
+  return value.replace(/\/+$/, '').replace(/\/api$/i, '');
+}
+
+const apiBaseUrl = normalizeApiBaseUrl(configuredApiBaseUrl || DEFAULT_API_BASE_URL);
 
 export function getAdminKey() {
   return localStorage.getItem('admin_key') ?? sessionStorage.getItem('admin_key');
@@ -26,10 +34,19 @@ async function apiClient(endpoint: string, options: RequestInit = {}) {
   }
   headers.set('Content-Type', 'application/json');
 
-  const res = await fetch(`${apiBaseUrl}/api/admin${endpoint}`, {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  const requestUrl = `${apiBaseUrl}/api/admin${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  try {
+    res = await fetch(requestUrl, {
+      ...options,
+      headers,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot reach the support API at ${apiBaseUrl}. Check the Render service and CORS settings, then retry. (${detail})`,
+    );
+  }
 
   if (res.status === 401) {
     throw new Error('Unauthorized');
