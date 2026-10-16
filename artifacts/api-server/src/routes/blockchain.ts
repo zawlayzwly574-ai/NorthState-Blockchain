@@ -1555,7 +1555,16 @@ router.post("/kyc", async (req, res) => {
     return;
   }
   const userId = getUserId(req);
-  await ensureSeededUser(userId);
+  const currentProfile = await ensureSeededUser(userId);
+  // Admin-approved accounts must not be forced to submit identity documents again.
+  // Keep the stored KYC evidence unchanged and make the verified state explicit to the client.
+  if (currentProfile.verificationStatus === "verified") {
+    res.status(409).json({
+      error: "Your account is already verified. You do not need to submit KYC again.",
+      verificationStatus: "verified",
+    });
+    return;
+  }
   const submission = await db.transaction(async (transaction) => {
     await transaction.execute(sql`select pg_advisory_xact_lock(hashtext(${`${userId}:KYC`}))`);
     const [created] = await transaction.insert(kycSubmissionsTable).values({
