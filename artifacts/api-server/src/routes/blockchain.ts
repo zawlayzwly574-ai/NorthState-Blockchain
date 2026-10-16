@@ -19,7 +19,7 @@ import {
   walletProfilesTable,
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
-import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportMessage } from "./support-translation";
+import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportMessage, translateSupportText } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
 import { savePushSubscription, removeUserPushSubscription, removeAdminPushSubscription, sendPushToAdmins, sendPushToUser } from "../lib/push-notifications";
