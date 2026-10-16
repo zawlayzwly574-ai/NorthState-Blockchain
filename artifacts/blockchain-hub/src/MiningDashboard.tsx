@@ -23,6 +23,22 @@ const offers: MiningOffer[] = [
   { id: 'cloud-sha', name: 'SHA-256 Cloud Hashrate', ticker: 'TH/s', kind: 'Cloud mining', apy: 0, minimum: 25, period: '90 days', status: 'Available', color: '#f0c95c', detail: 'Illustrative hashrate contract; verify contract terms and provider legitimacy before funding.' },
 ];
 
+const cryptoLogoUrls: Record<string, string> = {
+  ETH: 'https://assets.coingecko.com/coins/images/279/large/ethereum.png',
+  SOL: 'https://assets.coingecko.com/coins/images/4128/large/solana.png',
+  ATOM: 'https://assets.coingecko.com/coins/images/1481/large/cosmos_hub.png',
+  BTC: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  LTC: 'https://assets.coingecko.com/coins/images/2/large/litecoin.png',
+  'TH/s': 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+};
+
+function MiningOfferLogo({ ticker, name, color }: { ticker: string; name: string; color: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = cryptoLogoUrls[ticker] ?? cryptoLogoUrls.BTC;
+  if (failed) return <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border bg-background/70" aria-label={`${name} logo fallback`}><Cpu size={21} style={{ color }} /></div>;
+  return <img src={src} alt={`${name} logo`} width={48} height={48} loading="lazy" decoding="async" onError={() => setFailed(true)} className="h-12 w-12 shrink-0 rounded-full border border-white/10 bg-[#111318] p-1.5 object-contain shadow-sm" />;
+}
+
 const money = (n: number, digits = 2) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: digits }).format(n);
 
 export function MiningDashboard() {
@@ -55,7 +71,7 @@ export function MiningDashboard() {
     <div className="flex flex-wrap items-center gap-2">{(['All', 'Staking', 'Pool', 'Cloud mining'] as const).map(kind => <button key={kind} onClick={() => setFilter(kind)} className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${filter === kind ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:text-foreground'}`}>{kind}</button>)}</div>
     <div className="grid gap-4 lg:grid-cols-2">
       {visible.map(offer => <article key={offer.id} className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/40">
-        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-extrabold" style={{ backgroundColor: offer.color + '22', color: offer.color }}>{offer.kind === 'Pool' || offer.kind === 'Cloud mining' ? <Cpu size={21} /> : offer.ticker.slice(0, 1)}</div><div className="min-w-0"><h3 className="truncate font-extrabold">{offer.name}</h3><p className="mt-1 text-xs text-muted-foreground">{offer.ticker} · {offer.kind}</p></div></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${offer.status === 'Available' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{offer.status}</span></div>
+        <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><MiningOfferLogo ticker={offer.ticker} name={offer.name} color={offer.color} /><div className="min-w-0"><h3 className="truncate font-extrabold">{offer.name}</h3><p className="mt-1 text-xs text-muted-foreground">{offer.ticker} · {offer.kind}</p></div></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${offer.status === 'Available' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'}`}>{offer.status}</span></div>
         <p className="mt-4 text-sm leading-6 text-muted-foreground">{offer.detail}</p>
         <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-background/70 p-3"><p className="text-[11px] font-semibold text-muted-foreground">{offer.kind === 'Staking' ? 'Indicative APY' : offer.kind === 'Pool' ? 'Reference hashrate' : 'Contract hashrate'}</p><p className="mt-1 font-extrabold">{offer.kind === 'Staking' ? `${offer.apy.toFixed(1)}%` : offer.kind === 'Pool' ? (offer.ticker === 'BTC' ? '650 EH/s network' : '1.2 PH/s network') : '10 TH/s'}</p></div><div className="rounded-xl bg-background/70 p-3"><p className="text-[11px] font-semibold text-muted-foreground">Minimum reference</p><p className="mt-1 font-extrabold">{offer.kind === 'Staking' ? `${offer.minimum} ${offer.ticker}` : money(offer.minimum)}</p></div></div>
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted-foreground">{offer.period}</span><button onClick={() => { setSelected(offer.id); if (offer.kind === 'Staking') document.getElementById('root')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="inline-flex items-center gap-1 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10">{offer.kind === 'Staking' ? 'Estimate rewards' : 'View offering'} <ArrowUpRight size={14} /></button></div>
