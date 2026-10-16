@@ -955,6 +955,8 @@ components:
         status: { type: string, enum: [live, stale, fallback] }
         updatedAt: { type: string }
         color: { type: string }
+        marketCap: { type: number }
+        logoUrl: { type: string }
     MiningPlaceSummary:
       type: object
       required: [assets, updatedAt]
