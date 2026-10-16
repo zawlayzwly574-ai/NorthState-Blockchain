@@ -59,7 +59,9 @@ export const GetMiningPlaceResponse = zod.object({
   "unit": zod.string(),
   "status": zod.enum(['live', 'stale', 'fallback']),
   "updatedAt": zod.string(),
-  "color": zod.string()
+  "color": zod.string(),
+  "marketCap": zod.number().optional(),
+  "logoUrl": zod.string().optional()
 })),
   "updatedAt": zod.string()
 })

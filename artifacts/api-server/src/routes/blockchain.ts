@@ -79,6 +79,8 @@ type MiningPlaceAsset = {
   status: "live" | "stale";
   updatedAt: string;
   color: string;
+  marketCap?: number;
+  logoUrl?: string;
 };
 
 const marketDefinitions: MarketDefinition[] = [
@@ -121,18 +123,51 @@ const marketDefinitions: MarketDefinition[] = [
 
 const miningPlaceDefinitions: MiningPlaceDefinition[] = [
   { symbol: "GOLD", name: "Gold", category: "gold", yahooSymbol: "GC=F", unit: "oz", color: "#d6ad3b" },
-  { symbol: "XLE", name: "Energy Select Sector", category: "energy", yahooSymbol: "XLE", unit: "share", color: "#4dbb8a" },
+  { symbol: "XLE", name: "Energy Select Sector ETF", category: "energy", yahooSymbol: "XLE", unit: "share", color: "#4dbb8a" },
   { symbol: "OIL", name: "Crude Oil", category: "oil", yahooSymbol: "CL=F", unit: "barrel", color: "#9d7b52" },
   { symbol: "AAPL", name: "Apple", category: "stock", yahooSymbol: "AAPL", unit: "share", color: "#b8c1cc" },
   { symbol: "TSLA", name: "Tesla", category: "stock", yahooSymbol: "TSLA", unit: "share", color: "#d86464" },
   { symbol: "NVDA", name: "Nvidia", category: "stock", yahooSymbol: "NVDA", unit: "share", color: "#76b900" },
   { symbol: "MSFT", name: "Microsoft", category: "stock", yahooSymbol: "MSFT", unit: "share", color: "#4a9fe3" },
   { symbol: "AMZN", name: "Amazon", category: "stock", yahooSymbol: "AMZN", unit: "share", color: "#e8a43a" },
+  { symbol: "GOOGL", name: "Alphabet (Google)", category: "stock", yahooSymbol: "GOOGL", unit: "share", color: "#4285f4" },
+  { symbol: "META", name: "Meta Platforms", category: "stock", yahooSymbol: "META", unit: "share", color: "#0866ff" },
+  { symbol: "BRK.B", name: "Berkshire Hathaway B", category: "stock", yahooSymbol: "BRK-B", unit: "share", color: "#5b6b7a" },
+  { symbol: "AVGO", name: "Broadcom", category: "stock", yahooSymbol: "AVGO", unit: "share", color: "#cc0000" },
+  { symbol: "AMD", name: "AMD", category: "stock", yahooSymbol: "AMD", unit: "share", color: "#ed1c24" },
+  { symbol: "NFLX", name: "Netflix", category: "stock", yahooSymbol: "NFLX", unit: "share", color: "#e50914" },
+  { symbol: "ORCL", name: "Oracle", category: "stock", yahooSymbol: "ORCL", unit: "share", color: "#f80000" },
+  { symbol: "CRM", name: "Salesforce", category: "stock", yahooSymbol: "CRM", unit: "share", color: "#00a1e0" },
+  { symbol: "JPM", name: "JPMorgan Chase", category: "stock", yahooSymbol: "JPM", unit: "share", color: "#117aca" },
+  { symbol: "WMT", name: "Walmart", category: "stock", yahooSymbol: "WMT", unit: "share", color: "#0071ce" },
+  { symbol: "COST", name: "Costco", category: "stock", yahooSymbol: "COST", unit: "share", color: "#e31837" },
+  { symbol: "COIN", name: "Coinbase", category: "stock", yahooSymbol: "COIN", unit: "share", color: "#0052ff" },
+  { symbol: "MSTR", name: "Strategy (MicroStrategy)", category: "stock", yahooSymbol: "MSTR", unit: "share", color: "#d71920" },
+  { symbol: "HOOD", name: "Robinhood Markets", category: "stock", yahooSymbol: "HOOD", unit: "share", color: "#00c805" },
+  { symbol: "CRCL", name: "Circle Internet Group", category: "stock", yahooSymbol: "CRCL", unit: "share", color: "#2775ca" },
+  { symbol: "PLTR", name: "Palantir", category: "stock", yahooSymbol: "PLTR", unit: "share", color: "#a9b0b8" },
+  { symbol: "UBER", name: "Uber", category: "stock", yahooSymbol: "UBER", unit: "share", color: "#ffffff" },
+  { symbol: "SHOP", name: "Shopify", category: "stock", yahooSymbol: "SHOP", unit: "share", color: "#95bf47" },
+  { symbol: "INTC", name: "Intel", category: "stock", yahooSymbol: "INTC", unit: "share", color: "#0071c5" },
+  { symbol: "ARM", name: "Arm Holdings", category: "stock", yahooSymbol: "ARM", unit: "share", color: "#0091bd" },
+  { symbol: "SMCI", name: "Super Micro Computer", category: "stock", yahooSymbol: "SMCI", unit: "share", color: "#0085ca" },
+  { symbol: "MARA", name: "MARA Holdings", category: "stock", yahooSymbol: "MARA", unit: "share", color: "#f15a29" },
+  { symbol: "RIOT", name: "Riot Platforms", category: "stock", yahooSymbol: "RIOT", unit: "share", color: "#f2c300" },
+  { symbol: "BTDR", name: "Bitdeer Technologies", category: "stock", yahooSymbol: "BTDR", unit: "share", color: "#00a9e0" },
+  { symbol: "ASTS", name: "AST SpaceMobile", category: "stock", yahooSymbol: "ASTS", unit: "share", color: "#152b4a" },
+  { symbol: "RKLB", name: "Rocket Lab", category: "stock", yahooSymbol: "RKLB", unit: "share", color: "#202a44" },
+  { symbol: "SOUN", name: "SoundHound AI", category: "stock", yahooSymbol: "SOUN", unit: "share", color: "#00b5ad" },
+  { symbol: "IONQ", name: "IonQ", category: "stock", yahooSymbol: "IONQ", unit: "share", color: "#5e5ce6" },
+  { symbol: "HIMS", name: "Hims & Hers Health", category: "stock", yahooSymbol: "HIMS", unit: "share", color: "#2b2b2b" },
+  { symbol: "RGTI", name: "Rigetti Computing", category: "stock", yahooSymbol: "RGTI", unit: "share", color: "#663399" },
+  { symbol: "LUNR", name: "Intuitive Machines", category: "stock", yahooSymbol: "LUNR", unit: "share", color: "#1d3a5f" },
 ];
 
 let miningPlaceCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
 let miningPlaceRefreshPromise: Promise<{ assets: MiningPlaceAsset[]; ts: number }> | null = null;
+let tokenizedStockCache: { assets: MiningPlaceAsset[]; ts: number } | null = null;
 const MINING_PLACE_TTL = 3_000;
+const TOKENIZED_STOCK_TTL = 60_000;
 const MINING_PLACE_MAX_STALE_AGE = 7 * 24 * 60 * 60_000;
 const YAHOO_FINANCE_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
@@ -935,7 +970,61 @@ router.get("/mining-place", async (req, res) => {
       }
       throw new Error(`No live or recent cached quote is available for ${definition.symbol}; refusing to publish a fabricated price.`);
     }
-    })).then((assets) => {
+    })).then(async (assets) => {
+      // Pull genuine on-chain tokenized-equity quotes separately from CoinGecko.
+      // These are distinct token products (xStocks, Ondo, bStocks, etc.), not
+      // equity prices relabelled as tokens. If this optional feed is unavailable,
+      // the normal Yahoo Finance equity feed remains available.
+      try {
+        if (!tokenizedStockCache || Date.now() - tokenizedStockCache.ts >= TOKENIZED_STOCK_TTL) {
+          const tokenizedResponse = await fetchCoinGeckoEndpoint(
+            req,
+            "coins/markets?vs_currency=usd&category=tokenized-stock&order=market_cap_desc&per_page=100&page=1&sparkline=false",
+          );
+          if (tokenizedResponse?.ok) {
+            const tokenizedRows = await tokenizedResponse.json() as Array<{
+              id?: string;
+              symbol?: string;
+              name?: string;
+              current_price?: number | null;
+              price_change_percentage_24h?: number | null;
+              market_cap?: number | null;
+              image?: string;
+            }>;
+            const usedSymbols = new Set(assets.map((asset) => asset.symbol.toUpperCase()));
+            const tokenizedAssets: MiningPlaceAsset[] = [];
+            for (const coin of tokenizedRows) {
+              const ticker = String(coin.symbol ?? "").trim().toUpperCase();
+              const price = Number(coin.current_price);
+              if (!ticker || !coin.name || !Number.isFinite(price) || price <= 0) continue;
+              let symbol = ticker;
+              if (usedSymbols.has(symbol)) symbol = `${ticker}-TOKEN`;
+              let suffix = 2;
+              while (usedSymbols.has(symbol)) symbol = `${ticker}-TOKEN${suffix++}`;
+              usedSymbols.add(symbol);
+              tokenizedAssets.push({
+                symbol,
+                name: `${coin.name} · Tokenized stock`,
+                category: "stock",
+                price,
+                change24h: Number.isFinite(Number(coin.price_change_percentage_24h)) ? Number(coin.price_change_percentage_24h) : 0,
+                currency: "USD",
+                unit: "token",
+                status: "live",
+                updatedAt: new Date(now).toISOString(),
+                color: "#e8bd52",
+                ...(Number.isFinite(Number(coin.market_cap)) && Number(coin.market_cap) > 0 ? { marketCap: Number(coin.market_cap) } : {}),
+                ...(coin.image ? { logoUrl: coin.image } : {}),
+              });
+            }
+            tokenizedStockCache = { assets: tokenizedAssets, ts: Date.now() };
+          }
+        }
+        if (tokenizedStockCache) assets.push(...tokenizedStockCache.assets);
+      } catch (error) {
+        req.log.warn({ err: error }, "Optional tokenized-stock quote feed unavailable; keeping listed-equity quotes");
+        if (tokenizedStockCache) assets.push(...tokenizedStockCache.assets);
+      }
       miningPlaceCache = { assets, ts: Date.now() };
       return miningPlaceCache;
     }).finally(() => {
