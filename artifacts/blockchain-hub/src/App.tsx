@@ -571,7 +571,7 @@ function LanguageSelector({ compact = false }: { compact?: boolean }) {
     </button>
     {open && <>
       <button type="button" aria-label="Close language menu" className="fixed inset-0 z-0 cursor-default" onClick={() => setOpen(false)} />
-      <div role="listbox" aria-label={copy.language} className="absolute right-0 top-[calc(100%+8px)] z-20 max-h-[min(70vh,420px)] w-64 overflow-y-auto rounded-xl border border-[#383a40] bg-[#111214] p-1.5 text-white shadow-[0_18px_48px_rgba(0,0,0,.7)]">
+      <div role="listbox" aria-label={copy.language} className="absolute right-0 top-[calc(100%+8px)] z-20 max-h-[min(80dvh,32rem)] w-[min(16rem,calc(100vw-1.5rem))] overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-[#383a40] bg-[#111214] p-1.5 text-white shadow-[0_18px_48px_rgba(0,0,0,.7)] sm:max-h-[min(70vh,420px)] sm:w-64">
         {LOGIN_LANGUAGES.map(item => <button key={item.code} type="button" role="option" aria-selected={item.code === language}
           onClick={() => { setAppLanguage(item.code); setOpen(false); }}
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-[#27292f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${item.code === language ? 'bg-[#28251c] text-[#e1b12c]' : 'text-white'}`}>
@@ -711,12 +711,12 @@ function Shell({ children }: { children: React.ReactNode }) {
                 {unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-border bg-background shadow-xl animate-rise" data-testid="panel-notifications">
+                <div className="fixed inset-x-3 top-[80px] z-50 mx-auto max-h-[80dvh] w-auto max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border bg-background shadow-xl animate-rise sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:mx-0 sm:max-h-none sm:w-80 sm:max-w-none" data-testid="panel-notifications">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3">
                     <p className="text-sm font-extrabold">{menuCopy.notifications}</p>
                     <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-secondary"><X size={15} /></button>
                   </div>
-                  <div className="max-h-72 overflow-y-auto divide-y divide-border/70">
+                  <div className="max-h-[min(65dvh,28rem)] overflow-y-auto overscroll-contain divide-y divide-border/70 sm:max-h-72">
                     {notifs.isLoading ? (
                       <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
                     ) : !notifs.data || notifs.data.length === 0 ? (
