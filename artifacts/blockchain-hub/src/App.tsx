@@ -2793,7 +2793,7 @@ function MiningLogo({ symbol, name, color, size = 48, logoUrl }: { symbol: strin
   const [failed, setFailed] = useState(false);
   const file = getMiningLogoFile(symbol);
   const normalizedSymbol = symbol.toUpperCase();
-  const remoteSlug = companyLogoSlugs[normalizedSymbol.replace(/-TOKEN(?:\\d+)?$/, '')]
+  const remoteSlug = companyLogoSlugs[normalizedSymbol.replace(/-TOKEN(?:\d+)?$/, '')]
     ?? companyLogoSlugs[normalizedSymbol.replace(/X$/, '')];
   const src = logoUrl || (file
     ? `${basePath}/mining-logos/${file}`
