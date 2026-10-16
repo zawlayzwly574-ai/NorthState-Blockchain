@@ -195,9 +195,26 @@ function UserDetailDrawer({ userId, onClose }: { userId: string; onClose: () => 
               {detailTab === 'kyc' && (
                 <div>
                   {!data.kyc ? (
-                    <div className="text-center py-6">
-                      <FileCheck className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-40" />
-                      <p className="text-sm text-muted-foreground">No KYC submission found.</p>
+                    <div className="text-center py-6 space-y-2">
+                      {data.verificationStatus === 'verified' ? (
+                        <ShieldCheck className="w-8 h-8 mx-auto text-emerald-400" />
+                      ) : (
+                        <FileCheck className="w-8 h-8 mx-auto text-muted-foreground opacity-40" />
+                      )}
+                      <p className="text-sm font-medium">
+                        {data.verificationStatus === 'verified'
+                          ? 'Account is verified'
+                          : 'No KYC submission found.'}
+                      </p>
+                      {data.verificationStatus === 'verified' ? (
+                        <p className="text-xs text-amber-400 max-w-md mx-auto">
+                          No KYC document record is linked to this account. The verification status is approved, but there is no stored document image to display here.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Submitted identity details and document images will appear here when a KYC record exists.
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-4">
