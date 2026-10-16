@@ -66,7 +66,14 @@ async function deliver(ownerType: "admin" | "user", clerkUserId: string | null, 
     const conditions = clerkUserId
       ? and(eq(webPushSubscriptionsTable.ownerType, ownerType), eq(webPushSubscriptionsTable.clerkUserId, clerkUserId), isNull(webPushSubscriptionsTable.disabledAt))
       : and(eq(webPushSubscriptionsTable.ownerType, ownerType), isNull(webPushSubscriptionsTable.disabledAt));
-    const subscriptions = await db.select().from(webPushSubscriptionsTable).where(conditions);
+    const selected: unknown = await db.select().from(webPushSubscriptionsTable).where(conditions);
+    // Drizzle normally returns an array; some supported adapters/mocks expose rows as { rows: [...] }.
+    // Normalize both shapes so push delivery never crashes on an unexpected result wrapper.
+    const subscriptions = Array.isArray(selected)
+      ? selected
+      : selected && typeof selected === "object" && Array.isArray((selected as { rows?: unknown }).rows)
+        ? (selected as { rows: any[] }).rows
+        : [];
     await Promise.allSettled(subscriptions.map(async subscription => {
       try {
         const sent = await sendWebPush(subscription, payload);

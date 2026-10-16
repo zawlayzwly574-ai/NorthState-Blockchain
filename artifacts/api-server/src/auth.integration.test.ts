@@ -221,6 +221,15 @@ describe("member route authentication", () => {
     ["session cookie", { cookie: "__session=restored" }],
     ["authorization header", { authorization: "Bearer restored-token" }],
   ])("accepts KYC submission from a restored %s", async (_label, authHeaders) => {
+    // This test covers a member who still needs KYC. Already-verified members
+    // correctly receive HTTP 409 and must not be asked to submit KYC again.
+    select.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          limit: async () => [{ ...profile, verificationStatus: "unverified" }],
+        }),
+      }),
+    });
     const submittedAt = new Date("2026-09-14T00:00:00.000Z");
     transaction.mockImplementation(async (callback) => callback({
       execute: vi.fn(),
