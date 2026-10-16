@@ -19,7 +19,7 @@ import {
   walletProfilesTable,
 } from "@workspace/db";
 import { createFuturesRouter, type FuturesQuote } from "./futures";
-import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportText } from "./support-translation";
+import { detectSupportLanguage, encodeSupportTranslation, parseSupportTranslation, normalizeSupportLanguage, supportContentForViewer, translateSupportMessage } from "./support-translation";
 import { createFuturesQuoteFetcher, createMarketSnapshotFetcher, createTradingHistoryFetcher } from "./futures-quotes";
 import { normalizeSmsE164 } from "../lib/phone";
 import { savePushSubscription, removeUserPushSubscription, removeAdminPushSubscription, sendPushToAdmins, sendPushToUser } from "../lib/push-notifications";
@@ -2226,9 +2226,11 @@ router.post("/admin/support/:userId/reply", requireAdmin, async (req, res) => {
 
   try {
     sourceLanguage = await detectSupportLanguage(originalText);
+    // Translation is best-effort and never throws. A provider outage returns
+    // originalText, and the reply is still persisted and delivered to the user.
     translatedText = sourceLanguage === targetLanguage
       ? originalText
-      : await translateSupportText(originalText, targetLanguage, sourceLanguage);
+      : await translateSupportMessage(originalText, targetLanguage);
     translationApplied = translatedText !== originalText;
   } catch (error) {
     // Sending support replies must not depend on third-party translation uptime.
