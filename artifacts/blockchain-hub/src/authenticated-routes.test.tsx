@@ -162,7 +162,9 @@ describe("authenticated portfolio routes", () => {
     ["Overview", "/dashboard"],
     ["Activity", "/activity"],
     ["Trading", "/trading"],
-    ["Mining Place", "/mining-place"],
+    ["Stock", "/stock"],
+    ["Mining", "/mining"],
+    ["Legacy Mining Place route", "/mining-place"],
     ["Settings", "/settings"],
   ])("redirects signed-out visitors from %s to sign in without flashing account content", async (name, path) => {
     const memory = memoryLocation({ path, record: true });
