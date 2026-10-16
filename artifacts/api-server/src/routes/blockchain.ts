@@ -79,6 +79,8 @@ type MiningPlaceAsset = {
   status: "live" | "stale";
   updatedAt: string;
   color: string;
+  marketCap?: number;
+  logoUrl?: string;
 };
 
 const marketDefinitions: MarketDefinition[] = [
@@ -966,7 +968,57 @@ router.get("/mining-place", async (req, res) => {
       }
       throw new Error(`No live or recent cached quote is available for ${definition.symbol}; refusing to publish a fabricated price.`);
     }
-    })).then((assets) => {
+    })).then(async (assets) => {
+      // Pull genuine on-chain tokenized-equity quotes separately from CoinGecko.
+      // These are distinct token products (xStocks, Ondo, bStocks, etc.), not
+      // equity prices relabelled as tokens. If this optional feed is unavailable,
+      // the normal Yahoo Finance equity feed remains available.
+      try {
+        const tokenizedResponse = await fetchCoinGeckoEndpoint(
+          req,
+          "coins/markets?vs_currency=usd&category=tokenized-stock&order=market_cap_desc&per_page=100&page=1&sparkline=false",
+        );
+        if (tokenizedResponse?.ok) {
+          const tokenizedRows = await tokenizedResponse.json() as Array<{
+            id?: string;
+            symbol?: string;
+            name?: string;
+            current_price?: number | null;
+            price_change_percentage_24h?: number | null;
+            market_cap?: number | null;
+            image?: string;
+          }>;
+          const usedSymbols = new Set(assets.map((asset) => asset.symbol.toUpperCase()));
+          const tokenizedAssets: MiningPlaceAsset[] = [];
+          for (const coin of tokenizedRows) {
+            const ticker = String(coin.symbol ?? "").trim().toUpperCase();
+            const price = Number(coin.current_price);
+            if (!ticker || !coin.name || !Number.isFinite(price) || price <= 0) continue;
+            let symbol = ticker;
+            if (usedSymbols.has(symbol)) symbol = `${ticker}-TOKEN`;
+            let suffix = 2;
+            while (usedSymbols.has(symbol)) symbol = `${ticker}-TOKEN${suffix++}`;
+            usedSymbols.add(symbol);
+            tokenizedAssets.push({
+              symbol,
+              name: `${coin.name} · Tokenized stock`,
+              category: "stock",
+              price,
+              change24h: Number.isFinite(Number(coin.price_change_percentage_24h)) ? Number(coin.price_change_percentage_24h) : 0,
+              currency: "USD",
+              unit: "token",
+              status: "live",
+              updatedAt: new Date(now).toISOString(),
+              color: "#e8bd52",
+              ...(Number.isFinite(Number(coin.market_cap)) && Number(coin.market_cap) > 0 ? { marketCap: Number(coin.market_cap) } : {}),
+              ...(coin.image ? { logoUrl: coin.image } : {}),
+            });
+          }
+          assets.push(...tokenizedAssets);
+        }
+      } catch (error) {
+        req.log.warn({ err: error }, "Optional tokenized-stock quote feed unavailable; keeping listed-equity quotes");
+      }
       miningPlaceCache = { assets, ts: Date.now() };
       return miningPlaceCache;
     }).finally(() => {
