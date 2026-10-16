@@ -2763,10 +2763,38 @@ const categoryLabels: Record<string, string> = {
   oil: 'Oil & Gas'
 };
 
+const companyLogoSlugs: Record<string, string> = {
+  GOOGL: 'google', META: 'meta', 'BRK.B': 'berkshirehathaway', AVGO: 'broadcom', AMD: 'amd',
+  NFLX: 'netflix', ORCL: 'oracle', CRM: 'salesforce', JPM: 'jpmorgan', WMT: 'walmart',
+  COST: 'costco', COIN: 'coinbase', MSTR: 'microstrategy', HOOD: 'robinhood', CRCL: 'circle',
+  PLTR: 'palantir', UBER: 'uber', SHOP: 'shopify', INTC: 'intel', ARM: 'arm',
+  SMCI: 'supermicro', MARA: 'marathon', RIOT: 'riotgames', BTDR: 'bitdeer',
+  ASTS: 'spacex', RKLB: 'rocketlab', SOUN: 'soundhound', IONQ: 'ionq', HIMS: 'hims',
+  RGTI: 'rigetti', LUNR: 'intuitivemachines',
+};
+const estimatedSharesOutstanding: Record<string, number> = {
+  AAPL: 15.0e9, TSLA: 3.22e9, NVDA: 24.4e9, MSFT: 7.43e9, AMZN: 10.6e9,
+  GOOGL: 12.1e9, META: 2.53e9, 'BRK.B': 2.16e9, AVGO: 4.7e9, AMD: 1.62e9,
+  NFLX: 4.25e9, ORCL: 8.3e9, CRM: 0.96e9, JPM: 2.8e9, WMT: 8.0e9, COST: 0.44e9,
+  COIN: 0.25e9, MSTR: 0.31e9, HOOD: 0.9e9, CRCL: 0.23e9, PLTR: 2.4e9,
+  UBER: 2.1e9, SHOP: 1.3e9, INTC: 4.3e9, ARM: 1.05e9, SMCI: 0.6e9,
+  MARA: 0.35e9, RIOT: 0.35e9, BTDR: 0.16e9, ASTS: 0.3e9, RKLB: 0.5e9,
+  SOUN: 0.37e9, IONQ: 0.22e9, HIMS: 0.22e9, RGTI: 0.2e9, LUNR: 0.15e9,
+};
+function formatMarketCap(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '—';
+  const units = [{ value: 1e12, suffix: 'T' }, { value: 1e9, suffix: 'B' }, { value: 1e6, suffix: 'M' }];
+  const unit = units.find((item) => value >= item.value);
+  return unit ? `${(value / unit.value).toFixed(2)}${unit.suffix}` : `${Math.round(value).toLocaleString()}`;
+}
+
 function MiningLogo({ symbol, name, color, size = 48 }: { symbol: string; name: string; color: string; size?: number }) {
   const [failed, setFailed] = useState(false);
   const file = getMiningLogoFile(symbol);
-  const src = file ? `${basePath}/mining-logos/${file}` : '';
+  const remoteSlug = companyLogoSlugs[symbol.toUpperCase()];
+  const src = file
+    ? `${basePath}/mining-logos/${file}`
+    : remoteSlug ? `https://cdn.jsdelivr.net/npm/simple-icons@v15/icons/${remoteSlug}.svg` : '';
   useEffect(() => setFailed(false), [src]);
   if (!src || failed) return <span role="img" aria-label={`${name} logo unavailable`} className="grid shrink-0 place-items-center rounded-xl border border-border bg-background/50 text-xs font-extrabold" style={{ width: size, height: size, color }}>{symbol.slice(0, 3)}</span>;
   return <img src={src} alt={`${name} logo`} width={size} height={size} className="shrink-0 rounded-xl bg-white p-1.5 object-contain" onError={() => setFailed(true)} />;
@@ -2781,6 +2809,9 @@ function StatusBadge({ status }: { status: string }) {
 function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
   const previousPrice = useRef(asset.price);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
+  const estimatedMarketCap = asset.category === 'stock' && estimatedSharesOutstanding[asset.symbol]
+    ? asset.price * estimatedSharesOutstanding[asset.symbol]
+    : null;
 
   useEffect(() => {
     if (previousPrice.current === asset.price) return;
@@ -2818,6 +2849,12 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
           {pct(asset.change24h)}
         </p>
       </div>
+      {estimatedMarketCap !== null && (
+        <div className="mt-4 flex items-center justify-between rounded-lg border border-border/60 bg-background/35 px-3 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Est. market cap</span>
+          <span className="font-mono-ui text-xs font-bold text-foreground">{formatMarketCap(estimatedMarketCap)}</span>
+        </div>
+      )}
       <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
         <span>View details</span>
         <ArrowUpRight size={14} className="text-primary transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
