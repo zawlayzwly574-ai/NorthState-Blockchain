@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Cpu, Pickaxe, ShieldCheck, Zap } from 'lucide-react';
+import { ArrowUpRight, Cpu, Pickaxe, ShieldCheck, Zap } from 'lucide-react';
 
 type MiningOffer = {
   id: string;
