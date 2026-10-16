@@ -2826,7 +2826,7 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
   );
 }
 
-function MiningPlace() {
+function MiningPlace({ stockOnly = false }: { stockOnly?: boolean } = {}) {
   const { data, isLoading, isError, refetch } = useGetMiningPlace({
     query: {
       queryKey: getGetMiningPlaceQueryKey(),
@@ -2836,15 +2836,16 @@ function MiningPlace() {
   });
   const investments = useGetMiningInvestments({ query: { queryKey: getGetMiningInvestmentsQueryKey(), refetchInterval: 10_000 } });
 
+  const displayAssets = stockOnly ? (data?.assets ?? []).filter(asset => asset.category === 'stock') : (data?.assets ?? []);
   const assetsByCategory = useMemo(() => {
-    if (!data?.assets) return {};
+    if (!displayAssets.length) return {};
     const grouped: Record<string, MiningPlaceAsset[]> = {};
-    for (const asset of data.assets) {
+    for (const asset of displayAssets) {
       if (!grouped[asset.category]) grouped[asset.category] = [];
       grouped[asset.category].push(asset);
     }
     return grouped;
-  }, [data]);
+  }, [displayAssets]);
 
   const categories = Object.keys(assetsByCategory).sort();
 
@@ -2853,10 +2854,10 @@ function MiningPlace() {
       <div className="relative mb-10 overflow-hidden rounded-3xl border border-primary/20 bg-[#171209] p-8 sm:p-12 shadow-xl">
         <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/20 blur-[80px]" />
         <div className="relative z-10">
-          <p className="eyebrow flex items-center gap-2"><Landmark size={14} /> Mining Place</p>
-          <h1 className="mt-4 text-3xl font-extrabold tracking-[-.04em] text-foreground sm:text-4xl">Real-World Benchmarks</h1>
+          <p className="eyebrow flex items-center gap-2"><Landmark size={14} /> {stockOnly ? 'Stock Markets' : 'Mining Place'}</p>
+          <h1 className="mt-4 text-3xl font-extrabold tracking-[-.04em] text-foreground sm:text-4xl">{stockOnly ? 'Global Stocks' : 'Real-World Benchmarks'}</h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-             A grounded perspective on the physical economy. Monitor live quotes and request USDC investments across commodities, energy, oil, and major equities.
+             {stockOnly ? 'Track major public companies with frequently refreshed market quotes, daily changes and market indicators.' : 'A grounded perspective on the physical economy. Monitor live quotes and request USDC investments across commodities, energy, oil, and major equities.'}
           </p>
         </div>
       </div>
@@ -2865,11 +2866,11 @@ function MiningPlace() {
         <LoadingState lines={7} />
       ) : isError ? (
         <ErrorState retry={() => refetch()} />
-      ) : !data || data.assets.length === 0 ? (
+      ) : !data || displayAssets.length === 0 ? (
         <EmptyState title="No assets available" detail="Real-world benchmarks are currently offline." />
       ) : (
         <div className="animate-rise grid gap-10">
-          <section className="surface rounded-2xl p-5 sm:p-6">
+          {!stockOnly && <section className="surface rounded-2xl p-5 sm:p-6">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div><p className="eyebrow">Your investments</p><h2 className="mt-1 text-lg font-extrabold">Mining Place positions</h2></div>
               <span className="font-mono-ui text-sm text-primary">
@@ -2889,7 +2890,7 @@ function MiningPlace() {
                 {investment.adminNote && <p className="mt-2 text-xs text-muted-foreground">{investment.adminNote}</p>}
               </div>)}
             </div>}
-          </section>
+          </section>}
           <div className="flex items-center justify-between border-b border-border/60 pb-4">
              <h2 className="text-sm font-bold text-foreground">Market Feeds</h2>
              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -3023,7 +3024,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace stockOnly /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 const SUPPORT_COPY: Record<string, Record<string, string>> = {
   'en-US': { title: 'North State Blockchain Support', replyTime: 'Replies appear here without signing in', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Keep this chat ID in your browser to read replies here. No email or account needed.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },
   'en-GB': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },
