@@ -1082,10 +1082,10 @@ export function TradingPage() {
       {/* ── Order Panel ── */}
       <div className="min-w-0">
         <div className="rounded-xl border border-border/60 bg-card p-2 sm:rounded-2xl sm:p-4">
-          <div className="mb-2 flex items-center justify-between gap-1 border-b border-yellow-500/15 pb-2 sm:mb-4 sm:gap-2 sm:pb-3">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-1 border-b border-yellow-500/15 pb-2 sm:mb-4 sm:gap-2 sm:pb-3">
             <div>
-              <p className="text-sm font-extrabold uppercase tracking-wider text-primary">{asset}/USDT</p>
-              <p className="mt-1 text-xs text-muted-foreground">Spot · fixed-expiry position</p>
+              <p className="text-xs font-extrabold uppercase tracking-wider text-primary sm:text-sm">{asset}/USDT</p>
+              <p className="mt-1 text-[10px] text-muted-foreground sm:text-xs">Spot · fixed-expiry position</p>
             </div>
             <button
               type="button"
@@ -1093,12 +1093,12 @@ export function TradingPage() {
                 setFuturesNotice(null);
                 setShowFutures(true);
               }}
-              className="group relative overflow-hidden rounded-xl border border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-amber-500/15 px-3.5 py-2 text-xs font-extrabold text-primary shadow-[0_0_20px_hsl(var(--primary)/.12)] transition hover:border-primary/70 hover:shadow-[0_0_26px_hsl(var(--primary)/.22)] active:scale-[.98]"
+              className="group relative min-w-0 max-w-[54%] shrink-0 overflow-hidden rounded-xl border border-primary/45 bg-gradient-to-r from-primary/15 via-primary/10 to-amber-500/15 px-2 py-2 text-[10px] font-extrabold leading-tight text-primary shadow-[0_0_20px_hsl(var(--primary)/.12)] transition hover:border-primary/70 hover:shadow-[0_0_26px_hsl(var(--primary)/.22)] active:scale-[.98] sm:max-w-none sm:px-3.5 sm:py-2 sm:text-xs"
               data-testid="button-open-futures-modal"
             >
-              <span className="relative z-10 flex items-center gap-1.5">
-                <Zap size={13} />
-                Futures Trade
+              <span className="relative z-10 flex min-w-0 flex-col items-center justify-center gap-0.5 text-center sm:flex-row sm:gap-1.5">
+                <Zap size={11} className="shrink-0 sm:h-[13px] sm:w-[13px]" />
+                <span className="whitespace-normal leading-tight sm:whitespace-nowrap">Futures Trade</span>
                 <span className="rounded bg-primary/20 px-1.5 py-0.5 text-[9px] tracking-wider">PRO</span>
               </span>
             </button>
