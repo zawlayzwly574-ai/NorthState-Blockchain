@@ -2759,11 +2759,12 @@ function TradingRoute() { return <Shell><TradingPage /></Shell>; }
 const categoryLabels: Record<string, string> = {
   gold: 'Gold & Precious Metals',
   energy: 'Energy & Power',
-  stock: 'Major Equities',
+  stock: 'Stocks & Tokenized Equities',
   oil: 'Oil & Gas'
 };
 
 const companyLogoSlugs: Record<string, string> = {
+  AAPL: 'apple', TSLA: 'tesla', NVDA: 'nvidia', MSFT: 'microsoft', AMZN: 'amazon',
   GOOGL: 'google', META: 'meta', 'BRK.B': 'berkshirehathaway', AVGO: 'broadcom', AMD: 'amd',
   NFLX: 'netflix', ORCL: 'oracle', CRM: 'salesforce', JPM: 'jpmorgan', WMT: 'walmart',
   COST: 'costco', COIN: 'coinbase', MSTR: 'microstrategy', HOOD: 'robinhood', CRCL: 'circle',
