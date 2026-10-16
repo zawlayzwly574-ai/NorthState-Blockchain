@@ -61,6 +61,8 @@ export interface MiningPlaceAsset {
   status: MiningPlaceAssetStatus;
   updatedAt: string;
   color: string;
+  marketCap?: number;
+  logoUrl?: string;
 }
 
 export interface MiningPlaceSummary {
