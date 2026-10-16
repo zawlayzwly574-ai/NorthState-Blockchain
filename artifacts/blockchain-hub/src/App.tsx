@@ -2788,16 +2788,18 @@ function formatMarketCap(value: number) {
   return unit ? `${(value / unit.value).toFixed(2)}${unit.suffix}` : `${Math.round(value).toLocaleString()}`;
 }
 
-function MiningLogo({ symbol, name, color, size = 48 }: { symbol: string; name: string; color: string; size?: number }) {
+function MiningLogo({ symbol, name, color, size = 48, logoUrl }: { symbol: string; name: string; color: string; size?: number; logoUrl?: string }) {
   const [failed, setFailed] = useState(false);
   const file = getMiningLogoFile(symbol);
-  const remoteSlug = companyLogoSlugs[symbol.toUpperCase()];
-  const src = file
+  const normalizedSymbol = symbol.toUpperCase();
+  const remoteSlug = companyLogoSlugs[normalizedSymbol.replace(/-TOKEN(?:\\d+)?$/, '')]
+    ?? companyLogoSlugs[normalizedSymbol.replace(/X$/, '')];
+  const src = logoUrl || (file
     ? `${basePath}/mining-logos/${file}`
-    : remoteSlug ? `https://cdn.jsdelivr.net/npm/simple-icons@v15/icons/${remoteSlug}.svg` : '';
+    : remoteSlug ? `https://cdn.jsdelivr.net/npm/simple-icons@v15/icons/${remoteSlug}.svg` : '');
   useEffect(() => setFailed(false), [src]);
   if (!src || failed) return <span role="img" aria-label={`${name} logo unavailable`} className="grid shrink-0 place-items-center rounded-xl border border-border bg-background/50 text-xs font-extrabold" style={{ width: size, height: size, color }}>{symbol.slice(0, 3)}</span>;
-  return <img src={src} alt={`${name} logo`} width={size} height={size} className="shrink-0 rounded-xl bg-white p-1.5 object-contain" onError={() => setFailed(true)} />;
+  return <img src={src} alt={`${name} logo`} width={size} height={size} className="shrink-0 rounded-xl bg-white p-1.5 object-contain" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -2809,9 +2811,12 @@ function StatusBadge({ status }: { status: string }) {
 function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
   const previousPrice = useRef(asset.price);
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | null>(null);
-  const estimatedMarketCap = asset.category === 'stock' && estimatedSharesOutstanding[asset.symbol]
-    ? asset.price * estimatedSharesOutstanding[asset.symbol]
-    : null;
+  const marketCap = typeof asset.marketCap === 'number' && asset.marketCap > 0
+    ? asset.marketCap
+    : asset.category === 'stock' && estimatedSharesOutstanding[asset.symbol]
+      ? asset.price * estimatedSharesOutstanding[asset.symbol]
+      : null;
+  const marketCapLabel = typeof asset.marketCap === 'number' && asset.marketCap > 0 ? 'Token market cap' : 'Est. market cap';
 
   useEffect(() => {
     if (previousPrice.current === asset.price) return;
@@ -2830,7 +2835,7 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-4">
-           <MiningLogo symbol={asset.symbol} name={asset.name} color={asset.color} />
+           <MiningLogo symbol={asset.symbol} name={asset.name} color={asset.color} logoUrl={asset.logoUrl} />
           <div>
             <p className="text-sm font-bold text-foreground">{asset.name}</p>
             <p className="font-mono-ui text-xs text-muted-foreground">{asset.symbol}</p>
@@ -2849,10 +2854,10 @@ function AssetCard({ asset }: { asset: MiningPlaceAsset }) {
           {pct(asset.change24h)}
         </p>
       </div>
-      {estimatedMarketCap !== null && (
+      {marketCap !== null && (
         <div className="mt-4 flex items-center justify-between rounded-lg border border-border/60 bg-background/35 px-3 py-2">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Est. market cap</span>
-          <span className="font-mono-ui text-xs font-bold text-foreground">{formatMarketCap(estimatedMarketCap)}</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{marketCapLabel}</span>
+          <span className="font-mono-ui text-xs font-bold text-foreground">{formatMarketCap(marketCap)}</span>
         </div>
       )}
       <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
