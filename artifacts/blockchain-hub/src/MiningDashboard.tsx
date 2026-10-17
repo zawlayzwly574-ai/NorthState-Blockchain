@@ -56,7 +56,21 @@ export function MiningDashboard() {
   const runningCount = Object.values(sessions).filter(s => s.active).length;
 
   useEffect(() => {
-    const timer = window.setInterval(() => setTick(n => n + 1), 3000);
+    const timer = window.setInterval(() => {
+      setTick(n => n + 1);
+      setSessions(current => {
+        const next = { ...current };
+        for (const offer of offers) {
+          const session = next[offer.id];
+          if (!session?.active) continue;
+          const rate = offer.kind === 'Staking'
+            ? Math.max(0.01, 1000 * offer.apy / 100 / 365 / 24 / 20)
+            : offer.ticker === 'BTC' ? 0.025 : offer.ticker === 'LTC' ? 0.012 : 0.008;
+          next[offer.id] = { ...session, rewards: session.rewards + rate };
+        }
+        return next;
+      });
+    }, 3000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -108,8 +122,8 @@ export function MiningDashboard() {
     <div className="grid gap-4 lg:grid-cols-2">
       {visible.map(offer => {
         const session = sessions[offer.id] ?? { active: false, rewards: 0, startedAt: 0 };
-        const simulatedRate = offer.kind === 'Staking' ? Math.max(0.01, (Number(amount) || 1000) * offer.apy / 100 / 365 / 24 / 20) : offer.ticker === 'BTC' ? 0.025 : offer.ticker === 'LTC' ? 0.012 : 0.008;
-        const liveRewards = session.rewards + (session.active ? simulatedRate * tick : 0);
+        
+        const liveRewards = session.rewards;
         const hashRate = offer.kind === 'Staking' ? null : (offer.ticker === 'BTC' ? 650 : offer.ticker === 'LTC' ? 1.2 : 10) * (session.active ? 1 + (tick % 7) / 100 : 1);
         return <article key={offer.id} className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/40">
           <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><MiningOfferLogo ticker={offer.ticker} name={offer.name} color={offer.color} /><div className="min-w-0"><h3 className="font-extrabold">{offer.name}</h3><p className="mt-1 text-xs text-muted-foreground">{offer.ticker} · {offer.kind}</p></div></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${session.active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{session.active ? 'Active' : 'Inactive'}</span></div>
