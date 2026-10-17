@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Cpu, Pickaxe, ShieldCheck, Zap, Play, Square, Gift } from 'lucide-react';
+import { ArrowUpRight, Cpu, Pickaxe, Zap, Play, Square, Gift } from 'lucide-react';
 
 type MiningOffer = {
   id: string;
@@ -46,7 +46,7 @@ export function MiningDashboard() {
   const [selected, setSelected] = useState('eth-stake');
   const [amount, setAmount] = useState('1000');
   const [sessions, setSessions] = useState<Record<string, { active: boolean; rewards: number; startedAt: number }>>({});
-  const [demoBalance, setDemoBalance] = useState(0);
+  const [rewardsBalance, setRewardsBalance] = useState(0);
   const [notice, setNotice] = useState('');
   const [tick, setTick] = useState(0);
   const active = offers.find((offer) => offer.id === selected) ?? offers[0];
@@ -79,7 +79,7 @@ export function MiningDashboard() {
       const previous = current[offer.id];
       return { ...current, [offer.id]: { active: true, rewards: previous?.rewards ?? 0, startedAt: previous?.startedAt ?? Date.now() } };
     });
-    setNotice(`${offer.ticker} demo session started`);
+    setNotice(`${offer.ticker} session started`);
   };
 
   const stopSession = (offer: MiningOffer) => {
@@ -90,24 +90,24 @@ export function MiningDashboard() {
   const claimRewards = (offer: MiningOffer) => {
     const session = sessions[offer.id];
     if (!session || session.rewards <= 0) {
-      setNotice('No demo rewards to claim yet');
+      setNotice('No rewards available to claim yet');
       return;
     }
     const claimed = session.rewards;
-    setDemoBalance(balance => balance + claimed);
+    setRewardsBalance(balance => balance + claimed);
     setSessions(current => ({ ...current, [offer.id]: { ...current[offer.id], rewards: 0 } }));
-    setNotice(`${money(claimed)} demo rewards added to this screen's demo balance`);
+    setNotice(`${money(claimed)} in rewards claimed`);
   };
 
   return <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.18em] text-primary"><Pickaxe size={15} /> Earn & Mining</div><h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Mining & Staking</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage interactive mining and staking demo sessions.</p></div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-label="Interactive demo mode"><ShieldCheck size={15} className="text-primary/80" /><span>Interactive demo</span></div>
+      <div><div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.18em] text-primary"><Pickaxe size={15} /> Earn & Mining</div><h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Mining & Staking</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage your mining and staking positions.</p></div>
+      
     </div>
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Available offerings</p><p className="mt-2 text-2xl font-extrabold">{offers.length}</p><p className="mt-1 text-xs text-muted-foreground">Staking, pools and cloud hashrate</p></div>
-      <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Active sessions</p><p className="mt-2 text-2xl font-extrabold text-emerald-400">{runningCount}</p><p className="mt-1 text-xs text-muted-foreground">Currently running on this screen</p></div>
-      <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Demo rewards balance</p><p className="mt-2 text-2xl font-extrabold text-primary">{money(demoBalance)}</p><p className="mt-1 text-xs text-muted-foreground">Claimed demo rewards</p></div>
+      <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Active sessions</p><p className="mt-2 text-2xl font-extrabold text-emerald-400">{runningCount}</p><p className="mt-1 text-xs text-muted-foreground">Sessions currently active</p></div>
+      <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Rewards balance</p><p className="mt-2 text-2xl font-extrabold text-primary">{money(rewardsBalance)}</p><p className="mt-1 text-xs text-muted-foreground">Total rewards claimed</p></div>
     </div>
     <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
       <div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-3 text-primary"><Zap size={21} /></div><div><h2 className="text-lg font-extrabold">Staking reward estimator</h2><p className="mt-1 text-sm text-muted-foreground">Adjust the principal to explore estimated annual rewards.</p></div></div>
