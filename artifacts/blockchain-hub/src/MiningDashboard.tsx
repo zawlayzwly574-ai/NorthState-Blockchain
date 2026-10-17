@@ -53,7 +53,7 @@ export function MiningDashboard() {
   return <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div><div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[.18em] text-primary"><Pickaxe size={15} /> Earn & Mining</div><h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Mining & Staking</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Explore proof-of-stake rewards and mining pool reference offerings in one place.</p></div>
-      <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-semibold text-muted-foreground"><ShieldCheck size={16} className="text-primary" /> Estimates only · No funds moved</div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground/70" title="Displayed rewards are indicative estimates. This dashboard does not initiate a staking or mining transaction." aria-label="Reward estimates information"><ShieldCheck size={15} className="text-primary/80" /><span>Reward overview</span></div>
     </div>
     <div className="grid gap-3 sm:grid-cols-3">
       <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Available offerings</p><p className="mt-2 text-2xl font-extrabold">{offers.length}</p><p className="mt-1 text-xs text-muted-foreground">Staking, pools and cloud hashrate</p></div>
@@ -77,6 +77,6 @@ export function MiningDashboard() {
         <div className="mt-4 flex items-center justify-between border-t border-border pt-4"><span className="text-xs text-muted-foreground">{offer.period}</span><button onClick={() => { setSelected(offer.id); if (offer.kind === 'Staking') document.getElementById('root')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} className="inline-flex items-center gap-1 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10">{offer.kind === 'Staking' ? 'Estimate rewards' : 'View offering'} <ArrowUpRight size={14} /></button></div>
       </article>)}
     </div>
-    <p className="text-xs leading-5 text-muted-foreground">Important: These are educational reference offers, not proof of live mining infrastructure or guaranteed returns. Network APYs and mining payouts fluctuate; staking can involve lockups, validator penalties and token-price risk. No investment is initiated from this dashboard.</p>
+    <footer className="border-t border-border/50 pt-3 text-[10px] leading-4 text-muted-foreground/50">Displayed APY and mining figures are indicative references, not guaranteed returns or confirmation of live mining infrastructure. Network rewards fluctuate; staking may involve lockups, validator penalties and token-price risk. No transaction is initiated from this dashboard.</footer>
   </div>;
 }
