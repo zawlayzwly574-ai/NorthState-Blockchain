@@ -29,6 +29,8 @@ import {
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { FooterNav } from '@/components/FooterNav';
+import { SecurityBadges } from '@/components/SecurityBadges';
 import { getMarketLogoFile } from '@/market-logos';
 import { normalizeInternationalPhone, PHONE_SIGNUP_COUNTRIES } from '@/lib/phone';
 import { getMiningLogoFile } from '@/mining-logos';
@@ -153,15 +155,7 @@ function PublicNav() {
 }
 
 function PublicFooter() {
-  return <footer className="border-t border-border/70 px-5 py-8 lg:px-8">
-    <div className="mx-auto flex max-w-7xl flex-col gap-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-      <Logo />
-      <div className="flex flex-col gap-1 sm:items-end">
-        <span>North State Blockchain · Digital assets, made legible.</span>
-        <span>© 2021 - 2026 North State Blockchain. All rights reserved.</span>
-      </div>
-    </div>
-  </footer>;
+  return <FooterNav />;
 }
 
 function Home() {
@@ -200,7 +194,7 @@ function Home() {
         </div>
       </div>
     </div>
-  </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><PublicFooter /></main>;
+  </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><SecurityBadges /><PublicFooter /></main>;
 }
 function HeroChart() { return <svg viewBox="0 0 500 130" className="h-full w-full" preserveAspectRatio="none" aria-label="Portfolio trend"><defs><linearGradient id="heroFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#cfa230" stopOpacity=".22" /><stop offset="1" stopColor="#cfa230" stopOpacity="0" /></linearGradient></defs><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10 L500 130 L0 130Z" fill="url(#heroFill)" /><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10" fill="none" stroke="#cfa230" strokeWidth="2.5" /></svg>; }
 
@@ -253,6 +247,51 @@ function About() {
     </section>
     <PublicFooter />
   </main>;
+}
+
+function LegalPage({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) {
+  return (
+    <main className="min-h-[100dvh] overflow-hidden">
+      <PublicNav />
+      <section className="mx-auto max-w-3xl px-5 py-16 lg:px-8 lg:py-24">
+        <p className="eyebrow">{eyebrow}</p>
+        <h1 className="mt-3 text-4xl font-extrabold tracking-[-.05em] sm:text-5xl">{title}</h1>
+        <div className="mt-8 space-y-5 text-sm leading-7 text-muted-foreground">{children}</div>
+      </section>
+      <PublicFooter />
+    </main>
+  );
+}
+
+function Terms() {
+  return (
+    <LegalPage title="Terms of Service" eyebrow="Legal">
+      <p>These terms describe how you may use North State Blockchain, including wallet, market, mining, and support features.</p>
+      <p>You are responsible for the accuracy of information you submit, for protecting access to your account, and for confirming every transfer before it is sent.</p>
+      <p>Mining and staking rewards are subject to phase limits, availability, and review. Reaching a phase reward cap pauses mining until a later phase opens.</p>
+      <p>North State Blockchain may suspend activity that appears abusive, fraudulent, or in violation of applicable law.</p>
+    </LegalPage>
+  );
+}
+
+function Privacy() {
+  return (
+    <LegalPage title="Privacy Policy" eyebrow="Legal">
+      <p>We collect account, verification, and activity data needed to operate the platform, protect members, and meet legal obligations.</p>
+      <p>That information is used to authenticate you, process requests, monitor security, and provide support. We do not sell personal information.</p>
+      <p>Access is limited to systems and staff who need it. You can request account and data updates through Settings or Support.</p>
+    </LegalPage>
+  );
+}
+
+function Faq() {
+  return (
+    <LegalPage title="Frequently asked questions" eyebrow="Help">
+      <p><strong className="text-foreground">How do I start mining?</strong> Open Mining, review the phase reward limit, then start a pool or cloud session. Mining pauses automatically when the phase cap is reached.</p>
+      <p><strong className="text-foreground">Is the platform encrypted?</strong> Traffic is protected with 256-bit SSL, and automated monitoring watches for unusual activity.</p>
+      <p><strong className="text-foreground">Where can I read the legal terms?</strong> Use Terms of Service and Privacy Policy in the footer, or contact support from any page.</p>
+    </LegalPage>
+  );
 }
 
 function AuthPage({ signUp = false }: { signUp?: boolean }) {
@@ -3067,7 +3106,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace stockOnly /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/terms" component={Terms} /><Route path="/privacy" component={Privacy} /><Route path="/faq" component={Faq} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace stockOnly /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 const SUPPORT_COPY: Record<string, Record<string, string>> = {
   'en-US': { title: 'North State Blockchain Support', replyTime: 'Replies appear here without signing in', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Keep this chat ID in your browser to read replies here. No email or account needed.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },
   'en-GB': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },

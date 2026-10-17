@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Cpu, Pickaxe, Zap, Play, Square, Gift } from 'lucide-react';
+import { MiningController } from '@/components/MiningController';
+
+const PHASE_REWARD_LIMIT = 1_000_000;
 
 type MiningOffer = {
   id: string;
@@ -54,6 +57,8 @@ export function MiningDashboard() {
   const projected = useMemo(() => principal * active.apy / 100, [principal, active.apy]);
   const visible = offers.filter((offer) => filter === 'All' || offer.kind === filter);
   const runningCount = Object.values(sessions).filter(s => s.active).length;
+  const currentMined = rewardsBalance + Object.values(sessions).reduce((sum, session) => sum + session.rewards, 0);
+  const isLimitReached = currentMined >= PHASE_REWARD_LIMIT;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -75,6 +80,10 @@ export function MiningDashboard() {
   }, []);
 
   const startSession = (offer: MiningOffer) => {
+    if (currentMined >= PHASE_REWARD_LIMIT) {
+      setNotice('Mining Limit Reached: The reward pool limit for this phase has been reached. Mining is currently paused.');
+      return;
+    }
     setSessions(current => {
       const previous = current[offer.id];
       return { ...current, [offer.id]: { active: true, rewards: previous?.rewards ?? 0, startedAt: previous?.startedAt ?? Date.now() } };
@@ -109,6 +118,11 @@ export function MiningDashboard() {
       <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Active sessions</p><p className="mt-2 text-2xl font-extrabold text-emerald-400">{runningCount}</p><p className="mt-1 text-xs text-muted-foreground">Sessions currently active</p></div>
       <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs font-semibold text-muted-foreground">Rewards balance</p><p className="mt-2 text-2xl font-extrabold text-primary">{money(rewardsBalance)}</p><p className="mt-1 text-xs text-muted-foreground">Total rewards claimed</p></div>
     </div>
+    <MiningController
+      currentMined={currentMined}
+      maxLimit={PHASE_REWARD_LIMIT}
+      onStart={() => startSession(offers.find((offer) => offer.kind !== 'Staking') ?? active)}
+    />
     <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
       <div className="flex items-start gap-3"><div className="rounded-xl bg-primary/10 p-3 text-primary"><Zap size={21} /></div><div><h2 className="text-lg font-extrabold">Staking reward estimator</h2><p className="mt-1 text-sm text-muted-foreground">Adjust the principal to explore estimated annual rewards.</p></div></div>
       <div className="mt-5 grid gap-5 md:grid-cols-[1fr_1fr_1fr] md:items-end">
@@ -129,7 +143,7 @@ export function MiningDashboard() {
           <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><MiningOfferLogo ticker={offer.ticker} name={offer.name} color={offer.color} /><div className="min-w-0"><h3 className="font-extrabold">{offer.name}</h3><p className="mt-1 text-xs text-muted-foreground">{offer.ticker} · {offer.kind}</p></div></div><span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${session.active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'}`}>{session.active ? 'Active' : 'Inactive'}</span></div>
           <p className="mt-4 text-sm leading-6 text-muted-foreground">{offer.detail}</p>
           <div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl bg-background/70 p-3"><p className="text-[11px] font-semibold text-muted-foreground">{offer.kind === 'Staking' ? 'APY' : 'Hash rate'}</p><p className="mt-1 font-extrabold">{offer.kind === 'Staking' ? `${offer.apy.toFixed(1)}%` : `${hashRate?.toLocaleString('en-US', { maximumFractionDigits: 3 })} ${offer.ticker === 'LTC' ? 'PH/s' : offer.ticker === 'BTC' ? 'EH/s' : 'TH/s'}`}</p></div><div className="rounded-xl bg-background/70 p-3"><p className="text-[11px] font-semibold text-muted-foreground">Session rewards</p><p className="mt-1 font-extrabold text-primary">{money(liveRewards, 6)}</p></div></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><span className="text-xs text-muted-foreground">{offer.period}</span><div className="flex flex-wrap gap-2">{session.active ? <button onClick={() => stopSession(offer)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-muted"><Square size={13} /> Stop</button> : <button onClick={() => startSession(offer)} className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:opacity-90"><Play size={13} /> {offer.kind === 'Staking' ? 'Stake Now' : 'Start Mining'}</button>}<button onClick={() => claimRewards(offer)} disabled={liveRewards <= 0} className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"><Gift size={13} /> Claim Rewards</button><button onClick={() => setSelected(offer.id)} className="inline-flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground">Details <ArrowUpRight size={14} /></button></div></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><span className="text-xs text-muted-foreground">{offer.period}</span><div className="flex flex-wrap gap-2">{session.active ? <button onClick={() => stopSession(offer)} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-xs font-bold hover:bg-muted"><Square size={13} /> Stop</button> : <button onClick={() => startSession(offer)} disabled={isLimitReached} className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"><Play size={13} /> {offer.kind === 'Staking' ? 'Stake Now' : 'Start Mining'}</button>}<button onClick={() => claimRewards(offer)} disabled={liveRewards <= 0} className="inline-flex items-center gap-1.5 rounded-xl border border-primary/30 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"><Gift size={13} /> Claim Rewards</button><button onClick={() => setSelected(offer.id)} className="inline-flex items-center gap-1 rounded-xl border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground">Details <ArrowUpRight size={14} /></button></div></div>
         </article>;
       })}
     </div>
