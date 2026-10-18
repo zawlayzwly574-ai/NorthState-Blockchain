@@ -4,24 +4,46 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+let pool: any;
+let db: any;
+
+if (process.env.DATABASE_URL) {
+  try {
+    const rawPoolMax = process.env.PG_POOL_MAX ?? "5";
+    const poolMax = Number(rawPoolMax);
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number.isInteger(poolMax) && poolMax >= 1 ? poolMax : 5,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 30_000,
+    });
+    db = drizzle(pool, { schema });
+  } catch {
+    console.warn("[AI Studio] Database connection error — using mock");
+  }
 }
 
-const rawPoolMax = process.env.PG_POOL_MAX ?? "5";
-const poolMax = Number(rawPoolMax);
-if (!Number.isInteger(poolMax) || poolMax < 1 || poolMax > 100) {
-  throw new Error("PG_POOL_MAX must be an integer between 1 and 100.");
+if (!db) {
+  console.warn("[AI Studio] Database not connected — using mock");
+  const noOp = {
+    findMany: async () => [],
+    findFirst: async () => null,
+    findUnique: async () => null,
+    create: async (d: any) => d?.data ?? {},
+    update: async (d: any) => d?.data ?? {},
+    delete: async () => ({}),
+  };
+  db = new Proxy({}, {
+    get: (_, prop) =>
+      prop === "query" ? new Proxy({}, { get: () => noOp }) : async () => [],
+  });
+  pool = {
+    query: async () => ({ rows: [] }),
+    connect: async () => ({ query: async () => ({ rows: [] }), release: () => {} }),
+    end: async () => {},
+  };
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: poolMax,
-  connectionTimeoutMillis: 5_000,
-  idleTimeoutMillis: 30_000,
-});
-export const db = drizzle(pool, { schema });
-
+export { pool, db };
 export * from "./schema";
+

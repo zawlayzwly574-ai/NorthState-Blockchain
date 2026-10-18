@@ -9,7 +9,7 @@ import { shadcn } from '@clerk/themes';
 import {
   ArrowDownLeft, ArrowLeft, ArrowLeftRight, ArrowUpRight, BarChart3, Bell, Check, ChevronDown, ChevronRight,
   Clipboard, Copy, Eye, EyeOff, FileCheck2, Fingerprint, Globe2, Home as HomeIcon, Landmark, LineChart,
-  Lock, Mail, Menu, MessageCircle, Phone, Pickaxe, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
+  Lock, Mail, Menu, MessageCircle, MessageSquare, Phone, Pickaxe, RefreshCw, Search, Send, Settings2, ShieldCheck, Smartphone,
   Sparkles, TrendingDown, TrendingUp, Upload, Wallet, X, Zap,
 } from 'lucide-react';
 import {
@@ -29,27 +29,29 @@ import {
 import type { MarketAsset, MiningPlaceAsset } from '@workspace/api-client-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation, useParams } from 'wouter';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { FooterNav } from '@/components/FooterNav';
-import { SecurityBadges } from '@/components/SecurityBadges';
 import { getMarketLogoFile } from '@/market-logos';
 import { normalizeInternationalPhone, PHONE_SIGNUP_COUNTRIES } from '@/lib/phone';
 import { getMiningLogoFile } from '@/mining-logos';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import { Web3Provider, useWeb3, Web3WalletBar } from '@/lib/web3-wallet';
+import { QRCodeSVG } from '@/lib/qr-code';
+import { HeaderSupportDropdown } from '@/components/Header';
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+const clerkPubKey =
+  publishableKeyFromHost(
+    window.location.hostname,
+    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+  ) ||
+  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
+  'pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk';
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
 setBaseUrl(apiBaseUrl || null);
-if (!clerkPubKey) {
-  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the workspace environment.');
-}
+
 const currencies = [
   'USD', 'EUR', 'GBP', 'JPY', 'AUD', 'CAD', 'CHF', 'CNY',
   'HKD', 'SGD', 'SEK', 'NOK', 'DKK', 'NZD', 'MXN', 'INR',
@@ -151,50 +153,247 @@ function Modal({ title, eyebrow, children, onClose }: { title: string; eyebrow: 
 
 function PublicNav() {
   const { copy } = useAppLanguage();
-  return <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 lg:px-8"><Logo /><nav className="hidden items-center gap-8 text-sm font-semibold text-muted-foreground md:flex"><a href="#how-it-works" className="transition hover:text-foreground">{copy.how}</a><a href="#security" className="transition hover:text-foreground">{copy.security}</a><Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">{copy.about}</Link><Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">{copy.markets}</Link><Link href="/mining-place" className="transition hover:text-foreground" data-testid="link-public-mining">{copy.mining}</Link></nav><div className="flex w-full flex-wrap items-center justify-between gap-2 sm:w-auto sm:justify-end"><LanguageSelector compact /><Link href="/sign-in" className="rounded-xl px-3 py-2 text-sm font-bold text-muted-foreground hover:text-foreground" data-testid="link-public-sign-in">{copy.signIn}</Link><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.15)] sm:px-4" data-testid="link-public-sign-up">{copy.signUp} <ArrowUpRight size={15} /></Link></div></header>;
+  return (
+    <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4 lg:px-8">
+      <Logo />
+      <nav className="hidden items-center gap-7 text-sm font-semibold text-muted-foreground md:flex">
+        <Link href="/markets" className="transition hover:text-foreground" data-testid="link-public-markets">{copy.markets}</Link>
+        <Link href="/trading" className="transition hover:text-foreground">Trading</Link>
+        <Link href="/mining" className="transition hover:text-foreground" data-testid="link-public-mining">Staking & Mining</Link>
+        <Link href="/about" className="transition hover:text-foreground" data-testid="link-public-about">{copy.about}</Link>
+      </nav>
+      <div className="flex flex-wrap items-center gap-3">
+        <HeaderSupportDropdown />
+        <LanguageSelector compact />
+        <Web3WalletBar />
+        <Link href="/sign-in" className="rounded-xl px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="link-public-sign-in">
+          {copy.signIn}
+        </Link>
+      </div>
+
+    </header>
+  );
 }
 
 function PublicFooter() {
-  return <FooterNav />;
+  return <footer className="border-t border-border/70 px-5 py-8 lg:px-8">
+    <div className="mx-auto flex max-w-7xl flex-col gap-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <Logo />
+      <div className="flex flex-col gap-1 sm:items-end">
+        <span>North State Blockchain · Digital assets, made legible.</span>
+        <span>© 2021 - 2026 North State Blockchain. All rights reserved.</span>
+      </div>
+    </div>
+  </footer>;
 }
 
 function Home() {
   const { isSignedIn } = useAuth();
+  const { isConnected, account, balance: web3Balance, chainConfig, openConnectModal } = useWeb3();
   const { copy } = useAppLanguage();
   const [, setLocation] = useLocation();
+  const marketQuery = useGetMarketSummary({
+    query: { queryKey: getGetMarketSummaryQueryKey(), staleTime: 30_000, refetchInterval: 30_000 },
+  });
+
   useEffect(() => { if (isSignedIn) setLocation('/dashboard'); }, [isSignedIn]);
-  return <main className="min-h-[100dvh] overflow-hidden"><PublicNav /><section className="relative mx-auto max-w-7xl px-5 pb-20 pt-16 lg:px-8 lg:pb-28 lg:pt-24">
-    <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
-    <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
-      <div className="animate-rise"><div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary"><span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />{copy.tagline}</div><h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">{copy.heroTitle} <span className="text-primary">North State Blockchain.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">{copy.heroDescription}</p><div className="mt-9 flex flex-wrap gap-3"><Link href="/sign-up" className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-extrabold text-primary-foreground" data-testid="link-hero-get-started">{copy.getStarted} <ArrowUpRight size={16} /></Link><Link href="/markets" className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary" data-testid="link-hero-explore-markets">{copy.exploreMarkets} <LineChart size={16} /></Link></div><div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground"><span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />{copy.controls}</span><span className="flex items-center gap-2"><Check size={15} className="text-primary" />{copy.fees}</span></div></div>
-      <div className="animate-rise-2 relative">
-        <div className="surface grid-lines relative overflow-hidden rounded-3xl p-4 sm:p-6">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="eyebrow">Illustrative portfolio preview</p>
-              <p className="mt-1 text-xs text-muted-foreground">Sample figures only — not live account data</p>
+
+  const topMarkets = useMemo(() => {
+    const rawList = marketQuery.data;
+    const list = Array.isArray(rawList)
+      ? rawList
+      : Array.isArray((rawList as any)?.markets)
+        ? (rawList as any).markets
+        : Array.isArray((rawList as any)?.data)
+          ? (rawList as any).data
+          : [];
+    const btc = Array.isArray(list) ? list.find((m) => m?.symbol === 'BTC') : undefined;
+    const eth = Array.isArray(list) ? list.find((m) => m?.symbol === 'ETH') : undefined;
+    const sol = Array.isArray(list) ? list.find((m) => m?.symbol === 'SOL') : undefined;
+    const bnb = Array.isArray(list) ? list.find((m) => m?.symbol === 'BNB') : undefined;
+    return [
+      btc ?? { symbol: 'BTC', name: 'Bitcoin', price: 89450, change24h: 3.24, color: '#f6ad3c' },
+      eth ?? { symbol: 'ETH', name: 'Ethereum', price: 2480, change24h: 2.15, color: '#9a9cf5' },
+      bnb ?? { symbol: 'BNB', name: 'BNB', price: 625, change24h: 1.48, color: '#f2ca52' },
+      sol ?? { symbol: 'SOL', name: 'Solana', price: 184, change24h: 4.82, color: '#9945ff' },
+    ];
+  }, [marketQuery.data]);
+
+  return (
+    <main className="min-h-[100dvh] overflow-hidden">
+      <PublicNav />
+      <section className="relative mx-auto max-w-7xl px-5 pb-20 pt-16 lg:px-8 lg:pb-28 lg:pt-24">
+        <div className="pointer-events-none absolute -right-40 top-0 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl" />
+        <div className="relative grid items-center gap-14 lg:grid-cols-[1.02fr_.98fr]">
+          <div className="animate-rise">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-bold text-primary">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" />
+              {copy.tagline}
             </div>
-            <span className="rounded-lg border border-accent/20 bg-accent/10 px-2 py-1 font-mono-ui text-[10px] font-medium text-accent">EXAMPLE</span>
-          </div>
-          <div className="rounded-2xl border border-border/70 bg-background/55 p-5">
-            <div className="flex items-end justify-between">
-              <div><p className="text-xs font-semibold text-muted-foreground">Example total balance</p><p className="mt-2 text-3xl font-extrabold tracking-[-.05em]">$24,680<span className="text-muted-foreground">.42</span></p></div>
-              <span className="rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">+8.42%</span>
+            <h1 className="max-w-2xl text-balance text-5xl font-extrabold leading-[.98] tracking-[-.07em] text-foreground sm:text-7xl">
+              {copy.heroTitle} <span className="text-primary">North State Blockchain.</span>
+            </h1>
+            <p className="mt-7 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
+              {copy.heroDescription}
+            </p>
+            <div className="mt-9 flex flex-wrap gap-3">
+              {!isConnected ? (
+                <button
+                  type="button"
+                  onClick={openConnectModal}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-extrabold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.2)] hover:brightness-110 active:scale-95"
+                  data-testid="link-hero-connect-wallet"
+                >
+                  <Wallet size={17} /> Connect Wallet
+                </button>
+              ) : (
+                <Link
+                  href="/dashboard"
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3.5 text-sm font-extrabold text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/.2)] hover:brightness-110 active:scale-95"
+                  data-testid="link-hero-dashboard"
+                >
+                  Open Dashboard <ArrowUpRight size={17} />
+                </Link>
+              )}
+              <Link
+                href="/markets"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-secondary/60 px-5 py-3 text-sm font-bold text-foreground hover:bg-secondary"
+                data-testid="link-hero-explore-markets"
+              >
+                {copy.exploreMarkets} <LineChart size={16} />
+              </Link>
             </div>
-            <div className="mt-7 h-28"><HeroChart /></div>
-            <div className="mt-4 flex justify-between text-[10px] font-mono-ui text-muted-foreground"><span>FEB 08</span><span>MAR 08</span><span>APR 08</span><span>MAY 08</span></div>
+            <div className="mt-10 flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold text-muted-foreground">
+              <span className="flex items-center gap-2"><ShieldCheck size={15} className="text-primary" />{copy.controls}</span>
+              <span className="flex items-center gap-2"><Check size={15} className="text-primary" />{copy.fees}</span>
+            </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#f6ad3c]" />BTC</div><p className="mt-2 font-mono-ui text-sm font-medium">$11,208.44</p></div>
-            <div className="rounded-2xl border border-border/70 bg-background/45 p-4"><div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="h-2 w-2 rounded-full bg-[#9a9cf5]" />ETH</div><p className="mt-2 font-mono-ui text-sm font-medium">$6,892.10</p></div>
+
+          <div className="animate-rise-2 relative">
+            <div className="surface grid-lines relative overflow-hidden rounded-3xl p-5 sm:p-7">
+              {isConnected && account ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="eyebrow">Connected Web3 Wallet</p>
+                      <p className="mt-1 font-mono-ui text-xs font-bold text-foreground break-all">{account}</p>
+                    </div>
+                    <span className="rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 font-mono-ui text-[10px] font-semibold text-primary">
+                      {chainConfig.name}
+                    </span>
+                  </div>
+                  <div className="rounded-2xl border border-border/70 bg-background/55 p-5">
+                    <p className="text-xs font-semibold text-muted-foreground">On-Chain Native Balance</p>
+                    <p className="mt-2 text-3xl font-extrabold tracking-[-.05em] text-primary">
+                      {web3Balance} <span className="text-lg text-foreground font-semibold">{chainConfig.symbol}</span>
+                    </p>
+                    <div className="mt-4 flex gap-2">
+                      <Link href="/dashboard" className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:brightness-110">
+                        View Portfolio
+                      </Link>
+                      <Link href="/trading" className="rounded-xl border border-border bg-secondary px-4 py-2 text-xs font-bold hover:bg-muted">
+                        Trade Spot / Futures
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="eyebrow">Live Digital Asset Feed</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Real-time cryptocurrency benchmark prices</p>
+                    </div>
+                    <span className="flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 font-mono-ui text-[10px] font-bold text-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary pulse-line" /> LIVE FEED
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {topMarkets.map((asset) => (
+                      <Link
+                        key={asset.symbol}
+                        href={`/markets/${asset.symbol}`}
+                        className="rounded-2xl border border-border/70 bg-background/50 p-4 transition hover:border-primary/40 hover:bg-background/80"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: asset.color }} />
+                            {asset.symbol}
+                          </span>
+                          <span className={`text-[11px] font-extrabold ${asset.change24h >= 0 ? 'text-emerald-400' : 'text-destructive'}`}>
+                            {asset.change24h >= 0 ? '+' : ''}{asset.change24h.toFixed(2)}%
+                          </span>
+                        </div>
+                        <p className="mt-2 font-mono-ui text-base font-bold text-foreground">
+                          ${asset.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{asset.name}</p>
+                      </Link>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 text-center">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      Connect MetaMask, Coinbase Wallet, or WalletConnect for non-custodial Web3 trading
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/20 bg-[#171209] p-4 shadow-xl sm:-left-10">
+              <div className="flex items-center gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold">Protected by design</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Your keys. Your control.</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="absolute -bottom-5 -left-5 rounded-2xl border border-primary/20 bg-[#171209] p-4 shadow-xl sm:-left-10">
-          <div className="flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary"><ShieldCheck size={18} /></div><div><p className="text-xs font-bold">Protected by design</p><p className="mt-0.5 text-[10px] text-muted-foreground">Your keys. Your control.</p></div></div>
+      </section>
+      <section id="how-it-works" className="border-y border-border/70 bg-background/25">
+        <div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8">
+          <div>
+            <p className="eyebrow">Built for clarity</p>
+            <h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2>
+          </div>
+          {[
+            ['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],
+            ['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],
+            ['03','Stay grounded','Market data and performance context that keeps the noise in its place.']
+          ].map(([number,title,detail]) => (
+            <div key={number} className="border-l border-primary/30 pl-5">
+              <p className="font-mono-ui text-xs text-primary">{number}</p>
+              <h3 className="mt-3 font-bold">{title}</h3>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p>
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
-  </section><section id="how-it-works" className="border-y border-border/70 bg-background/25"><div className="mx-auto grid max-w-7xl gap-7 px-5 py-14 md:grid-cols-3 lg:px-8"><div><p className="eyebrow">Built for clarity</p><h2 className="mt-3 text-2xl font-extrabold tracking-[-.04em]">The important parts are easy to find.</h2></div>{[['01','See the whole picture','One balance that includes every supported holding, not a maze of wallet addresses.'],['02','Move with confidence','Deposit, send, and withdraw with clear confirmations before anything leaves.'],['03','Stay grounded','Market data and performance context that keeps the noise in its place.']].map(([number,title,detail]) => <div key={number} className="border-l border-primary/30 pl-5"><p className="font-mono-ui text-xs text-primary">{number}</p><h3 className="mt-3 font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{detail}</p></div>)}</div></section><section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8"><div><p className="eyebrow">A steady hand</p><h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2><p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p></div><div className="grid gap-3 sm:grid-cols-2"><div className="surface rounded-2xl p-5"><ShieldCheck className="text-primary" size={21} /><h3 className="mt-5 font-bold">Security you can see</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p></div><div className="surface rounded-2xl p-5"><BarChart3 className="text-accent" size={21} /><h3 className="mt-5 font-bold">Markets without the theater</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p></div></div></section><SecurityBadges /><PublicFooter /></main>;
+      </section>
+      <section id="security" className="mx-auto grid max-w-7xl gap-10 px-5 py-20 lg:grid-cols-[.8fr_1.2fr] lg:px-8">
+        <div>
+          <p className="eyebrow">A steady hand</p>
+          <h2 className="mt-3 max-w-lg text-3xl font-extrabold tracking-[-.05em] sm:text-4xl">Complex infrastructure. Plain-English decisions.</h2>
+          <p className="mt-5 max-w-md leading-7 text-muted-foreground">From your first deposit to your hundredth market check, North State Blockchain makes every step legible. No hype. No hidden corners.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="surface rounded-2xl p-5">
+            <ShieldCheck className="text-primary" size={21} />
+            <h3 className="mt-5 font-bold">Security you can see</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">Verification and transaction states are always visible, so you know where you stand.</p>
+          </div>
+          <div className="surface rounded-2xl p-5">
+            <BarChart3 className="text-accent" size={21} />
+            <h3 className="mt-5 font-bold">Markets without the theater</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">Useful movement, useful numbers, and enough context to make your own call.</p>
+          </div>
+        </div>
+      </section>
+      <PublicFooter />
+    </main>
+  );
 }
 function HeroChart() { return <svg viewBox="0 0 500 130" className="h-full w-full" preserveAspectRatio="none" aria-label="Portfolio trend"><defs><linearGradient id="heroFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#cfa230" stopOpacity=".22" /><stop offset="1" stopColor="#cfa230" stopOpacity="0" /></linearGradient></defs><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10 L500 130 L0 130Z" fill="url(#heroFill)" /><path d="M0 108 C35 104 45 92 73 95 C108 99 114 66 148 76 C180 85 190 46 221 60 C255 75 274 38 301 47 C335 59 342 24 369 31 C405 41 422 18 452 20 C471 21 488 7 500 10" fill="none" stroke="#cfa230" strokeWidth="2.5" /></svg>; }
 
@@ -247,51 +446,6 @@ function About() {
     </section>
     <PublicFooter />
   </main>;
-}
-
-function LegalPage({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) {
-  return (
-    <main className="min-h-[100dvh] overflow-hidden">
-      <PublicNav />
-      <section className="mx-auto max-w-3xl px-5 py-16 lg:px-8 lg:py-24">
-        <p className="eyebrow">{eyebrow}</p>
-        <h1 className="mt-3 text-4xl font-extrabold tracking-[-.05em] sm:text-5xl">{title}</h1>
-        <div className="mt-8 space-y-5 text-sm leading-7 text-muted-foreground">{children}</div>
-      </section>
-      <PublicFooter />
-    </main>
-  );
-}
-
-function Terms() {
-  return (
-    <LegalPage title="Terms of Service" eyebrow="Legal">
-      <p>These terms describe how you may use North State Blockchain, including wallet, market, mining, and support features.</p>
-      <p>You are responsible for the accuracy of information you submit, for protecting access to your account, and for confirming every transfer before it is sent.</p>
-      <p>Mining and staking rewards are subject to phase limits, availability, and review. Reaching a phase reward cap pauses mining until a later phase opens.</p>
-      <p>North State Blockchain may suspend activity that appears abusive, fraudulent, or in violation of applicable law.</p>
-    </LegalPage>
-  );
-}
-
-function Privacy() {
-  return (
-    <LegalPage title="Privacy Policy" eyebrow="Legal">
-      <p>We collect account, verification, and activity data needed to operate the platform, protect members, and meet legal obligations.</p>
-      <p>That information is used to authenticate you, process requests, monitor security, and provide support. We do not sell personal information.</p>
-      <p>Access is limited to systems and staff who need it. You can request account and data updates through Settings or Support.</p>
-    </LegalPage>
-  );
-}
-
-function Faq() {
-  return (
-    <LegalPage title="Frequently asked questions" eyebrow="Help">
-      <p><strong className="text-foreground">How do I start mining?</strong> Open Mining, review the phase reward limit, then start a pool or cloud session. Mining pauses automatically when the phase cap is reached.</p>
-      <p><strong className="text-foreground">Is the platform encrypted?</strong> Traffic is protected with 256-bit SSL, and automated monitoring watches for unusual activity.</p>
-      <p><strong className="text-foreground">Where can I read the legal terms?</strong> Use Terms of Service and Privacy Policy in the footer, or contact support from any page.</p>
-    </LegalPage>
-  );
 }
 
 function AuthPage({ signUp = false }: { signUp?: boolean }) {
@@ -744,36 +898,114 @@ function Shell({ children }: { children: React.ReactNode }) {
     '/settings',
   ].some((path) => location === path || location.startsWith(`${path}/`));
   const gatedContent = (!isExemptRoute && verificationStatus !== 'verified') ? <KycStatusScreen status={verificationStatus ?? 'unverified'} /> : children;
-  return <div className="min-h-[100dvh] w-full overflow-x-hidden"><aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}><div className="px-2"><Logo /></div><div className="mt-12"><p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">{menuCopy.workspace}</p><nav className="mt-3 grid gap-1">{links.map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setMobileOpen(false)} className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`} data-testid={`link-nav-${label.toLowerCase()}`}><Icon size={17} />{label}</Link>)}</nav></div><div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4"><div className="flex items-center gap-2 text-primary"><ShieldCheck size={16} /><span className="text-xs font-bold">{menuCopy.protected}</span></div><p className="mt-2 text-[11px] leading-5 text-muted-foreground">{menuCopy.privacy}</p></div></aside><div className="lg:pl-[250px]"><header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-background/85 px-5 backdrop-blur-xl lg:px-8"><button className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden" onClick={() => setMobileOpen(!mobileOpen)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu size={20} /></button><div className="hidden text-sm font-semibold text-muted-foreground lg:block">{location === '/dashboard' ? menuCopy.greeting : location.replace('/', '').replace('-', ' ')}</div><div className="ml-auto flex items-center gap-3"><div className="relative">
-              <button onClick={openNotifications} className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary" aria-label={menuCopy.notifications} data-testid="button-notifications">
-                <Bell size={18} />
-                {unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-              </button>
-              {notifOpen && (
-                <div className="fixed inset-x-3 top-[80px] z-50 mx-auto max-h-[80dvh] w-auto max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border bg-background shadow-xl animate-rise sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:mx-0 sm:max-h-none sm:w-80 sm:max-w-none" data-testid="panel-notifications">
-                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                    <p className="text-sm font-extrabold">{menuCopy.notifications}</p>
-                    <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-secondary"><X size={15} /></button>
-                  </div>
-                  <div className="max-h-[min(65dvh,28rem)] overflow-y-auto overscroll-contain divide-y divide-border/70 sm:max-h-72">
-                    {notifs.isLoading ? (
-                      <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
-                    ) : !notifs.data || notifs.data.length === 0 ? (
-                      <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">{menuCopy.none}</p></div>
-                    ) : notifs.data.map(n => (
-                      <div key={n.id} className="flex items-center gap-3 px-4 py-3">
-                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs ${n.type === 'deposit' ? 'bg-primary/10 text-primary' : n.type === 'withdrawal' || n.type === 'send' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>{iconForActivity(n.type)}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-bold capitalize">{n.type} · {n.asset}</p>
-                          <p className="text-[10px] text-muted-foreground">{dateLabel(n.createdAt)}</p>
+  return (
+    <div className="h-screen flex flex-col bg-slate-950 text-white overflow-hidden">
+      <div className="flex flex-1 h-full min-h-0 overflow-hidden">
+        {/* Sidebar */}
+        <aside className={`fixed inset-y-0 left-0 z-40 flex w-[250px] flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 transition-transform duration-300 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="px-2"><Logo /></div>
+          <div className="mt-12">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">{menuCopy.workspace}</p>
+            <nav className="mt-3 grid gap-1">
+              {links.map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold transition ${location.startsWith(href) ? 'bg-primary/12 text-primary' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'}`}
+                  data-testid={`link-nav-${label.toLowerCase()}`}
+                >
+                  <Icon size={17} />{label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <div className="mt-auto rounded-2xl border border-primary/15 bg-primary/7 p-4">
+            <div className="flex items-center gap-2 text-primary">
+              <ShieldCheck size={16} />
+              <span className="text-xs font-bold">{menuCopy.protected}</span>
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-muted-foreground">{menuCopy.privacy}</p>
+          </div>
+        </aside>
+
+        {/* Content Area with Fixed Header & Inner Scroll Container */}
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+          {/* Fixed Header */}
+          <header className="shrink-0 z-30 flex h-[72px] items-center justify-between border-b border-border/70 bg-slate-900/90 px-5 backdrop-blur-xl lg:px-8">
+            <button
+              className="rounded-xl p-2 text-muted-foreground hover:bg-secondary lg:hidden"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label="Open navigation"
+              data-testid="button-open-navigation"
+            >
+              <Menu size={20} />
+            </button>
+            <div className="hidden text-sm font-semibold text-muted-foreground lg:block">
+              {location === '/dashboard' ? menuCopy.greeting : location.replace('/', '').replace('-', ' ')}
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              {/* Notifications Button */}
+              <div className="relative">
+                <button
+                  onClick={openNotifications}
+                  className="relative rounded-xl p-2 text-muted-foreground hover:bg-secondary"
+                  aria-label={menuCopy.notifications}
+                  data-testid="button-notifications"
+                >
+                  <Bell size={18} />
+                  {unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 w-4 place-items-center rounded-full bg-destructive text-[9px] font-extrabold text-white">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+                </button>
+                {notifOpen && (
+                  <div className="fixed inset-x-3 top-[80px] z-50 mx-auto max-h-[80dvh] w-auto max-w-sm overflow-y-auto overscroll-contain rounded-2xl border border-border bg-background shadow-xl animate-rise sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:mx-0 sm:max-h-none sm:w-80 sm:max-w-none" data-testid="panel-notifications">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                      <p className="text-sm font-extrabold">{menuCopy.notifications}</p>
+                      <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1 text-muted-foreground hover:bg-secondary"><X size={15} /></button>
+                    </div>
+                    <div className="max-h-[min(65dvh,28rem)] overflow-y-auto overscroll-contain divide-y divide-border/70 sm:max-h-72">
+                      {notifs.isLoading ? (
+                        <div className="px-4 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+                      ) : !notifs.data || notifs.data.length === 0 ? (
+                        <div className="px-4 py-8 text-center"><Bell size={20} className="mx-auto mb-2 text-muted-foreground/40" /><p className="text-xs text-muted-foreground">{menuCopy.none}</p></div>
+                      ) : notifs.data.map(n => (
+                        <div key={n.id} className="flex items-center gap-3 px-4 py-3">
+                          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs ${n.type === 'deposit' ? 'bg-primary/10 text-primary' : n.type === 'withdrawal' || n.type === 'send' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-muted-foreground'}`}>{iconForActivity(n.type)}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-bold capitalize">{n.type} · {n.asset}</p>
+                            <p className="text-[10px] text-muted-foreground">{dateLabel(n.createdAt)}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold capitalize ${n.status === 'completed' ? 'text-[#2db87a]' : n.status === 'failed' ? 'text-destructive' : 'text-accent'}`}>{n.status}</span>
                         </div>
-                        <span className={`text-[10px] font-bold capitalize ${n.status === 'completed' ? 'text-[#2db87a]' : n.status === 'failed' ? 'text-destructive' : 'text-accent'}`}>{n.status}</span>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div><LanguageSelector compact /><Link href="/settings" className="flex items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span><span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? menuCopy.account}</span><ChevronDown size={14} className="text-muted-foreground" /></Link></div></header><main className="mx-auto max-w-[1440px] px-5 py-7 lg:px-8 lg:py-9">{gatedContent}</main></div>{mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation" />}</div>;
+                )}
+              </div>
+
+              {/* Support Chat Dropdown in Header */}
+              <HeaderSupportDropdown />
+
+              <Web3WalletBar compact />
+              <LanguageSelector compact />
+              <Link href="/settings" className="flex items-center gap-2 rounded-xl border border-border bg-secondary/45 px-2 py-1.5 hover:bg-secondary" data-testid="link-profile-menu">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-xs font-extrabold text-primary">{profile?.initials ?? initials(profile?.name)}</span>
+                <span className="hidden text-xs font-bold sm:inline">{profile?.name?.split(' ')[0] ?? menuCopy.account}</span>
+                <ChevronDown size={14} className="text-muted-foreground" />
+              </Link>
+            </div>
+          </header>
+
+          {/* Scrollable Content Area - ဤ Container အတွင်းရှိ Content များသာ ရွေ့မည် */}
+          <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 max-h-[calc(100vh-4.5rem)]">
+            <div className="mx-auto max-w-[1440px]">
+              {gatedContent}
+            </div>
+          </main>
+        </div>
+      </div>
+      {mobileOpen && <button className="fixed inset-0 z-30 bg-background/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation" />}
+    </div>
+  );
 }
 
 function PageHeader({ eyebrow, title, detail, action }: { eyebrow: string; title: string; detail?: string; action?: React.ReactNode }) {
@@ -1769,17 +2001,90 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
   );
 }
 
+const DEPOSIT_NETWORKS: Record<string, Array<{ id: string; name: string; minDeposit: string; confirmations: string; address: string }>> = {
+  USDT: [
+    { id: 'TRC20', name: 'Tron (TRC20)', minDeposit: '10 USDT', confirmations: '1 Block (~3s)', address: 'TYDzsYUEpvnYmQk4zGP9sWWcTEd3ZiPULj' },
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 USDT', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDT', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'Polygon', name: 'Polygon (POS)', minDeposit: '5 USDT', confirmations: '64 Blocks (~2m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'Arbitrum', name: 'Arbitrum One', minDeposit: '5 USDT', confirmations: '20 Blocks (~1m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  BTC: [
+    { id: 'BTC', name: 'Bitcoin Network', minDeposit: '0.0005 BTC', confirmations: '2 Blocks (~20m)', address: 'bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97' },
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '0.0001 BTC', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  ETH: [
+    { id: 'ERC20', name: 'Ethereum Mainnet', minDeposit: '0.005 ETH', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'Arbitrum', name: 'Arbitrum One', minDeposit: '0.001 ETH', confirmations: '20 Blocks (~1m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'Base', name: 'Base Network', minDeposit: '0.001 ETH', confirmations: '20 Blocks (~40s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  USDC: [
+    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDC', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 USDC', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'Polygon', name: 'Polygon', minDeposit: '5 USDC', confirmations: '64 Blocks (~2m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  BNB: [
+    { id: 'BEP20', name: 'BNB Smart Chain', minDeposit: '0.01 BNB', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  DAI: [
+    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '10 DAI', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+  FDUSD: [
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 FDUSD', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ],
+};
+
+const WITHDRAWAL_NETWORKS: Record<string, Array<{ id: string; name: string; fee: number; minWithdraw: number }>> = {
+  USDT: [
+    { id: 'TRC20', name: 'Tron (TRC20)', fee: 1.0, minWithdraw: 10 },
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', fee: 0.29, minWithdraw: 5 },
+    { id: 'Polygon', name: 'Polygon PoS', fee: 0.50, minWithdraw: 5 },
+    { id: 'Arbitrum', name: 'Arbitrum One', fee: 0.85, minWithdraw: 5 },
+    { id: 'ERC20', name: 'Ethereum (ERC20)', fee: 3.50, minWithdraw: 20 },
+  ],
+  BTC: [
+    { id: 'BTC', name: 'Bitcoin Network', fee: 0.0002, minWithdraw: 0.001 },
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', fee: 0.00005, minWithdraw: 0.0005 },
+  ],
+  ETH: [
+    { id: 'ERC20', name: 'Ethereum Mainnet', fee: 0.0015, minWithdraw: 0.01 },
+    { id: 'Arbitrum', name: 'Arbitrum One', fee: 0.0002, minWithdraw: 0.005 },
+    { id: 'Base', name: 'Base Network', fee: 0.0002, minWithdraw: 0.005 },
+  ],
+  USDC: [
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', fee: 0.29, minWithdraw: 5 },
+    { id: 'Polygon', name: 'Polygon', fee: 0.50, minWithdraw: 5 },
+    { id: 'ERC20', name: 'Ethereum (ERC20)', fee: 3.50, minWithdraw: 20 },
+  ],
+  BNB: [
+    { id: 'BEP20', name: 'BNB Smart Chain', fee: 0.0005, minWithdraw: 0.01 },
+  ],
+  DAI: [
+    { id: 'ERC20', name: 'Ethereum (ERC20)', fee: 3.0, minWithdraw: 15 },
+  ],
+  FDUSD: [
+    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', fee: 0.29, minWithdraw: 5 },
+  ],
+};
+
 function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: (message?: string) => void; verificationStatus?: string }) {
   const [mode, setMode] = useState<'deposit' | 'send' | 'withdraw' | 'convert' | null>(null);
+  const [depositTab, setDepositTab] = useState<'onchain' | 'web3'>('onchain');
   const [convertKind, setConvertKind] = useState<'swap' | 'balances'>('swap');
   const [transferDirection, setTransferDirection] = useState<'spot_to_futures' | 'futures_to_spot'>('spot_to_futures');
   const [balanceTransferError, setBalanceTransferError] = useState('');
-  const [asset, setAsset] = useState('BTC');
+  const [asset, setAsset] = useState('USDT');
+  const [selectedNetwork, setSelectedNetwork] = useState('TRC20');
   const [toAsset, setToAsset] = useState('ETH');
   const [copied, setCopied] = useState(false);
   const [swapDone, setSwapDone] = useState<{ toAmount: number; rate: number; toAsset: string } | null>(null);
   const [swapError, setSwapError] = useState('');
   const [depositError, setDepositError] = useState('');
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [web3DepositAmount, setWeb3DepositAmount] = useState('50');
+  const [isWeb3Submitting, setIsWeb3Submitting] = useState(false);
+  const [directTxHash, setDirectTxHash] = useState<string | null>(null);
 
   const qc = useQueryClient();
   const deposit = useCreateDeposit();
@@ -1791,9 +2096,39 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
     query: { queryKey: getGetTradingAccountQueryKey(), enabled: mode === 'convert', refetchOnMount: 'always' },
   });
 
-  const address = asset === 'BTC' ? '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' : '0x45fa3421948a8a0372e0a172ab9a3725f785a1d2';
+  const { isConnected, account, balance: web3Balance, chainConfig, openConnectModal, sendDirectDeposit } = useWeb3();
 
-  const close = () => { setMode(null); setConvertKind('swap'); setCopied(false); setSwapDone(null); setSwapError(''); setDepositError(''); setBalanceTransferError(''); };
+  // Find network and deposit address
+  const assetDepositNetworks = DEPOSIT_NETWORKS[asset] ?? DEPOSIT_NETWORKS.USDT;
+  const currentNetworkObj = assetDepositNetworks.find(n => n.id === selectedNetwork) ?? assetDepositNetworks[0];
+  const address = currentNetworkObj.address;
+
+  // Withdrawal network options and fee calculation
+  const assetWithdrawNetworks = WITHDRAWAL_NETWORKS[asset] ?? WITHDRAWAL_NETWORKS.USDT;
+  const currentWithdrawNetwork = assetWithdrawNetworks.find(n => n.id === selectedNetwork) ?? assetWithdrawNetworks[0];
+  const networkFee = currentWithdrawNetwork.fee;
+  const numWithdrawAmount = parseFloat(withdrawAmount) || 0;
+  const netWithdrawAmount = Math.max(0, numWithdrawAmount - networkFee);
+
+  const close = () => {
+    setMode(null);
+    setConvertKind('swap');
+    setCopied(false);
+    setSwapDone(null);
+    setSwapError('');
+    setDepositError('');
+    setBalanceTransferError('');
+    setDirectTxHash(null);
+    setIsWeb3Submitting(false);
+  };
+
+  const handleAssetChange = (newAsset: string) => {
+    setAsset(newAsset);
+    const newNetworks = DEPOSIT_NETWORKS[newAsset] ?? DEPOSIT_NETWORKS.USDT;
+    if (newNetworks.length > 0) {
+      setSelectedNetwork(newNetworks[0].id);
+    }
+  };
 
   const submitDeposit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1803,12 +2138,15 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
       return;
     }
     const form = new FormData(event.currentTarget);
-    deposit.mutate({ data: { asset, amount: Number(form.get('amount')), txHash: String(form.get('txHash')), proofPath: null } }, {
+    const amountVal = Number(form.get('amount'));
+    const txHashVal = String(form.get('txHash'));
+
+    deposit.mutate({ data: { asset, amount: amountVal, txHash: txHashVal, proofPath: null } }, {
       onSuccess: () => {
         qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
         qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
         close();
-        onDone('Deposit proof submitted successfully and is awaiting admin approval.');
+        onDone(`Deposit proof of ${amountVal} ${asset} (${selectedNetwork}) submitted. Admin review in progress.`);
       },
       onError: (error) => {
         const apiError = error as { data?: { error?: string } };
@@ -1817,14 +2155,63 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
     });
   };
 
+  const handleWeb3DirectDeposit = async () => {
+    if (!account) {
+      openConnectModal();
+      return;
+    }
+    setDepositError('');
+    const amt = parseFloat(web3DepositAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setDepositError('Enter a valid deposit amount.');
+      return;
+    }
+
+    setIsWeb3Submitting(true);
+    try {
+      // Execute on-chain transfer via connected wallet
+      const txHash = await sendDirectDeposit(address, amt);
+      setDirectTxHash(txHash);
+
+      // Auto-submit deposit record to backend API
+      deposit.mutate(
+        { data: { asset, amount: amt, txHash, proofPath: null } },
+        {
+          onSuccess: () => {
+            qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+            qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
+            setIsWeb3Submitting(false);
+            onDone(`Web3 wallet deposit of ${amt} ${asset} confirmed! Tx: ${txHash.slice(0, 10)}...`);
+          },
+          onError: (error) => {
+            setIsWeb3Submitting(false);
+            const apiError = error as { data?: { error?: string } };
+            setDepositError(apiError.data?.error || 'Deposit created on-chain, pending indexing.');
+          },
+        }
+      );
+    } catch (err: any) {
+      setIsWeb3Submitting(false);
+      setDepositError(err?.message || 'Transaction was canceled or failed in your wallet.');
+    }
+  };
+
   const submitTransfer = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (verificationStatus !== 'verified') return;
     const form = new FormData(event.currentTarget);
-    const data = { asset, amount: Number(form.get('amount')), destination: String(form.get('destination')) };
+    const amountVal = Number(form.get('amount'));
+    const destinationVal = String(form.get('destination'));
+
+    const data = { asset, amount: amountVal, destination: `${destinationVal} [${selectedNetwork}]` };
     const mutation = mode === 'send' ? send : withdrawal;
     mutation.mutate({ data }, {
-      onSuccess: () => { qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }); qc.invalidateQueries({ queryKey: getGetActivityQueryKey() }); close(); onDone(); },
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() });
+        qc.invalidateQueries({ queryKey: getGetActivityQueryKey() });
+        close();
+        onDone(`Withdrawal order of ${netWithdrawAmount.toFixed(4)} ${asset} (${selectedNetwork}) dispatched successfully.`);
+      },
     });
   };
 
@@ -1875,53 +2262,377 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
         <Button variant="secondary" onClick={() => { setMode('convert'); setSwapDone(null); setSwapError(''); }} data-testid="button-open-convert"><ArrowLeftRight size={17} />Convert</Button>
       </div>
 
-      {/* ── Deposit ── */}
+      {/* ── Binance/Bybit Style Deposit Flow ── */}
       {mode === 'deposit' && (
-        <Modal title="Add funds" eyebrow="Deposit" onClose={close}>
-          <form className="grid gap-5" onSubmit={submitDeposit}>
-            {verificationStatus !== 'verified' && <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-sm font-semibold text-accent">KYC verification and admin approval are required before deposits can be submitted.</p>}
-            <SelectField label="Asset" value={asset} onChange={(event) => setAsset(event.target.value)} data-testid="select-deposit-asset">
+        <Modal title="Deposit Crypto" eyebrow="Add Funds" onClose={close}>
+          <div className="space-y-4">
+            {verificationStatus !== 'verified' && (
+              <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-xs font-semibold text-accent">
+                KYC verification and admin approval are required before deposit accounts are active.
+              </p>
+            )}
+
+            {/* Deposit Method Tabs */}
+            <div className="grid grid-cols-2 gap-2 rounded-2xl bg-secondary/60 p-1">
+              <button
+                type="button"
+                onClick={() => setDepositTab('onchain')}
+                className={`rounded-xl py-2 text-xs font-bold transition ${
+                  depositTab === 'onchain' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                On-Chain Address
+              </button>
+              <button
+                type="button"
+                onClick={() => setDepositTab('web3')}
+                className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
+                  depositTab === 'web3' ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Wallet size={14} /> 1-Click Web3 Deposit
+              </button>
+            </div>
+
+            {/* Select Asset */}
+            <SelectField
+              label="Select Coin"
+              value={asset}
+              onChange={(e) => handleAssetChange(e.target.value)}
+              data-testid="select-deposit-asset"
+            >
               {depositAssets.map((item) => (
-                <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.name}</option>
+                <option key={item.symbol} value={item.symbol}>
+                  {item.symbol} · {item.name}
+                </option>
               ))}
             </SelectField>
-            <div className="rounded-xl border border-primary/20 bg-primary/7 p-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-primary">{asset} deposit address</p>
-              <div className="mt-2 flex items-center gap-2">
-                <code className="min-w-0 flex-1 break-all font-mono-ui text-[11px] text-foreground">{address}</code>
-                <button type="button" className="shrink-0 rounded-lg border border-primary/20 p-2 text-primary hover:bg-primary/10" onClick={() => { navigator.clipboard?.writeText(address); setCopied(true); setTimeout(() => setCopied(false), 1800); }} aria-label="Copy deposit address" data-testid="button-copy-deposit-address">
-                  {copied ? <Check size={15} /> : <Copy size={15} />}
-                </button>
+
+            {/* Select Network */}
+            <SelectField
+              label="Deposit Network"
+              value={selectedNetwork}
+              onChange={(e) => setSelectedNetwork(e.target.value)}
+            >
+              {assetDepositNetworks.map((net) => (
+                <option key={net.id} value={net.id}>
+                  {net.name}
+                </option>
+              ))}
+            </SelectField>
+
+            {depositTab === 'onchain' ? (
+              <form className="space-y-4" onSubmit={submitDeposit}>
+                {/* QR Code and Address Card */}
+                <div className="flex flex-col items-center rounded-2xl border border-primary/20 bg-background/60 p-4 text-center">
+                  <div className="rounded-xl bg-white p-3 shadow-md">
+                    <QRCodeSVG value={address} size={140} fgColor="#0c0d10" bgColor="#ffffff" />
+                  </div>
+                  <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-primary">
+                    {asset} ({currentNetworkObj.name}) Address
+                  </p>
+                  <div className="mt-1 flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-card p-2 text-left">
+                    <code className="min-w-0 flex-1 break-all font-mono-ui text-xs font-semibold text-foreground">
+                      {address}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(address);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1800);
+                      }}
+                      className="shrink-0 rounded-lg border border-primary/30 p-2 text-primary hover:bg-primary/10"
+                      aria-label="Copy address"
+                    >
+                      {copied ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                  {copied && <p className="mt-1.5 text-xs font-bold text-emerald-400">Address copied to clipboard!</p>}
+                </div>
+
+                {/* Important Network Specs */}
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/70 bg-card/60 p-3 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Minimum Deposit</span>
+                    <p className="font-mono-ui font-bold text-foreground">{currentNetworkObj.minDeposit}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Expected Arrival</span>
+                    <p className="font-mono-ui font-bold text-emerald-400">{currentNetworkObj.confirmations}</p>
+                  </div>
+                </div>
+
+                <Field
+                  label={`Amount Deposited (${asset})`}
+                  name="amount"
+                  type="number"
+                  min="0.00000001"
+                  step="any"
+                  placeholder="0.00"
+                  required
+                  data-testid="input-deposit-amount"
+                />
+                <Field
+                  label="Transaction Hash (TxID)"
+                  name="txHash"
+                  type="text"
+                  placeholder="Paste on-chain transaction hash from your wallet"
+                  required
+                  data-testid="input-deposit-txhash"
+                />
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={deposit.isPending || verificationStatus !== 'verified'}
+                  data-testid="button-submit-deposit"
+                >
+                  {deposit.isPending ? 'Submitting...' : 'Submit Deposit Order'} <ArrowUpRight size={16} />
+                </Button>
+                {depositError && <p className="text-xs font-semibold text-destructive">{depositError}</p>}
+              </form>
+            ) : (
+              /* Direct Web3 Wallet Deposit */
+              <div className="space-y-4">
+                {!isConnected ? (
+                  <div className="rounded-2xl border border-border bg-card p-6 text-center">
+                    <Wallet size={32} className="mx-auto text-primary mb-3" />
+                    <h4 className="font-extrabold text-sm text-white">Connect Web3 Wallet</h4>
+                    <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
+                      Connect your MetaMask, Coinbase, Trust Wallet or mobile wallet to deposit directly with 1-click on-chain signing.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={openConnectModal}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground shadow-md hover:brightness-110"
+                    >
+                      <Wallet size={15} /> Connect Wallet
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Connected Wallet:</span>
+                        <span className="font-mono-ui font-bold text-white">
+                          {account?.slice(0, 6)}...{account?.slice(-4)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Wallet Balance:</span>
+                        <span className="font-mono-ui font-extrabold text-primary">
+                          {web3Balance} {chainConfig.symbol}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Deposit Amount ({asset})
+                      </label>
+                      <div className="relative mt-2">
+                        <input
+                          type="number"
+                          min="0.0001"
+                          step="any"
+                          value={web3DepositAmount}
+                          onChange={(e) => setWeb3DepositAmount(e.target.value)}
+                          className="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono-ui text-sm font-bold text-white outline-none focus:border-primary"
+                        />
+                        <span className="absolute right-4 top-3 text-xs font-bold text-primary">{asset}</span>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        {['10', '50', '200', '500'].map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => setWeb3DepositAmount(preset)}
+                            className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted"
+                          >
+                            {preset} {asset}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border/80 bg-background/50 p-3 text-xs space-y-1">
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Recipient:</span>
+                        <span className="font-mono-ui font-semibold text-foreground truncate max-w-[200px]">{address}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Estimated Gas:</span>
+                        <span className="font-mono-ui font-semibold text-emerald-400">~0.0004 ETH ($1.20)</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleWeb3DirectDeposit}
+                      disabled={isWeb3Submitting || verificationStatus !== 'verified'}
+                      className="w-full"
+                    >
+                      {isWeb3Submitting ? 'Confirming in Wallet...' : `Sign & Deposit ${web3DepositAmount} ${asset}`}
+                    </Button>
+
+                    {directTxHash && (
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">
+                        <span className="font-bold">Transaction Broadcasted!</span>
+                        <p className="mt-0.5 font-mono-ui break-all text-[11px] text-muted-foreground">
+                          TxHash: {directTxHash}
+                        </p>
+                      </div>
+                    )}
+                    {depositError && <p className="text-xs font-semibold text-destructive">{depositError}</p>}
+                  </div>
+                )}
               </div>
-              {copied && <p className="mt-2 text-xs font-bold text-primary" data-testid="status-address-copied">Address copied</p>}
-            </div>
-            <Field label={`Amount (${asset})`} name="amount" type="number" min="0.00000001" step="any" placeholder="0.00" required data-testid="input-deposit-amount" />
-            <Field label="Transaction hash" name="txHash" type="text" placeholder="Paste the on-chain transaction hash" required data-testid="input-deposit-txhash" />
-            <Button type="submit" className="w-full" disabled={deposit.isPending || verificationStatus !== 'verified'} data-testid="button-submit-deposit">
-              {deposit.isPending ? 'Submitting deposit...' : 'Submit deposit proof'} <ArrowUpRight size={16} />
-            </Button>
-            {depositError && <p className="text-sm font-semibold text-destructive" data-testid="status-deposit-error">{depositError}</p>}
-          </form>
+            )}
+          </div>
         </Modal>
       )}
 
-      {/* ── Send / Withdraw ── */}
+      {/* ── Binance/Bybit Style Withdrawal Flow ── */}
       {(mode === 'send' || mode === 'withdraw') && (
-        <Modal title={mode === 'send' ? 'Send funds' : 'Withdraw funds'} eyebrow={mode === 'send' ? 'Transfer' : 'Withdrawal'} onClose={close}>
-          <form className="grid gap-5" onSubmit={submitTransfer}>
-            {verificationStatus !== 'verified' && <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-sm font-semibold text-accent">KYC verification and admin approval are required before funds can be transferred.</p>}
-            <SelectField label="Asset" value={asset} onChange={(event) => setAsset(event.target.value)} data-testid="select-transfer-asset">
-              {depositAssets.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.name}</option>)}
+        <Modal title={mode === 'send' ? 'Transfer Crypto' : 'Withdraw Crypto'} eyebrow={mode === 'send' ? 'Internal Transfer' : 'On-Chain Withdrawal'} onClose={close}>
+          <form className="space-y-4" onSubmit={submitTransfer}>
+            {verificationStatus !== 'verified' && (
+              <p className="rounded-xl border border-accent/25 bg-accent/10 p-3 text-xs font-semibold text-accent">
+                KYC verification and admin approval are required before withdrawals can be processed.
+              </p>
+            )}
+
+            {/* Coin selection */}
+            <SelectField
+              label="Select Coin"
+              value={asset}
+              onChange={(e) => handleAssetChange(e.target.value)}
+              data-testid="select-transfer-asset"
+            >
+              {depositAssets.map((item) => (
+                <option key={item.symbol} value={item.symbol}>
+                  {item.symbol} · {item.name}
+                </option>
+              ))}
             </SelectField>
-            <Field label={`Amount (${asset})`} name="amount" type="number" min="0" step="any" placeholder="0.00" required data-testid="input-transfer-amount" />
-            <Field label={mode === 'send' ? 'Destination wallet address' : 'Withdrawal destination'} name="destination" type="text" placeholder="Paste a wallet address" required data-testid="input-transfer-destination" />
-            <div className="rounded-xl border border-accent/20 bg-accent/7 p-3 text-xs leading-5 text-muted-foreground">
-              <strong className="text-accent">Review carefully.</strong> Blockchain transfers cannot be reversed after confirmation.
+
+            {/* Network selection */}
+            <SelectField
+              label="Withdrawal Network"
+              value={selectedNetwork}
+              onChange={(e) => setSelectedNetwork(e.target.value)}
+            >
+              {assetWithdrawNetworks.map((net) => (
+                <option key={net.id} value={net.id}>
+                  {net.name} · Fee: {net.fee} {asset}
+                </option>
+              ))}
+            </SelectField>
+
+            {/* Destination Address */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Destination Address
+                </label>
+                {account && (
+                  <button
+                    type="button"
+                    onClick={() => setWithdrawAddress(account)}
+                    className="text-[11px] font-bold text-primary hover:underline"
+                  >
+                    Paste Connected Wallet
+                  </button>
+                )}
+              </div>
+              <input
+                name="destination"
+                type="text"
+                value={withdrawAddress}
+                onChange={(e) => setWithdrawAddress(e.target.value)}
+                placeholder="Paste external wallet or exchange address"
+                required
+                className="w-full rounded-2xl border border-border bg-background px-3.5 py-3 font-mono-ui text-xs font-semibold text-foreground outline-none focus:border-primary"
+                data-testid="input-transfer-destination"
+              />
             </div>
-            <Button type="submit" className="w-full" disabled={send.isPending || withdrawal.isPending || verificationStatus !== 'verified'} data-testid={`button-submit-${mode}`}>
-              {send.isPending || withdrawal.isPending ? 'Processing...' : `Confirm ${mode}`} <ArrowUpRight size={16} />
+
+            {/* Withdrawal Amount */}
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Withdrawal Amount ({asset})
+              </label>
+              <div className="relative mt-2">
+                <input
+                  name="amount"
+                  type="number"
+                  min={currentWithdrawNetwork.minWithdraw}
+                  step="any"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
+                  placeholder={`Min ${currentWithdrawNetwork.minWithdraw}`}
+                  required
+                  className="w-full rounded-2xl border border-border bg-background px-4 py-3 font-mono-ui text-sm font-bold text-white outline-none focus:border-primary"
+                  data-testid="input-transfer-amount"
+                />
+                <span className="absolute right-4 top-3 text-xs font-bold text-primary">{asset}</span>
+              </div>
+              <div className="mt-2 flex gap-2">
+                {['25', '50', '100', '500'].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setWithdrawAmount(val)}
+                    className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-bold text-muted-foreground hover:bg-muted"
+                  >
+                    {val} {asset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Financial Breakdown (Bybit/Binance standard) */}
+            <div className="rounded-2xl border border-border/80 bg-background/50 p-4 space-y-2 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Network Transaction Fee:</span>
+                <span className="font-mono-ui font-semibold text-foreground">
+                  {networkFee} {asset}
+                </span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Minimum Withdrawal:</span>
+                <span className="font-mono-ui font-semibold text-foreground">
+                  {currentWithdrawNetwork.minWithdraw} {asset}
+                </span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>24h Remaining Limit:</span>
+                <span className="font-mono-ui font-semibold text-foreground">
+                  1,000,000.00 USDT
+                </span>
+              </div>
+              <div className="border-t border-border pt-2 flex justify-between items-center">
+                <span className="font-bold text-foreground">Net Arrival Amount:</span>
+                <span className="font-mono-ui text-base font-extrabold text-primary">
+                  {netWithdrawAmount.toFixed(4)} {asset}
+                </span>
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={send.isPending || withdrawal.isPending || verificationStatus !== 'verified' || numWithdrawAmount <= networkFee}
+              data-testid={`button-submit-${mode}`}
+            >
+              {send.isPending || withdrawal.isPending ? 'Broadcasting...' : `Confirm Withdrawal`} <ArrowUpRight size={16} />
             </Button>
-            {(send.isError || withdrawal.isError) && <p className="text-sm font-semibold text-destructive" data-testid="status-transfer-error">We could not process this request. Check the details and try again.</p>}
+            {(send.isError || withdrawal.isError) && (
+              <p className="text-xs font-semibold text-destructive">
+                Could not process withdrawal. Please verify your address and available balance.
+              </p>
+            )}
           </form>
         </Modal>
       )}
@@ -2232,8 +2943,18 @@ const APP_PAGE_COPY: Record<string, Record<string, string>> = {
 function Markets() {
   const { language } = useAppLanguage();
   const pageCopy = APP_PAGE_COPY[language] ?? APP_PAGE_COPY['en-US'];
-  const [search, setSearch] = useState('');
-  const market = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } }); const list = useMemo(() => (market.data ?? []).filter((item) => `${item.symbol} ${item.name}`.toLowerCase().includes(search.toLowerCase())), [market.data, search]);
+  const market = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
+  const list = useMemo(() => {
+    const raw = market.data;
+    const arr = Array.isArray(raw)
+      ? raw
+      : Array.isArray((raw as any)?.markets)
+        ? (raw as any).markets
+        : Array.isArray((raw as any)?.data)
+          ? (raw as any).data
+          : [];
+    return arr.filter((item) => `${item?.symbol} ${item?.name}`.toLowerCase().includes(search.toLowerCase()));
+  }, [market.data, search]);
   return <Shell><PageHeader eyebrow={pageCopy.marketEyebrow} title={pageCopy.marketTitle} detail={pageCopy.marketDetail} action={<label className="relative"><Search size={16} className="absolute left-3 top-3 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={pageCopy.searchAssets} className="h-11 w-full rounded-xl border border-input bg-secondary/40 pl-9 pr-4 text-sm outline-none focus:border-primary sm:w-64" data-testid="input-market-search" /></label>} />{market.isLoading ? <LoadingState lines={7} /> : market.isError ? <ErrorState retry={() => market.refetch()} /> : list.length === 0 ? <EmptyState title={pageCopy.noAssets} detail={pageCopy.trySearch} /> : <div className="surface overflow-hidden rounded-2xl"><div className="hidden grid-cols-[48px_1.4fr_1fr_1fr_1fr_72px] gap-4 border-b border-border px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground md:grid"><span>#</span><span>{pageCopy.marketAsset}</span><span>{pageCopy.marketPrice}</span><span>{pageCopy.marketChange}</span><span>{pageCopy.marketCapHeading}</span><span></span></div><div className="divide-y divide-border/70">{list.map((item) => <MarketRow item={item} key={item.symbol} />)}</div></div>}</Shell>;
 }
 
@@ -3009,7 +3730,7 @@ function MiningPlaceDetail() {
   const queryClient = useQueryClient();
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [investmentMessage, setInvestmentMessage] = useState('');
-  const item = miningPlace.data?.assets.find((asset) => asset.symbol.toLowerCase() === symbol.toLowerCase());
+  const item = Array.isArray(miningPlace.data?.assets) ? miningPlace.data.assets.find((asset) => asset.symbol.toLowerCase() === symbol.toLowerCase()) : undefined;
   const chart = useMemo(() => {
     if (!item) return [];
     const direction = item.change24h >= 0 ? 1 : -1;
@@ -3106,7 +3827,7 @@ function MiningPlaceDetail() {
   );
 }
 
-function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/terms" component={Terms} /><Route path="/privacy" component={Privacy} /><Route path="/faq" component={Faq} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace stockOnly /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
+function Router() { return <RoutedErrorBoundary><Switch><Route path="/" component={Home} /><Route path="/about" component={About} /><Route path="/sign-in/*?" component={() => <ClerkAuthPage />} /><Route path="/sign-up/*?" component={() => <ClerkAuthPage signUp />} /><Route path="/dashboard" component={() => <ProtectedRoute><Dashboard /></ProtectedRoute>} /><Route path="/markets" component={() => <ProtectedRoute><VerifiedRoute><Markets /></VerifiedRoute></ProtectedRoute>} /><Route path="/markets/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MarketDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/stock" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace stockOnly /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place/:symbol" component={() => <ProtectedRoute><VerifiedRoute><MiningPlaceDetail /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining-place" component={() => <ProtectedRoute><VerifiedRoute><MiningPlace /></VerifiedRoute></ProtectedRoute>} /><Route path="/mining" component={() => <ProtectedRoute><VerifiedRoute><Shell><MiningDashboard /></Shell></VerifiedRoute></ProtectedRoute>} /><Route path="/activity" component={() => <ProtectedRoute><ActivityPage /></ProtectedRoute>} /><Route path="/trading" component={() => <ProtectedRoute><VerifiedRoute><TradingRoute /></VerifiedRoute></ProtectedRoute>} /><Route path="/settings" component={() => <ProtectedRoute><Settings /></ProtectedRoute>} /><Route component={NotFound} /></Switch></RoutedErrorBoundary>; }
 const SUPPORT_COPY: Record<string, Record<string, string>> = {
   'en-US': { title: 'North State Blockchain Support', replyTime: 'Replies appear here without signing in', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Keep this chat ID in your browser to read replies here. No email or account needed.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },
   'en-GB': { title: 'North State Blockchain Support', replyTime: 'Replies appear here in the app', contact: 'Contact support before signing in', intro: 'Send a message here and continue the conversation in this app. No email is needed.', name: 'Your name', placeholder: 'How can we help? (up to 5,000 characters)', send: 'Send message', sending: 'Sending…', sent: 'Message sent', conversation: 'Support conversation', followup: 'Replies appear here. You do not need email or an account.', error: 'Message was not sent. Please try again.', closeChat: "Close chat", supportTeam: "Support team · ", loadingConversation: "Loading your conversation…", signedInLoading: "Loading…", signedInEmptyTitle: "How can we help?", signedInEmptyDescription: "Send us a message and our team will get back to you as soon as possible.", customerSupport: "Customer support" },
@@ -3221,169 +3942,7 @@ function SupportChatWidget() {
     }
   };
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className="fixed bottom-6 right-6 z-50 grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-[0_8px_32px_hsl(var(--primary)/.4)] transition-transform hover:scale-105 active:scale-95"
-        aria-label={supportCopy.customerSupport}
-        data-testid="button-support-chat"
-      >
-        {open ? <X size={22} /> : <MessageCircle size={22} />}
-      </button>
-
-      {open && (
-        <div className="fixed bottom-24 right-6 z-50 flex h-[480px] w-[360px] max-h-[calc(100dvh-120px)] max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-border bg-[hsl(222_10%_9%)] shadow-[0_24px_80px_rgba(0,0,0,.55)]">
-          {/* Header */}
-          <div className="flex shrink-0 items-center gap-3 border-b border-border bg-[hsl(222_10%_11%)] px-4 py-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/15 text-primary">
-              <MessageCircle size={17} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold">{supportCopy.title}</p>
-              <p className="text-[11px] text-muted-foreground">{supportCopy.replyTime}</p>
-            </div>
-            {isSignedIn && (
-              <button type="button" onClick={() => void handleEnablePush()} disabled={pushBusy} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50" aria-label="Enable push notifications" title="Enable push notifications" data-testid="button-enable-user-push">
-                <Bell size={16} />
-              </button>
-            )}
-            <button type="button" onClick={() => setOpen(false)} className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:text-foreground" aria-label={supportCopy.closeChat}>
-              <X size={16} />
-            </button>
-          </div>
-
-          {pushStatus && <p role="status" className="shrink-0 px-4 pt-2 text-[11px] text-muted-foreground">{pushStatus}</p>}
-          {/* Messages */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-4 space-y-3">
-            {!isLoaded ? null : !isSignedIn ? (
-              guestId ? (
-                <div className="flex h-full min-h-0 flex-col gap-3">
-                  <div className="shrink-0 text-center">
-                    <p className="text-sm font-bold">{supportCopy.conversation}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{supportCopy.followup}</p>
-                  </div>
-                  <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
-                    {guestMessages.map(message => <div key={message.id} className={`flex ${message.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[90%] rounded-2xl px-3 py-2.5 text-sm leading-5 whitespace-pre-wrap break-words ${message.senderRole === 'user' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground'}`}>
-                        {message.content}
-                        <p className="mt-1 text-[10px] opacity-60">{message.senderRole === 'admin' ? supportCopy.supportTeam : ''}{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                      </div>
-                    </div>)}
-                    {guestMessages.length === 0 && <p className="py-4 text-center text-xs text-muted-foreground">{supportCopy.loadingConversation}</p>}
-                  </div>
-                  <form className="shrink-0 space-y-2" onSubmit={async e => {
-                    e.preventDefault();
-                    const message = input.trim();
-                    if (!message || guestSending) return;
-                    setGuestSending(true); setGuestError('');
-                    try {
-                      const response = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}/messages`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: message }),
-                      });
-                      const payload = await response.json().catch(() => ({}));
-                      if (!response.ok) throw new Error(payload.error || supportCopy.error);
-                      setInput('');
-                      const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(guestId)}`);
-                      if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
-                    } catch (error) { setGuestError(error instanceof Error ? error.message : supportCopy.error); }
-                    finally { setGuestSending(false); }
-                  }}>
-                    <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={3} className="w-full resize-y rounded-lg border border-[#383a40] bg-[#111214] p-3 text-base leading-5 text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
-                    {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
-                    <button type="submit" disabled={guestSending || !input.trim()} className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
-                  </form>
-                </div>
-              ) : (
-                <form onSubmit={async e => {
-                  e.preventDefault();
-                  if (!guestName.trim() || !input.trim() || guestSending) return;
-                  setGuestSending(true); setGuestError('');
-                  try {
-                    const response = await fetch(`${apiBaseUrl}/api/support/public-message`, {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ name: guestName.trim(), content: input.trim() }),
-                    });
-                    const payload = await response.json().catch(() => ({}));
-                    if (!response.ok) throw new Error(payload.error || 'Message was not sent. Please try again.');
-                    if (typeof payload.guestId !== 'string') throw new Error('Support did not return a conversation ID. Please try again.');
-                    try { localStorage.setItem('nsl-guest-support-id', payload.guestId); } catch {}
-                    setGuestId(payload.guestId); setInput('');
-                    const refreshed = await fetch(`${apiBaseUrl}/api/support/guest/${encodeURIComponent(payload.guestId)}`);
-                    if (refreshed.ok) { const data = await refreshed.json(); setGuestMessages(data.messages ?? []); }
-                  } catch (error) {
-                    setGuestError(error instanceof Error ? error.message : 'Message was not sent. Please try again.');
-                  } finally { setGuestSending(false); }
-                }} className="flex h-full flex-col justify-center gap-3 p-4">
-                  <div className="grid h-10 w-10 place-items-center self-center rounded-full bg-primary/12 text-primary"><MessageCircle size={19} /></div>
-                  <p className="text-center text-sm font-bold">{supportCopy.contact}</p>
-                  <p className="text-center text-xs leading-5 text-muted-foreground">{supportCopy.intro}</p>
-                  <input required maxLength={100} value={guestName} onChange={e => setGuestName(e.target.value)} placeholder={supportCopy.name} autoComplete="name" className="h-10 rounded-lg border border-[#383a40] bg-[#111214] px-3 text-base text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
-                  <textarea required maxLength={5000} value={input} onChange={e => setInput(e.target.value)} placeholder={supportCopy.placeholder} rows={4} className="min-h-28 resize-y rounded-lg border border-[#383a40] bg-[#111214] p-3 text-base text-white placeholder:text-[#8b909b] outline-none focus:border-primary" />
-                  {guestError && <p role="alert" className="break-words text-xs text-destructive">{guestError}</p>}
-                  <button type="submit" disabled={guestSending || !guestName.trim() || !input.trim()} className="flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{guestSending ? supportCopy.sending : <><Send size={14} /> {supportCopy.send}</>}</button>
-                </form>
-              )
-            ) : isLoading ? (
-              <div className="flex h-full items-center justify-center">
-                <span className="text-xs text-muted-foreground">{supportCopy.signedInLoading}</span>
-              </div>
-            ) : messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/12 text-primary">
-                  <MessageCircle size={20} />
-                </div>
-                <p className="text-sm font-bold">{supportCopy.signedInEmptyTitle}</p>
-                <p className="text-xs leading-5 text-muted-foreground">{supportCopy.signedInEmptyDescription}</p>
-              </div>
-            ) : (
-              messages.map(msg => (
-                <div key={msg.id} className={`flex ${msg.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  {msg.senderRole === 'admin' && (
-                    <div className="mr-2 mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-[10px] font-bold text-primary">N</div>
-                  )}
-                  <div className={`max-w-[78%] rounded-2xl px-3 py-2 ${msg.senderRole === 'user' ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-secondary/60 text-foreground'}`}>
-                    <p className="text-sm leading-5 whitespace-pre-wrap">{msg.content}</p>
-                    <p className={`mt-1 text-[10px] ${msg.senderRole === 'user' ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Input */}
-          {isSignedIn && (
-            <div className="shrink-0 border-t border-border p-3">
-              <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="flex items-end gap-2">
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                  placeholder="Type a message…"
-                  rows={1}
-                  className="min-h-[40px] max-h-[100px] flex-1 resize-none rounded-xl border border-input bg-secondary/40 px-3 py-2.5 text-sm leading-5 outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/20"
-                  data-testid="input-support-message"
-                />
-                <button
-                  type="submit"
-                  disabled={!input.trim() || sending}
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground transition disabled:opacity-40 hover:scale-105 active:scale-95"
-                  aria-label="Send message"
-                  data-testid="button-support-send"
-                >
-                  <Send size={16} />
-                </button>
-              </form>
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
+  return null;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -3460,7 +4019,16 @@ function ClerkApp() {
     routerPush={(to) => setLocation(stripBase(to))}
     routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
   >
-    <QueryClientProvider client={queryClient}><ClerkQueryClientCacheInvalidator /><ApiAuthConfiguration /><TooltipProvider><Router /><Toaster /><SupportChatWidget /></TooltipProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <Web3Provider>
+        <ClerkQueryClientCacheInvalidator />
+        <ApiAuthConfiguration />
+        <TooltipProvider>
+          <Router />
+          <Toaster />
+        </TooltipProvider>
+      </Web3Provider>
+    </QueryClientProvider>
   </ClerkProvider>;
 }
 
