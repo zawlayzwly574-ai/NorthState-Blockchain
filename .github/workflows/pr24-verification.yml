@@ -23,19 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.26.1
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install workspace dependencies
+        run: npm install
 
       - name: Typecheck and build workspace
         env:
@@ -45,7 +39,7 @@ jobs:
           # Build-only placeholder: CI verifies compilation and does not deploy this artifact.
           # Production Clerk keys remain configured in the deployment environment.
           VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
-        run: pnpm run build
+        run: npm run build
 
   api-tests:
     name: API automated tests
@@ -64,7 +58,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -73,4 +66,4 @@ jobs:
         env:
           # Tests mock database calls; this placeholder only permits the DB module to initialize.
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/northstate_test
-        run: pnpm run test:api-auth
+        run: npm test --workspace=@workspace/api-server
