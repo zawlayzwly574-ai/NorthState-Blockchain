@@ -21,9 +21,10 @@ router.get("/healthz", async (req, res) => {
     const databaseError = error && typeof error === "object"
       ? error as { code?: unknown; name?: unknown; message?: unknown; severity?: unknown }
       : null;
-    const message = typeof databaseError?.message === "string"
-      ? databaseError.message.toLowerCase()
+    const rawMessage = typeof databaseError?.message === "string"
+      ? databaseError.message
       : "";
+    const message = rawMessage.toLowerCase();
     const databaseFailureKind =
       /password authentication failed|invalid password/.test(message)
         ? "credentials_rejected"
@@ -40,11 +41,18 @@ router.get("/healthz", async (req, res) => {
                   : /too many connections/.test(message)
                     ? "connection_limit"
                     : "unclassified";
+    // Keep enough diagnostic detail to identify connection/resource failures without logging credentials.
+    const safeMessage = rawMessage
+      .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "[redacted database URL]")
+      .replace(/(password\s*[=:]\s*)[^\s,;]+/gi, "$1[redacted]")
+      .replace(/(passfile|sslkey|sslcert)=([^\s,;]+)/gi, "$1=[redacted]")
+      .slice(0, 300);
     req.log.error({
       databaseErrorCode: typeof databaseError?.code === "string" ? databaseError.code : undefined,
       databaseErrorName: typeof databaseError?.name === "string" ? databaseError.name : undefined,
       databaseErrorSeverity: typeof databaseError?.severity === "string" ? databaseError.severity : undefined,
       databaseFailureKind,
+      databaseErrorMessage: safeMessage || undefined,
     }, "Database health check failed");
     res.status(503).json({ status: "not_ready", database: "unavailable" });
   }
