@@ -75,7 +75,7 @@ export function HeaderSupportDropdown() {
       {/* Support Dropdown Panel with Fixed Height & Inner Scroll */}
       {isSupportOpen && (
         <div
-          className="absolute right-0 mt-2 w-80 md:w-96 max-h-[75vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden animate-rise"
+          className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[100] flex max-h-[calc(100dvh-5.5rem-env(safe-area-inset-top))] w-auto flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl animate-rise sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-[75vh] sm:w-96"
           data-testid="panel-header-support"
         >
           {/* Fixed Header */}
@@ -95,7 +95,7 @@ export function HeaderSupportDropdown() {
           </div>
 
           {/* Scrollable Body - စာမျက်နှာတစ်ပြင်လုံး မလှုပ်ဘဲ အထဲက Content သာ ရွေ့မည့် အပိုင်း */}
-          <div className="p-4 overflow-y-auto flex-1 max-h-[50vh] space-y-3">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -125,7 +125,7 @@ export function HeaderSupportDropdown() {
           {/* Fixed Footer Input Form */}
           <form
             onSubmit={handleSend}
-            className="p-3 border-t border-slate-800 bg-slate-900/95 flex items-center gap-2 shrink-0"
+            className="flex shrink-0 items-center gap-2 border-t border-slate-800 bg-slate-900/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))]"
           >
             <input
               type="text"

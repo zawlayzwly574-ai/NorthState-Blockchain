@@ -2943,6 +2943,7 @@ const APP_PAGE_COPY: Record<string, Record<string, string>> = {
 function Markets() {
   const { language } = useAppLanguage();
   const pageCopy = APP_PAGE_COPY[language] ?? APP_PAGE_COPY['en-US'];
+  const [search, setSearch] = useState('');
   const market = useGetMarketSummary({ query: { queryKey: getGetMarketSummaryQueryKey(), refetchInterval: 1_000, placeholderData: (prev) => prev } });
   const list = useMemo(() => {
     const raw = market.data;
