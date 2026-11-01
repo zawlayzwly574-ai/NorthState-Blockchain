@@ -1643,7 +1643,6 @@ export function TradingPage() {
                 </button>
               </div>
             )}
-            </p>
             {!supportedFuturesMode && (
               <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" role="status" data-testid="status-futures-unsupported">
                 {futuresContractType === 'Quarterly' ? 'Quarterly contracts' : 'USDC settlement'} cannot be opened yet. Select USDT Perpetual to trade.
