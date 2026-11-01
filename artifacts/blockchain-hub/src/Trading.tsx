@@ -1607,7 +1607,241 @@ export function TradingPage() {
             </div>
 
             <p className="mb-4 text-[11px] text-muted-foreground" data-testid="text-futures-balance">
-              Futures allocation: {account ? `${futuresTotal.toFixed(2)}` : '—'} USDT · Reserved margin: {futuresPositions && !futuresPositionsError ? `${futuresReserved.toFixed(2)}` : '—'} USDT. Spot funds are separate.
+              Futures allocation: {account ? '
+            </p>
+
+            {futuresAvailable < marginValue && availableToTrade > 0 && (
+              <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="panel-transfer-futures-funds">
+                <p className="mb-2 text-xs font-bold text-foreground">Move USDT from Spot to Futures</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0.00000001"
+                    max={availableToTrade}
+                    step="0.00000001"
+                    value={futuresTransferAmount}
+                    onChange={event => setFuturesTransferAmount(event.target.value)}
+                    aria-label="USDT amount to transfer into Futures"
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none focus:border-primary"
+                    data-testid="input-futures-transfer-amount"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFuturesTransferAmount(String(availableToTrade))}
+                    className="rounded-lg border border-border px-3 text-xs font-extrabold text-primary hover:bg-primary/10"
+                    data-testid="button-futures-transfer-max"
+                  >MAX</button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">Available Spot balance: ${availableToTrade.toFixed(2)} USDT. Transfer is only made when you press the button.</p>
+                <button
+                  type="button"
+                  onClick={handleTransferToFutures}
+                  disabled={transferFuturesBalance.isPending || !account || !!accountError || !tradesData || !!tradesError}
+                  className="mt-2 w-full rounded-lg bg-primary/15 px-3 py-2.5 text-xs font-extrabold text-primary transition hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  data-testid="button-transfer-spot-to-futures"
+                >
+                  {transferFuturesBalance.isPending ? 'Transferring USDT…' : 'Transfer USDT to Futures'}
+                </button>
+              </div>
+            )}
+            {!supportedFuturesMode && (
+              <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" role="status" data-testid="status-futures-unsupported">
+                {futuresContractType === 'Quarterly' ? 'Quarterly contracts' : 'USDC settlement'} cannot be opened yet. Select USDT Perpetual to trade.
+              </p>
+            )}
+            {supportedFuturesMode && !freshFuturesQuote && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-quote-unavailable">A provider-timestamped live quote is unavailable for {asset}. Opening is paused until a fresh trade arrives.</p>
+            )}
+            {supportedFuturesMode && futuresMargin && !validFuturesMargin && account && futuresPositions && !futuresPositionsError && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-margin">Enter 1–10,000,000 USDT, no more than your available Futures balance (up to 8 decimal places).</p>
+            )}
+            {(accountLoading || futuresPositionsLoading && !futuresPositions) && (
+              <p className="mb-4 text-xs text-muted-foreground" role="status" data-testid="status-futures-loading">Checking Futures balance and positions…</p>
+            )}
+            {(accountError || futuresPositionsError) && (
+              <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert" data-testid="status-futures-data-error">
+                <span>Futures balance or positions could not be loaded.</span>
+                <button type="button" className="font-bold underline" onClick={() => { void refetchAccount(); void refetchFuturesPositions(); }} data-testid="button-retry-futures-data"> {tradingText('Retry')} </button>
+              </div>
+            )}
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
+              <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+              <p className="text-[11px] leading-4 text-amber-200/90">
+                Leverage amplifies gains and losses. Loss per position is limited to its reserved margin. Positions settle inside this app using live reference prices, not on an external exchange. Funding and automatic liquidation are not enabled.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenFutures}
+              disabled={!canOpenFutures}
+              className={`w-full rounded-xl py-3.5 text-sm font-extrabold text-white transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 ${
+                futuresDirection === 'long'
+                  ? 'bg-green-600 shadow-[0_8px_22px_rgba(22,163,74,.25)] hover:bg-green-500'
+                  : 'bg-red-600 shadow-[0_8px_22px_rgba(220,38,38,.22)] hover:bg-red-500'
+              }`}
+              data-testid="button-open-futures-order"
+            >
+              {openFuturesPosition.isPending ? 'Opening position…' : `Open ${futuresLeverage}x ${futuresDirection === 'long' ? 'Long' : 'Short'} — ${asset}/${futuresSettlement}`}
+            </button>
+            {futuresNotice && (
+              <div className={`mt-3 text-center text-[11px] font-semibold ${futuresNotice.kind === 'error' ? 'text-red-300' : 'text-green-300'}`} role={futuresNotice.kind === 'error' ? 'alert' : 'status'} data-testid="status-futures-order">
+                <p>{futuresNotice.text}</p>
+                {futuresNotice.kind === 'success' && (
+                  <button type="button" data-testid="button-view-futures-positions" className="mt-2 underline" onClick={() => {
+                    setShowFutures(false);
+                    requestAnimationFrame(() => document.getElementById('futures-positions-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}> {tradingText('View My Positions')} </button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Timeframe picker sheet */}
+      {showPicker && (
+        <TimeframeSheet
+          value={timeframeSecs}
+          onChange={setTimeframeSecs}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+      {selectedTrade && (
+        <TradeDetailModal
+          trade={selectedTrade}
+          onClose={() => setSelectedTradeId(null)}
+        />
+      )}
+      {activeSpotTrade && (
+        <ActiveTradeStatusModal
+          trade={activeSpotTrade}
+          currentPrice={currentPrice}
+          settledTrade={trades.find(trade => trade.id === activeSpotTrade.id)}
+          onClose={() => setActiveSpotTrade(null)}
+        />
+      )}
+    </div>
+  );
+}
+ + futuresTotal.toFixed(2) : '—'} USDT · Reserved margin: {futuresPositions && !futuresPositionsError ? '
+            </p>
+
+            {futuresAvailable < marginValue && availableToTrade > 0 && (
+              <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="panel-transfer-futures-funds">
+                <p className="mb-2 text-xs font-bold text-foreground">Move USDT from Spot to Futures</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0.00000001"
+                    max={availableToTrade}
+                    step="0.00000001"
+                    value={futuresTransferAmount}
+                    onChange={event => setFuturesTransferAmount(event.target.value)}
+                    aria-label="USDT amount to transfer into Futures"
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none focus:border-primary"
+                    data-testid="input-futures-transfer-amount"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFuturesTransferAmount(String(availableToTrade))}
+                    className="rounded-lg border border-border px-3 text-xs font-extrabold text-primary hover:bg-primary/10"
+                    data-testid="button-futures-transfer-max"
+                  >MAX</button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">Available Spot balance: ${availableToTrade.toFixed(2)} USDT. Transfer is only made when you press the button.</p>
+                <button
+                  type="button"
+                  onClick={handleTransferToFutures}
+                  disabled={transferFuturesBalance.isPending || !account || !!accountError || !tradesData || !!tradesError}
+                  className="mt-2 w-full rounded-lg bg-primary/15 px-3 py-2.5 text-xs font-extrabold text-primary transition hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  data-testid="button-transfer-spot-to-futures"
+                >
+                  {transferFuturesBalance.isPending ? 'Transferring USDT…' : 'Transfer USDT to Futures'}
+                </button>
+              </div>
+            )}
+            {!supportedFuturesMode && (
+              <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" role="status" data-testid="status-futures-unsupported">
+                {futuresContractType === 'Quarterly' ? 'Quarterly contracts' : 'USDC settlement'} cannot be opened yet. Select USDT Perpetual to trade.
+              </p>
+            )}
+            {supportedFuturesMode && !freshFuturesQuote && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-quote-unavailable">A provider-timestamped live quote is unavailable for {asset}. Opening is paused until a fresh trade arrives.</p>
+            )}
+            {supportedFuturesMode && futuresMargin && !validFuturesMargin && account && futuresPositions && !futuresPositionsError && (
+              <p className="mb-4 text-xs text-amber-300" role="status" data-testid="status-futures-margin">Enter 1–10,000,000 USDT, no more than your available Futures balance (up to 8 decimal places).</p>
+            )}
+            {(accountLoading || futuresPositionsLoading && !futuresPositions) && (
+              <p className="mb-4 text-xs text-muted-foreground" role="status" data-testid="status-futures-loading">Checking Futures balance and positions…</p>
+            )}
+            {(accountError || futuresPositionsError) && (
+              <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300" role="alert" data-testid="status-futures-data-error">
+                <span>Futures balance or positions could not be loaded.</span>
+                <button type="button" className="font-bold underline" onClick={() => { void refetchAccount(); void refetchFuturesPositions(); }} data-testid="button-retry-futures-data"> {tradingText('Retry')} </button>
+              </div>
+            )}
+            <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
+              <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-400" />
+              <p className="text-[11px] leading-4 text-amber-200/90">
+                Leverage amplifies gains and losses. Loss per position is limited to its reserved margin. Positions settle inside this app using live reference prices, not on an external exchange. Funding and automatic liquidation are not enabled.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenFutures}
+              disabled={!canOpenFutures}
+              className={`w-full rounded-xl py-3.5 text-sm font-extrabold text-white transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-40 ${
+                futuresDirection === 'long'
+                  ? 'bg-green-600 shadow-[0_8px_22px_rgba(22,163,74,.25)] hover:bg-green-500'
+                  : 'bg-red-600 shadow-[0_8px_22px_rgba(220,38,38,.22)] hover:bg-red-500'
+              }`}
+              data-testid="button-open-futures-order"
+            >
+              {openFuturesPosition.isPending ? 'Opening position…' : `Open ${futuresLeverage}x ${futuresDirection === 'long' ? 'Long' : 'Short'} — ${asset}/${futuresSettlement}`}
+            </button>
+            {futuresNotice && (
+              <div className={`mt-3 text-center text-[11px] font-semibold ${futuresNotice.kind === 'error' ? 'text-red-300' : 'text-green-300'}`} role={futuresNotice.kind === 'error' ? 'alert' : 'status'} data-testid="status-futures-order">
+                <p>{futuresNotice.text}</p>
+                {futuresNotice.kind === 'success' && (
+                  <button type="button" data-testid="button-view-futures-positions" className="mt-2 underline" onClick={() => {
+                    setShowFutures(false);
+                    requestAnimationFrame(() => document.getElementById('futures-positions-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }}> {tradingText('View My Positions')} </button>
+                )}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Timeframe picker sheet */}
+      {showPicker && (
+        <TimeframeSheet
+          value={timeframeSecs}
+          onChange={setTimeframeSecs}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+      {selectedTrade && (
+        <TradeDetailModal
+          trade={selectedTrade}
+          onClose={() => setSelectedTradeId(null)}
+        />
+      )}
+      {activeSpotTrade && (
+        <ActiveTradeStatusModal
+          trade={activeSpotTrade}
+          currentPrice={currentPrice}
+          settledTrade={trades.find(trade => trade.id === activeSpotTrade.id)}
+          onClose={() => setActiveSpotTrade(null)}
+        />
+      )}
+    </div>
+  );
+}
+ + futuresReserved.toFixed(2) : '—'} USDT. Spot funds are separate.
             </p>
 
             {futuresAvailable < marginValue && availableToTrade > 0 && (
