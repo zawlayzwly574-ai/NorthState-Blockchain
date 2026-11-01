@@ -1608,6 +1608,7 @@ export function TradingPage() {
 
             <p className="mb-4 text-[11px] text-muted-foreground" data-testid="text-futures-balance">
               Futures allocation: {account ? `$${futuresTotal.toFixed(2)}` : '—'} USDT · Reserved margin: {futuresPositions && !futuresPositionsError ? `$${futuresReserved.toFixed(2)}` : '—'} USDT. Spot funds are separate.
+            </p>
             {futuresAvailable < marginValue && availableToTrade > 0 && (
               <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="panel-transfer-futures-funds">
                 <p className="mb-2 text-xs font-bold text-foreground">Move USDT from Spot to Futures</p>
