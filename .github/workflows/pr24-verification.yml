@@ -16,61 +16,51 @@ concurrency:
 
 jobs:
   workspace-checks:
-    name: Typecheck and build
+    name: User App typecheck and build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.26.1
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install workspace dependencies
+        run: npm install --legacy-peer-deps
 
-      - name: Typecheck and build workspace
+      - name: Typecheck User App
+        run: npm run typecheck --workspace=@workspace/blockchain-hub
+
+      - name: Build User App
         env:
-          # Vite configs require PORT even during static production builds.
           PORT: 3000
           BASE_PATH: "/"
-          # Build-only placeholder: CI verifies compilation and does not deploy this artifact.
-          # Production Clerk keys remain configured in the deployment environment.
           VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
-        run: pnpm run build
+        run: npm run build --workspace=@workspace/blockchain-hub
 
   api-tests:
-    name: API automated tests
+    name: API build and automated tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Enable pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.26.1
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      - name: Install locked dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install workspace dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build API server
+        run: npm run build --workspace=@workspace/api-server
 
       - name: Run API tests
         env:
-          # Tests mock database calls; this placeholder only permits the DB module to initialize.
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/northstate_test
-        run: pnpm run test:api-auth
+        run: npm run test --workspace=@workspace/api-server
