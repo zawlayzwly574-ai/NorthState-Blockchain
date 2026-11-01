@@ -26,6 +26,7 @@ import {
   useGetFuturesQuote,
   useGetTradingChart,
   useOpenFuturesPosition,
+  useTransferTradingBalance,
   getGetFuturesPositionsQueryKey,
   getGetFuturesQuoteQueryKey,
   getGetTradingChartQueryKey,
@@ -701,6 +702,7 @@ export function TradingPage() {
   const [futuresSettlement, setFuturesSettlement] = useState<'USDT' | 'USDC'>('USDT');
   const [futuresDirection, setFuturesDirection] = useState<'long' | 'short'>('long');
   const [futuresMargin, setFuturesMargin] = useState('1000');
+  const [futuresTransferAmount, setFuturesTransferAmount] = useState('1000');
   const [futuresLeverage, setFuturesLeverage] = useState<FuturesPositionInputLeverage>(20);
   const [futuresNotice, setFuturesNotice] = useState<{ text: string; kind: 'error' | 'success' } | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
@@ -723,6 +725,7 @@ export function TradingPage() {
     query: { queryKey: getGetFuturesPositionsQueryKey(), refetchInterval: 3_000 },
   });
   const openFuturesPosition = useOpenFuturesPosition();
+  const transferFuturesBalance = useTransferTradingBalance();
   const { data: futuresQuote } = useGetFuturesQuote(asset, {
     query: { queryKey: getGetFuturesQuoteQueryKey(asset), refetchInterval: 1_000, staleTime: 0 },
   });
@@ -869,6 +872,35 @@ export function TradingPage() {
       setTradeError(apiError.data?.error || apiError.message || 'The trade could not be placed. Please try again.');
     } finally {
       setPlacing(false);
+    }
+  };
+
+  const handleTransferToFutures = async () => {
+    const transferAmount = Number(futuresTransferAmount);
+    if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/.test(futuresTransferAmount)
+      || !Number.isFinite(transferAmount)
+      || transferAmount <= 0
+      || transferAmount > availableToTrade
+      || transferFuturesBalance.isPending) {
+      setFuturesNotice({ kind: 'error', text: 'Enter a valid amount within your available Spot USDT balance.' });
+      return;
+    }
+    setFuturesNotice(null);
+    try {
+      await transferFuturesBalance.mutateAsync({
+        data: { direction: 'spot_to_futures', amount: futuresTransferAmount },
+      });
+      setFuturesMargin(futuresTransferAmount);
+      setFuturesNotice({ kind: 'success', text: `Transferred ${transferAmount.toLocaleString()} USDT from Spot to Futures. You can now open your position.` });
+      await Promise.allSettled([
+        refetchAccount(),
+        refetchFuturesPositions(),
+        qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }),
+      ]);
+    } catch (cause) {
+      const apiError = cause as { data?: { error?: string }; message?: string };
+      setFuturesNotice({ kind: 'error', text: apiError.data?.error || apiError.message || 'The Futures balance transfer failed. No order was opened.' });
+      await refetchAccount();
     }
   };
 
@@ -1577,6 +1609,40 @@ export function TradingPage() {
             <p className="mb-4 text-[11px] text-muted-foreground" data-testid="text-futures-balance">
               Futures allocation: {account ? `$${futuresTotal.toFixed(2)}` : '—'} USDT · Reserved margin: {futuresPositions && !futuresPositionsError ? `$${futuresReserved.toFixed(2)}` : '—'} USDT. Spot funds are separate.
             </p>
+            {futuresAvailable < marginValue && availableToTrade > 0 && (
+              <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3" data-testid="panel-transfer-futures-funds">
+                <p className="mb-2 text-xs font-bold text-foreground">Move USDT from Spot to Futures</p>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="0.00000001"
+                    max={availableToTrade}
+                    step="0.00000001"
+                    value={futuresTransferAmount}
+                    onChange={event => setFuturesTransferAmount(event.target.value)}
+                    aria-label="USDT amount to transfer into Futures"
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-input bg-secondary/40 px-3 font-mono text-sm font-bold outline-none focus:border-primary"
+                    data-testid="input-futures-transfer-amount"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFuturesTransferAmount(String(availableToTrade))}
+                    className="rounded-lg border border-border px-3 text-xs font-extrabold text-primary hover:bg-primary/10"
+                    data-testid="button-futures-transfer-max"
+                  >MAX</button>
+                </div>
+                <p className="mt-1.5 text-[10px] text-muted-foreground">Available Spot balance: ${availableToTrade.toFixed(2)} USDT. Transfer is only made when you press the button.</p>
+                <button
+                  type="button"
+                  onClick={handleTransferToFutures}
+                  disabled={transferFuturesBalance.isPending || !account || !!accountError || !tradesData || !!tradesError}
+                  className="mt-2 w-full rounded-lg bg-primary/15 px-3 py-2.5 text-xs font-extrabold text-primary transition hover:bg-primary/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  data-testid="button-transfer-spot-to-futures"
+                >
+                  {transferFuturesBalance.isPending ? 'Transferring USDT…' : 'Transfer USDT to Futures'}
+                </button>
+              </div>
+            )}
             {!supportedFuturesMode && (
               <p className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300" role="status" data-testid="status-futures-unsupported">
                 {futuresContractType === 'Quarterly' ? 'Quarterly contracts' : 'USDC settlement'} cannot be opened yet. Select USDT Perpetual to trade.
