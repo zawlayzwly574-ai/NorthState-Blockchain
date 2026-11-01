@@ -877,7 +877,7 @@ export function TradingPage() {
 
   const handleTransferToFutures = async () => {
     const transferAmount = Number(futuresTransferAmount);
-    if (!/^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,8})?$/.test(futuresTransferAmount)
+    if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?$/.test(futuresTransferAmount)
       || !Number.isFinite(transferAmount)
       || transferAmount <= 0
       || transferAmount > availableToTrade
@@ -891,12 +891,12 @@ export function TradingPage() {
         data: { direction: 'spot_to_futures', amount: futuresTransferAmount },
       });
       setFuturesMargin(futuresTransferAmount);
-      await Promise.all([
+      setFuturesNotice({ kind: 'success', text: `Transferred ${transferAmount.toLocaleString()} USDT from Spot to Futures. You can now open your position.` });
+      await Promise.allSettled([
         refetchAccount(),
         refetchFuturesPositions(),
         qc.invalidateQueries({ queryKey: getGetPortfolioQueryKey() }),
       ]);
-      setFuturesNotice({ kind: 'success', text: `Transferred ${transferAmount.toLocaleString()} USDT from Spot to Futures. You can now open your position.` });
     } catch (cause) {
       const apiError = cause as { data?: { error?: string }; message?: string };
       setFuturesNotice({ kind: 'error', text: apiError.data?.error || apiError.message || 'The Futures balance transfer failed. No order was opened.' });
