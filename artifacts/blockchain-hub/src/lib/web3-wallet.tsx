@@ -87,6 +87,7 @@ export interface WalletProviderInfo {
   id: WalletType;
   name: string;
   iconBg: string;
+  iconUrl: string;
   badge?: string;
   description: string;
   installUrl: string;
@@ -97,6 +98,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'metamask',
     name: 'MetaMask',
     iconBg: '#f6851b',
+    iconUrl: 'https://cdn.simpleicons.org/metamask/E2761B',
     badge: 'Popular',
     description: 'Connect with MetaMask browser extension or mobile app',
     installUrl: 'https://metamask.io/download/',
@@ -105,6 +107,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'coinbase',
     name: 'Coinbase Wallet',
     iconBg: '#0052ff',
+    iconUrl: 'https://cdn.simpleicons.org/coinbasewallet/0052FF',
     badge: 'Self-Custody',
     description: 'Connect using Coinbase Wallet extension or app',
     installUrl: 'https://www.coinbase.com/wallet/downloads',
@@ -113,6 +116,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'walletconnect',
     name: 'WalletConnect',
     iconBg: '#3b99fc',
+    iconUrl: 'https://cdn.simpleicons.org/walletconnect/3B99FC',
     badge: 'Mobile App',
     description: 'Scan with Trust, Rainbow, Ledger or any mobile wallet',
     installUrl: 'https://walletconnect.com/',
@@ -121,6 +125,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'trust',
     name: 'Trust Wallet',
     iconBg: '#0500ff',
+    iconUrl: 'https://cdn.simpleicons.org/trustwallet/3375BB',
     description: 'Multi-crypto mobile and browser wallet',
     installUrl: 'https://trustwallet.com/download',
   },
@@ -128,6 +133,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'okx',
     name: 'OKX Wallet',
     iconBg: '#121212',
+    iconUrl: 'https://cdn.simpleicons.org/okx/FFFFFF',
     description: 'Universal decentralized Web3 portal',
     installUrl: 'https://www.okx.com/web3',
   },
@@ -135,6 +141,7 @@ export const WALLET_PROVIDERS: WalletProviderInfo[] = [
     id: 'phantom',
     name: 'Phantom',
     iconBg: '#ab9ff2',
+    iconUrl: 'https://cdn.simpleicons.org/phantom/AB9FF2',
     description: 'Multi-chain Solana and EVM wallet',
     installUrl: 'https://phantom.app/download',
   },
@@ -585,7 +592,20 @@ function Web3Modal() {
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white font-bold shadow-sm"
                     style={{ backgroundColor: wallet.iconBg }}
                   >
-                    {wallet.name[0]}
+                    <img
+                      src={wallet.iconUrl}
+                      alt={`${wallet.name} logo`}
+                      width={28}
+                      height={28}
+                      loading="lazy"
+                      className="h-7 w-7 object-contain"
+                      onError={(event) => {
+                        event.currentTarget.style.display = 'none';
+                        const fallback = event.currentTarget.nextElementSibling as HTMLElement | null;
+                        if (fallback) fallback.style.display = 'block';
+                      }}
+                    />
+                    <span className="hidden text-base font-extrabold">{wallet.name[0]}</span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
