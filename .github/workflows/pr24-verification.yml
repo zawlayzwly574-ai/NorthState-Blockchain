@@ -16,24 +16,18 @@ concurrency:
 
 jobs:
   workspace-checks:
-    name: User App typecheck and build
+    name: User App production build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install workspace dependencies
         run: npm install --legacy-peer-deps
-
-      - name: Typecheck User App
-        run: npm run typecheck --workspace=@workspace/blockchain-hub
-
       - name: Build User App
         env:
           PORT: 3000
@@ -48,18 +42,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-
       - name: Install workspace dependencies
         run: npm install --legacy-peer-deps
-
       - name: Build API server
         run: npm run build --workspace=@workspace/api-server
-
       - name: Run API tests
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/northstate_test

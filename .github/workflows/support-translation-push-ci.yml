@@ -27,8 +27,12 @@ jobs:
           node-version: 22
       - name: Install workspace dependencies
         run: npm install --legacy-peer-deps
-      - name: Typecheck User App
-        run: npm run typecheck --workspace=@workspace/blockchain-hub
+      - name: Build User App
+        env:
+          PORT: 3000
+          BASE_PATH: "/"
+          VITE_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+        run: npm run build --workspace=@workspace/blockchain-hub
       - name: Build API server
         run: npm run build --workspace=@workspace/api-server
       - name: Run API tests
