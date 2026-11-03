@@ -63,6 +63,8 @@ const depositAssets = [
   { symbol: 'USDT', name: 'Tether', color: '#4bbd91' },
   { symbol: 'ETH', name: 'Ethereum', color: '#9a9cf5' },
   { symbol: 'USDC', name: 'USD Coin', color: '#4b9cdd' },
+  { symbol: 'XRP', name: 'XRP', color: '#6c778c' },
+  { symbol: 'SOL', name: 'Solana', color: '#8b75d7' },
   { symbol: 'DAI', name: 'Dai', color: '#f0b84a' },
   { symbol: 'FDUSD', name: 'First Digital USD', color: '#7ca8ff' },
   { symbol: 'BNB', name: 'BNB', color: '#f2ca52' },
@@ -2338,6 +2340,17 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
                       {copied ? <Check size={14} /> : <Copy size={14} />}
                     </button>
                   </div>
+                  {currentNetworkObj.memo && (
+                    <div className="mt-2 w-full rounded-xl border border-border bg-card p-2 text-left">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Memo / Destination Tag</span>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <code className="font-mono-ui text-xs font-semibold text-foreground">{currentNetworkObj.memo}</code>
+                        <button type="button" onClick={() => { navigator.clipboard?.writeText(currentNetworkObj.memo!); setCopied(true); setTimeout(() => setCopied(false), 1800); }} className="shrink-0 rounded-lg border border-primary/30 p-2 text-primary hover:bg-primary/10" aria-label="Copy memo">
+                          {copied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {copied && <p className="mt-1.5 text-xs font-bold text-emerald-400">Address copied to clipboard!</p>}
                 </div>
 
