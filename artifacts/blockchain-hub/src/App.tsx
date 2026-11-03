@@ -63,6 +63,8 @@ const depositAssets = [
   { symbol: 'USDT', name: 'Tether', color: '#4bbd91' },
   { symbol: 'ETH', name: 'Ethereum', color: '#9a9cf5' },
   { symbol: 'USDC', name: 'USD Coin', color: '#4b9cdd' },
+  { symbol: 'XRP', name: 'XRP', color: '#6c778c' },
+  { symbol: 'SOL', name: 'Solana', color: '#8b75d7' },
   { symbol: 'DAI', name: 'Dai', color: '#f0b84a' },
   { symbol: 'FDUSD', name: 'First Digital USD', color: '#7ca8ff' },
   { symbol: 'BNB', name: 'BNB', color: '#f2ca52' },
@@ -2001,36 +2003,26 @@ function SecurityTab({ profile }: { profile: { name: string; email: string; id: 
   );
 }
 
-const DEPOSIT_NETWORKS: Record<string, Array<{ id: string; name: string; minDeposit: string; confirmations: string; address: string }>> = {
+const DEPOSIT_NETWORKS: Record<string, Array<{ id: string; name: string; minDeposit: string; confirmations: string; address: string; memo?: string }>> = {
   USDT: [
-    { id: 'TRC20', name: 'Tron (TRC20)', minDeposit: '10 USDT', confirmations: '1 Block (~3s)', address: 'TYDzsYUEpvnYmQk4zGP9sWWcTEd3ZiPULj' },
-    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 USDT', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDT', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'Polygon', name: 'Polygon (POS)', minDeposit: '5 USDT', confirmations: '64 Blocks (~2m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'Arbitrum', name: 'Arbitrum One', minDeposit: '5 USDT', confirmations: '20 Blocks (~1m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-  ],
-  BTC: [
-    { id: 'BTC', name: 'Bitcoin Network', minDeposit: '0.0005 BTC', confirmations: '2 Blocks (~20m)', address: 'bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97' },
-    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '0.0001 BTC', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-  ],
-  ETH: [
-    { id: 'ERC20', name: 'Ethereum Mainnet', minDeposit: '0.005 ETH', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'Arbitrum', name: 'Arbitrum One', minDeposit: '0.001 ETH', confirmations: '20 Blocks (~1m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'Base', name: 'Base Network', minDeposit: '0.001 ETH', confirmations: '20 Blocks (~40s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'TRC20', name: 'Tron (TRC20 / TRX)', minDeposit: '10 USDT', confirmations: '1 Block (~3s)', address: 'TCTbijhuRyjR5CbF1W1WBiWgbEtXQU4fMV' },
+    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDT', confirmations: '12 Blocks (~3m)', address: '0xd9036b1513c9e1a3b1f2a0f3180ab9b6e961b088' },
   ],
   USDC: [
-    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDC', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 USDC', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
-    { id: 'Polygon', name: 'Polygon', minDeposit: '5 USDC', confirmations: '64 Blocks (~2m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '20 USDC', confirmations: '12 Blocks (~3m)', address: '0xd9036b1513c9e1a3b1f2a0f3180ab9b6e961b088' },
+    { id: 'TRC20', name: 'Tron (TRC20 / TRX)', minDeposit: '10 USDC', confirmations: '1 Block (~3s)', address: 'TCTbijhuRyjR5CbF1W1WBiWgbEtXQU4fMV' },
   ],
-  BNB: [
-    { id: 'BEP20', name: 'BNB Smart Chain', minDeposit: '0.01 BNB', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  ETH: [
+    { id: 'ERC20', name: 'Ethereum Mainnet (ERC20)', minDeposit: '0.005 ETH', confirmations: '12 Blocks (~3m)', address: '0xd9036b1513c9e1a3b1f2a0f3180ab9b6e961b088' },
   ],
-  DAI: [
-    { id: 'ERC20', name: 'Ethereum (ERC20)', minDeposit: '10 DAI', confirmations: '12 Blocks (~3m)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  BTC: [
+    { id: 'BTC', name: 'Bitcoin Network', minDeposit: '0.0005 BTC', confirmations: '2 Blocks (~20m)', address: '17v1CRcS2JbZhYy24g7mJRth8uz1Um4QFq' },
   ],
-  FDUSD: [
-    { id: 'BEP20', name: 'BNB Smart Chain (BEP20)', minDeposit: '5 FDUSD', confirmations: '15 Blocks (~45s)', address: '0x28C6c06298d514Db089934071355E5743bf21d60' },
+  XRP: [
+    { id: 'XRP', name: 'XRP Ledger (Ripple)', minDeposit: '10 XRP', confirmations: '1 Ledger (~3-5s)', address: 'rJn2zAPdFA193sixJwuFixRkYDUtx3apQh', memo: '501556564' },
+  ],
+  SOL: [
+    { id: 'SOL', name: 'Solana Network', minDeposit: '0.01 SOL', confirmations: '1 Block (~1s)', address: '4VGb84LE2L3MNSc9K7evURKiq8GDMs127DxmtQK4Yjgq' },
   ],
 };
 
@@ -2348,6 +2340,17 @@ function WalletDialogs({ onDone, verificationStatus = 'unverified' }: { onDone: 
                       {copied ? <Check size={14} /> : <Copy size={14} />}
                     </button>
                   </div>
+                  {currentNetworkObj.memo && (
+                    <div className="mt-2 w-full rounded-xl border border-border bg-card p-2 text-left">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Memo / Destination Tag</span>
+                      <div className="mt-1 flex items-center justify-between gap-2">
+                        <code className="font-mono-ui text-xs font-semibold text-foreground">{currentNetworkObj.memo}</code>
+                        <button type="button" onClick={() => { navigator.clipboard?.writeText(currentNetworkObj.memo!); setCopied(true); setTimeout(() => setCopied(false), 1800); }} className="shrink-0 rounded-lg border border-primary/30 p-2 text-primary hover:bg-primary/10" aria-label="Copy memo">
+                          {copied ? <Check size={14} /> : <Copy size={14} />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {copied && <p className="mt-1.5 text-xs font-bold text-emerald-400">Address copied to clipboard!</p>}
                 </div>
 
